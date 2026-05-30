@@ -108,9 +108,12 @@ class CommissionService:
                 referral_id=str(referral.id),
             )
 
-        # Step 3: Idempotency check
+        # Step 3: Get or create reseller wallet (needed for idempotency check)
+        wallet = await self.wallet_svc.get_or_create_wallet(reseller_id)
+
+        # Step 4: Idempotency check — prevent double commission on same proof
         existing_tx = await self.wallet_repo.get_transaction_by_reference(
-            reseller_id=reseller_id,
+            wallet_id=wallet.id,
             reference_type="PAYMENT_PROOF",
             reference_id=payment_proof_id,
             tx_type="COMMISSION_EARNED",
@@ -122,9 +125,6 @@ class CommissionService:
                 tx_id=str(existing_tx.id),
             )
             return existing_tx
-
-        # Step 4: Get or create reseller wallet
-        wallet = await self.wallet_svc.get_or_create_wallet(reseller_id)
 
         # Step 5: Calculate commission
         commission_amount = (
@@ -277,10 +277,11 @@ class CommissionService:
             return None
 
         reseller_id = referral.reseller_id
+        wallet = await self.wallet_svc.get_or_create_wallet(reseller_id)
 
         # Step 1: Idempotency for the reversal itself
         existing_reversal = await self.wallet_repo.get_transaction_by_reference(
-            reseller_id=reseller_id,
+            wallet_id=wallet.id,
             reference_type="PAYMENT_PROOF",
             reference_id=payment_proof_id,
             tx_type="COMMISSION_REVERSAL",
@@ -295,7 +296,7 @@ class CommissionService:
 
         # Step 2: Find the original commission transaction
         original_tx = await self.wallet_repo.get_transaction_by_reference(
-            reseller_id=reseller_id,
+            wallet_id=wallet.id,
             reference_type="PAYMENT_PROOF",
             reference_id=payment_proof_id,
             tx_type="COMMISSION_EARNED",

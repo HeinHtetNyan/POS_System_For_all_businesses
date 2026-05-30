@@ -510,10 +510,25 @@ export interface NotificationPreference {
 }
 
 
+// Canonical entitlement feature codes enforced by the backend.
+// Limit codes (products/branches/users/customers/devices) use limit_value.
+// Toggle codes (analytics/procurement/pos/inventory/advanced_reports) are simply on/off.
+export type CanonicalFeatureCode =
+  | 'products'
+  | 'branches'
+  | 'users'
+  | 'customers'
+  | 'devices'
+  | 'analytics'
+  | 'procurement'
+  | 'pos'
+  | 'inventory'
+  | 'advanced_reports'
+
 export interface PlanEntitlement {
   id: string
   plan_id: string
-  feature_code: string
+  feature_code: string   // string (not narrowed) to gracefully handle legacy max_* codes from DB
   enabled: boolean
   limit_value: number | null
   created_at: string
@@ -548,6 +563,8 @@ export interface Subscription {
   trial_ends_at: string | null
   auto_renew: boolean
   plan: Plan
+  pending_downgrade_plan_id?: string | null
+  pending_downgrade_requested_at?: string | null
   created_at: string
   updated_at: string
 }
@@ -567,6 +584,12 @@ export interface SubscriptionHistory {
   updated_at: string
 }
 
+export enum ProofActionType {
+  INITIAL_ACTIVATION = 'INITIAL_ACTIVATION',
+  RENEWAL = 'RENEWAL',
+  UPGRADE = 'UPGRADE',
+}
+
 export interface PaymentProof {
   id: string
   tenant_id: string
@@ -576,6 +599,11 @@ export interface PaymentProof {
   reference_number: string | null
   proof_file_url: string
   status: string
+  action_type?: ProofActionType
+  target_plan_id?: string | null
+  target_plan_name?: string | null
+  tenant_name?: string | null
+  tenant_email?: string | null
   reviewed_by: string | null
   reviewed_at: string | null
   review_notes: string | null
@@ -597,7 +625,7 @@ export interface TenantEntitlementOverride {
 }
 
 export interface EffectiveEntitlement {
-  feature_code: string
+  feature_code: string  // CanonicalFeatureCode (or legacy max_* before DB migration)
   enabled: boolean
   limit_value: number | null
   source: string
@@ -647,6 +675,8 @@ export interface PaymentProofCreateRequest {
   currency?: string
   reference_number?: string
   proof_file_url: string
+  action_type?: ProofActionType
+  target_plan_id?: string
 }
 
 

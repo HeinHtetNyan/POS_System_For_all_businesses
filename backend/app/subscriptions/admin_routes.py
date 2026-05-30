@@ -19,7 +19,9 @@ from app.subscriptions.schemas import (
     ExtendSubscriptionRequest,
     PaginatedAdminSubscriptions,
     PaginatedPaymentProofs,
+    PaginatedSubscriptionHistory,
     PaymentProofResponse,
+    SubscriptionHistoryResponse,
     SubscriptionOverviewResponse,
     SubscriptionResponse,
     TenantEntitlementOverrideCreateRequest,
@@ -284,6 +286,26 @@ async def admin_list_all_payment_proofs(
     )
     return PaginatedResponse.create(
         items=[PaymentProofResponse.model_validate(p) for p in items],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get("/tenants/{tenant_id}/history", response_model=PaginatedSubscriptionHistory)
+async def admin_get_tenant_subscription_history(
+    db: DbSession,
+    _: Annotated[User, Depends(require_super_admin)],
+    tenant_id: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+) -> PaginatedSubscriptionHistory:
+    from app.subscriptions.services import SubscriptionService
+    svc = SubscriptionService(db)
+    tenant_uuid = uuid.UUID(tenant_id)
+    items, total = await svc.get_history(tenant_id=tenant_uuid, page=page, page_size=page_size)
+    return PaginatedResponse.create(
+        items=[SubscriptionHistoryResponse.model_validate(h) for h in items],
         total=total,
         page=page,
         page_size=page_size,

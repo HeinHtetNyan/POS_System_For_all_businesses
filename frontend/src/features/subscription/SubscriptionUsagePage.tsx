@@ -15,13 +15,7 @@ const FEATURE_LABELS: Record<string, string> = {
   notifications: 'Notifications',
   sales:         'Sales',
   inventory:     'Inventory',
-  // Plans may use max_* prefixed codes
-  max_users:     'Users / Staff',
-  max_branches:  'Branches',
-  max_products:  'Products',
-  max_customers: 'Customers',
-  max_devices:   'Devices',
-  max_staff:     'Users / Staff',
+  pos:           'POS / Checkout',
 }
 
 function label(code: string) {

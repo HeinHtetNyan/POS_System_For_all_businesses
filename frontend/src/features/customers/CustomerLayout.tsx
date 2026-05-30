@@ -1,8 +1,8 @@
 import { NavLink, Outlet, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { cn, fmt } from '@/lib/utils'
-import { Spinner, Badge } from '@/components/ui'
-import { IconChevLeft, IconUser } from '@/components/icons'
+import { Spinner, Badge, Btn } from '@/components/ui'
+import { IconChevLeft, IconUser, IconPlus } from '@/components/icons'
 import { customersService } from '@/services/customers/customers.service'
 
 const TABS = [
@@ -69,6 +69,14 @@ export default function CustomerLayout() {
               {customer.phone}{customer.email ? ` · ${customer.email}` : ''}
             </p>
           </div>
+
+          <Btn
+            size="xs"
+            onClick={() => navigate(`/app/customers/${id}/new-sale`)}
+            className="flex-shrink-0"
+          >
+            <IconPlus width="11" height="11" /> New Sale
+          </Btn>
 
           <div className="flex-shrink-0 text-right">
             <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Balance</p>

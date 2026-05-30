@@ -32,14 +32,8 @@ export const subscriptionsService = {
   getHistory: (params?: { page?: number; page_size?: number }) =>
     apiClient.get<PaginatedResponse<SubscriptionHistory>>('/subscriptions/history', { params }).then(r => r.data),
 
-  renew: () =>
-    apiClient.post<Subscription>('/subscriptions/renew').then(r => r.data),
-
-  upgrade: (plan_id: string) =>
-    apiClient.post<Subscription>('/subscriptions/upgrade', { plan_id }).then(r => r.data),
-
   downgrade: (plan_id: string) =>
-    apiClient.post<Subscription>('/subscriptions/downgrade', { plan_id }).then(r => r.data),
+    apiClient.post<{ message: string }>('/subscriptions/downgrade', { plan_id }).then(r => r.data),
 
   cancel: () =>
     apiClient.post<Subscription>('/subscriptions/cancel').then(r => r.data),
@@ -102,6 +96,9 @@ export const subscriptionsService = {
 
   adminRejectProof: (proofId: string, review_notes?: string) =>
     apiClient.post<PaymentProof>(`/subscriptions/payment-proofs/${proofId}/reject`, { review_notes }).then(r => r.data),
+
+  adminGetSubscriptionHistory: (tenantId: string, params?: { page?: number; page_size?: number }) =>
+    apiClient.get<PaginatedResponse<SubscriptionHistory>>(`/subscriptions/admin/tenants/${tenantId}/history`, { params }).then(r => r.data),
 
   adminGetEntitlements: (tenantId: string) =>
     apiClient.get<EffectiveEntitlement[]>(`/subscriptions/admin/tenants/${tenantId}/entitlements`).then(r => r.data),

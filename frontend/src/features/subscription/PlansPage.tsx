@@ -7,6 +7,7 @@ import { cn } from '@/shared/utils'
 import { extractApiMsg } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth.store'
 import type { Plan } from '@/shared/types'
+import { ProofActionType } from '@/shared/types'
 
 const FEATURE_LABELS: Record<string, string> = {
   users:         'Users / Staff',
@@ -20,12 +21,7 @@ const FEATURE_LABELS: Record<string, string> = {
   notifications: 'Notifications',
   sales:         'Sales',
   inventory:     'Inventory',
-  max_users:     'Users / Staff',
-  max_branches:  'Branches',
-  max_products:  'Products',
-  max_customers: 'Customers',
-  max_devices:   'Devices',
-  max_staff:     'Users / Staff',
+  pos:           'POS / Checkout',
 }
 
 function featureLabel(code: string) {
@@ -192,35 +188,174 @@ function UpgradeProofModal({ plan, onClose }: { plan: Plan; onClose: () => void 
   )
 }
 
-// Inline confirm dialog for direct upgrade/downgrade
-function ConfirmPlanModal({
-  plan, mode, onClose, onConfirm, isPending,
+// Inline confirm dialog for downgrade (shows "scheduled at end of period" messaging)
+function ConfirmDowngradeModal({
+  plan, onClose, onConfirm, isPending,
 }: {
-  plan: Plan; mode: 'upgrade' | 'downgrade'
+  plan: Plan
   onClose: () => void; onConfirm: () => void; isPending: boolean
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-sm shadow-2xl p-6 space-y-4">
         <div>
-          <h3 className="text-base font-semibold text-zinc-100 capitalize">{mode} to {plan.name}?</h3>
+          <h3 className="text-base font-semibold text-zinc-100">Confirm Downgrade</h3>
           <p className="text-sm text-zinc-400 mt-2">
-            Your plan will change to{' '}
+            Your plan will switch to{' '}
             <span className="text-zinc-200 font-medium">{plan.name}</span>
-            {' '}({plan.currency} {Number(plan.price).toLocaleString()} / {plan.billing_cycle.toLowerCase()}).
+            {' '}({plan.currency} {Number(plan.price).toLocaleString()} / {plan.billing_cycle.toLowerCase()}) at the end of your current billing period.
           </p>
-          {mode === 'downgrade' && (
-            <p className="text-xs text-amber-400 mt-2">
-              Some features or limits may be reduced after downgrading.
-            </p>
-          )}
+          <p className="text-xs text-amber-400 mt-2">
+            You will keep your current plan features until the billing period ends. Some features or limits may be reduced after the downgrade takes effect.
+          </p>
         </div>
         <div className="flex gap-2 justify-end">
           <Btn variant="secondary" size="sm" onClick={onClose} disabled={isPending}>Cancel</Btn>
           <Btn size="sm" onClick={onConfirm} disabled={isPending}>
-            {isPending ? 'Processing…' : `Confirm ${mode}`}
+            {isPending ? 'Scheduling…' : 'Confirm Downgrade'}
           </Btn>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// Proof upload modal for upgrade — plan is pre-selected
+function UpgradeProofSubmitModal({ plan, onClose }: { plan: Plan; onClose: () => void }) {
+  const qc = useQueryClient()
+  const [amount, setAmount] = useState('')
+  const [currency, setCurrency] = useState('MMK')
+  const [file, setFile] = useState<File | null>(null)
+  const [fileError, setFileError] = useState<string | null>(null)
+  const [uploadProgress, setUploadProgress] = useState<'idle' | 'uploading' | 'done'>('idle')
+  const [uploadedUrl, setUploadedUrl] = useState<string | null>(null)
+  const [done, setDone] = useState(false)
+
+  const submitMutation = useMutation({
+    mutationFn: (payload: Parameters<typeof subscriptionsService.submitPaymentProof>[0]) =>
+      subscriptionsService.submitPaymentProof(payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['subscription', 'proofs'] })
+      setDone(true)
+    },
+    onError: err => toast.error(extractApiMsg(err) ?? 'Failed to submit'),
+  })
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0] ?? null
+    setFileError(null); setUploadedUrl(null); setUploadProgress('idle')
+    if (!f) { setFile(null); return }
+    if (!['image/jpeg', 'image/png', 'application/pdf'].includes(f.type)) {
+      setFileError('Only JPG, PNG, or PDF files are accepted'); setFile(null); return
+    }
+    if (f.size > 10 * 1024 * 1024) { setFileError('File must be under 10 MB'); setFile(null); return }
+    setFile(f)
+  }
+
+  async function handleSubmit() {
+    if (!amount || !file) return
+    let proofUrl = uploadedUrl
+    if (!proofUrl) {
+      setUploadProgress('uploading')
+      try {
+        proofUrl = await subscriptionsService.uploadProofFile(file)
+        setUploadedUrl(proofUrl); setUploadProgress('done')
+      } catch (err: unknown) {
+        setUploadProgress('idle')
+        toast.error(extractApiMsg(err) ?? 'File upload failed')
+        return
+      }
+    }
+    submitMutation.mutate({
+      amount,
+      currency,
+      reference_number: `Upgrade to: ${plan.name}`,
+      proof_file_url: proofUrl,
+      action_type: ProofActionType.UPGRADE,
+      target_plan_id: plan.id,
+    })
+  }
+
+  const busy = uploadProgress === 'uploading' || submitMutation.isPending
+  const inp = 'w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-amber-500'
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+          <div>
+            <h3 className="text-base font-semibold text-zinc-100">{done ? 'Request Submitted' : 'Submit Upgrade Payment Proof'}</h3>
+            {!done && (
+              <p className="text-xs text-zinc-500 mt-0.5">
+                Upgrading to <span className="text-amber-400 font-medium">{plan.name}</span>
+                {' — '}{plan.currency} {Number(plan.price).toLocaleString()} / {plan.billing_cycle.toLowerCase()}
+              </p>
+            )}
+          </div>
+          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-800">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        {done ? (
+          <>
+            <div className="p-6 text-center space-y-3">
+              <div className="w-12 h-12 rounded-full bg-green-900/50 flex items-center justify-center mx-auto">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-green-400"><polyline points="20 6 9 17 4 12" /></svg>
+              </div>
+              <div>
+                <p className="text-base font-semibold text-zinc-100">Request Submitted</p>
+                <p className="text-sm text-zinc-400 mt-1">
+                  Your upgrade request to <span className="text-amber-400 font-medium">{plan.name}</span> has been submitted.
+                </p>
+                <p className="text-xs text-zinc-500 mt-2">
+                  Our team will review your payment proof and activate your new plan. Track status under Billing &gt; Payment Proofs.
+                </p>
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-zinc-800 flex justify-center">
+              <Btn size="sm" onClick={onClose}>Done</Btn>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-zinc-400 mb-1">Amount Paid *</label>
+                  <input type="number" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" className={inp} />
+                </div>
+                <div>
+                  <label className="block text-xs text-zinc-400 mb-1">Currency</label>
+                  <input type="text" value={currency} onChange={e => setCurrency(e.target.value)} placeholder="MMK" className={inp} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-400 mb-1">Receipt File * (JPG, PNG, PDF — max 10 MB)</label>
+                <label className="block w-full cursor-pointer">
+                  <input type="file" accept="image/jpeg,image/png,application/pdf" onChange={handleFileChange} className="sr-only" />
+                  <div className={cn('w-full border-2 border-dashed rounded-xl px-4 py-5 text-center transition-colors',
+                    file ? 'border-amber-500/60 bg-amber-950/20' : 'border-zinc-700 hover:border-zinc-500 bg-zinc-800/50')}>
+                    {file ? (
+                      <div>
+                        <p className="text-sm text-zinc-200 font-medium truncate">{file.name}</p>
+                        <p className="text-xs text-zinc-500 mt-0.5">{(file.size / 1024).toFixed(0)} KB · {uploadProgress === 'done' ? <span className="text-green-400">Uploaded</span> : <span className="text-zinc-400">Click to change</span>}</p>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-zinc-500">Click to select a receipt file</p>
+                    )}
+                  </div>
+                </label>
+                {fileError && <p className="text-xs text-red-400 mt-1">{fileError}</p>}
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-zinc-800 flex gap-2 justify-end">
+              <Btn variant="secondary" size="sm" onClick={onClose} disabled={busy}>Cancel</Btn>
+              <Btn size="sm" disabled={!amount || !file || busy} onClick={handleSubmit}>
+                {uploadProgress === 'uploading' ? 'Uploading…' : submitMutation.isPending ? 'Submitting…' : 'Submit Proof'}
+              </Btn>
+            </div>
+          </>
+        )}
       </div>
     </div>
   )
@@ -232,7 +367,8 @@ export default function PlansPage() {
   const isOwner = user?.role === 'BUSINESS_OWNER'
 
   const [proofPlan, setProofPlan] = useState<Plan | null>(null)
-  const [confirmAction, setConfirmAction] = useState<{ plan: Plan; mode: 'upgrade' | 'downgrade' } | null>(null)
+  const [confirmDowngrade, setConfirmDowngrade] = useState<Plan | null>(null)
+  const [upgradeProofPlan, setUpgradeProofPlan] = useState<Plan | null>(null)
 
   const { data: sub, isLoading: subLoading } = useQuery({
     queryKey: ['subscription', 'current'],
@@ -245,18 +381,18 @@ export default function PlansPage() {
     staleTime: 60_000,
   })
 
-  const changePlanMutation = useMutation({
-    mutationFn: ({ mode, planId }: { mode: 'upgrade' | 'downgrade'; planId: string }) =>
-      mode === 'upgrade' ? subscriptionsService.upgrade(planId) : subscriptionsService.downgrade(planId),
-    onSuccess: (_, { mode }) => {
+  const downgradeMutation = useMutation({
+    mutationFn: (planId: string) => subscriptionsService.downgrade(planId),
+    onSuccess: (data, planId) => {
       qc.invalidateQueries({ queryKey: ['subscription'] })
       qc.invalidateQueries({ queryKey: ['plans'] })
-      toast.success(`Plan ${mode}d successfully`)
-      setConfirmAction(null)
+      const targetPlan = (plansData?.items ?? []).find(p => p.id === planId)
+      toast.success(data.message ?? `Downgrade to ${targetPlan?.name ?? 'lower plan'} scheduled for end of billing period.`)
+      setConfirmDowngrade(null)
     },
     onError: err => {
-      toast.error(extractApiMsg(err) ?? 'Failed to change plan')
-      setConfirmAction(null)
+      toast.error(extractApiMsg(err) ?? 'Failed to schedule downgrade')
+      setConfirmDowngrade(null)
     },
   })
 
@@ -291,13 +427,15 @@ export default function PlansPage() {
       {proofPlan && (
         <UpgradeProofModal plan={proofPlan} onClose={() => setProofPlan(null)} />
       )}
-      {confirmAction && (
-        <ConfirmPlanModal
-          plan={confirmAction.plan}
-          mode={confirmAction.mode}
-          isPending={changePlanMutation.isPending}
-          onClose={() => setConfirmAction(null)}
-          onConfirm={() => changePlanMutation.mutate({ mode: confirmAction.mode, planId: confirmAction.plan.id })}
+      {upgradeProofPlan && (
+        <UpgradeProofSubmitModal plan={upgradeProofPlan} onClose={() => setUpgradeProofPlan(null)} />
+      )}
+      {confirmDowngrade && (
+        <ConfirmDowngradeModal
+          plan={confirmDowngrade}
+          isPending={downgradeMutation.isPending}
+          onClose={() => setConfirmDowngrade(null)}
+          onConfirm={() => downgradeMutation.mutate(confirmDowngrade.id)}
         />
       )}
 
@@ -305,7 +443,7 @@ export default function PlansPage() {
         <div className="max-w-4xl">
           {/* Current plan banner */}
           {sub && currentPlan && (
-            <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 mb-6 flex items-center gap-3 flex-wrap">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 mb-4 flex items-center gap-3 flex-wrap">
               <div className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0" />
               <p className="text-sm text-zinc-300 flex-1 min-w-0">
                 Currently on{' '}
@@ -320,6 +458,23 @@ export default function PlansPage() {
               )}
             </div>
           )}
+
+          {/* Pending downgrade banner */}
+          {sub?.pending_downgrade_plan_id && (() => {
+            const pendingPlan = plans.find(p => p.id === sub.pending_downgrade_plan_id)
+            return (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 mb-6 flex items-start gap-3">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-amber-400 flex-shrink-0 mt-0.5">
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                <p className="text-sm text-amber-300">
+                  Downgrade to{' '}
+                  <span className="font-semibold">{pendingPlan?.name ?? 'a lower plan'}</span>{' '}
+                  is scheduled for end of your current billing period.
+                </p>
+              </div>
+            )
+          })()}
 
           {plans.length === 0 ? (
             <div className="text-center py-16">
@@ -354,6 +509,8 @@ export default function PlansPage() {
                 const visibleFeatures = enabledFeatures.slice(0, 6)
                 const hiddenCount = enabledFeatures.length - visibleFeatures.length
 
+                const isPendingDowngradeTo = sub?.pending_downgrade_plan_id === plan.id
+
                 return (
                   <div
                     key={plan.id}
@@ -361,15 +518,24 @@ export default function PlansPage() {
                       'bg-zinc-900 border rounded-2xl flex flex-col transition-colors',
                       isCurrent
                         ? 'border-amber-500/60 ring-1 ring-amber-500/20'
+                        : isPendingDowngradeTo
+                        ? 'border-amber-500/30 ring-1 ring-amber-500/10'
                         : 'border-zinc-800 hover:border-zinc-700',
                     )}
                   >
-                    {/* Current badge */}
-                    {isCurrent && (
-                      <div className="px-4 pt-3">
-                        <span className="inline-block text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-full px-2.5 py-0.5 uppercase tracking-wider">
-                          Current Plan
-                        </span>
+                    {/* Current / pending-downgrade badge */}
+                    {(isCurrent || isPendingDowngradeTo) && (
+                      <div className="px-4 pt-3 flex gap-2 flex-wrap">
+                        {isCurrent && (
+                          <span className="inline-block text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-full px-2.5 py-0.5 uppercase tracking-wider">
+                            Current Plan
+                          </span>
+                        )}
+                        {isPendingDowngradeTo && (
+                          <span className="inline-block text-[10px] font-bold text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-full px-2.5 py-0.5 uppercase tracking-wider">
+                            Pending Downgrade
+                          </span>
+                        )}
                       </div>
                     )}
 
@@ -430,13 +596,26 @@ export default function PlansPage() {
                             {ctaLabel}
                           </Btn>
                         ) : action === 'upgrade' ? (
-                          <Btn size="sm" fullWidth onClick={() => setConfirmAction({ plan, mode: 'upgrade' })}>
+                          <Btn
+                            size="sm" fullWidth
+                            onClick={() => setUpgradeProofPlan(plan)}
+                          >
                             Upgrade →
                           </Btn>
                         ) : action === 'downgrade' ? (
-                          <Btn variant="secondary" size="sm" fullWidth onClick={() => setConfirmAction({ plan, mode: 'downgrade' })}>
-                            Downgrade
-                          </Btn>
+                          isPendingDowngradeTo ? (
+                            <div className="w-full text-center py-2 text-xs font-medium text-amber-400/70 border border-amber-500/20 rounded-xl">
+                              Downgrade Scheduled
+                            </div>
+                          ) : (
+                            <Btn
+                              variant="secondary" size="sm" fullWidth
+                              disabled={downgradeMutation.isPending || !!sub?.pending_downgrade_plan_id}
+                              onClick={() => setConfirmDowngrade(plan)}
+                            >
+                              Downgrade
+                            </Btn>
+                          )
                         ) : isFree && !isCurrent ? (
                           <p className="text-xs text-zinc-600 text-center py-2">
                             Cancel your plan to revert to Free

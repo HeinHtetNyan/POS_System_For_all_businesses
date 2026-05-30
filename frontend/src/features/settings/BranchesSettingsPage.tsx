@@ -243,7 +243,7 @@ export default function BranchesSettingsPage() {
 
   const branches = data?.items ?? []
   const branchesEnt = entitlements?.find(e =>
-    e.feature_code === 'branches' || e.feature_code === 'max_branches'
+    e.feature_code === 'branches'
   )
   const canAddBranch = entitlements
     ? (!!branchesEnt?.enabled && (

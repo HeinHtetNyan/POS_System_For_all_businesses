@@ -23,8 +23,13 @@ export default function TrialExpiredPage() {
   // Super admin never sees this page
   if (user?.role === 'SUPER_ADMIN') return <Navigate to="/admin/dashboard" replace />
 
-  // If subscription is actually active/trial, redirect to app
-  if (!subLoading && sub && sub.status !== 'EXPIRED' && sub.status !== 'SUSPENDED' && sub.status !== 'CANCELLED') {
+  // If subscription is active/trial, or cancelled but still within paid period — redirect to app
+  const cancelledButActive =
+    sub?.status === 'CANCELLED' &&
+    sub.expires_at != null &&
+    new Date(sub.expires_at) > new Date()
+
+  if (!subLoading && sub && sub.status !== 'EXPIRED' && sub.status !== 'SUSPENDED' && (sub.status !== 'CANCELLED' || cancelledButActive)) {
     return <Navigate to="/app/dashboard" replace />
   }
 

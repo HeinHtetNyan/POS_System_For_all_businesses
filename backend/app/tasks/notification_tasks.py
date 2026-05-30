@@ -66,6 +66,90 @@ def process_expired_subscriptions(self: Any) -> dict:
                 old_plan_name = sub.plan.name if sub.plan else "your plan"
                 old_plan_code = sub.plan.code if sub.plan else ""
 
+                # Check if tenant has a pending scheduled downgrade
+                pending_downgrade_plan_id = getattr(sub, "pending_downgrade_plan_id", None)
+
+                if pending_downgrade_plan_id:
+                    # Apply the scheduled downgrade to the requested plan
+                    target_plan = await plan_repo.get_by_id(pending_downgrade_plan_id)
+                    if target_plan and target_plan.is_active:
+                        sub.plan_id = target_plan.id
+                        sub.status = SubscriptionStatus.ACTIVE if target_plan.price == 0 else SubscriptionStatus.EXPIRED
+                        sub.expires_at = None
+                        sub.trial_ends_at = None
+                        sub.pending_downgrade_plan_id = None
+                        sub.pending_downgrade_requested_at = None
+
+                        tenant = await session.get(Tenant, sub.tenant_id)
+                        if tenant:
+                            if sub.status == SubscriptionStatus.ACTIVE:
+                                tenant.status = TenantStatus.ACTIVE
+                                tenant.subscription_plan = target_plan.code
+                                tenant.subscription_expires_at = None
+
+                        history = SubscriptionHistory(
+                            tenant_id=sub.tenant_id,
+                            subscription_id=sub.id,
+                            change_type=SubscriptionChangeType.DOWNGRADED,
+                            old_plan_id=old_plan_id,
+                            new_plan_id=target_plan.id,
+                            old_status=old_status,
+                            new_status=sub.status,
+                            note=(
+                                f"Scheduled downgrade applied: '{old_plan_name}' → '{target_plan.name}' "
+                                "at end of billing period."
+                            ),
+                        )
+                        session.add(history)
+
+                        await audit.log(
+                            action=AuditAction.SUBSCRIPTION_DOWNGRADED,
+                            tenant_id=sub.tenant_id,
+                            entity_type=EntityType.TENANT_SUBSCRIPTION,
+                            entity_id=sub.id,
+                            after_state={
+                                "from_plan": old_plan_code,
+                                "to_plan": target_plan.code,
+                                "source": "scheduled_downgrade_on_expiry",
+                            },
+                        )
+
+                        try:
+                            stmt = select(User).where(
+                                User.tenant_id == sub.tenant_id,
+                                User.is_deleted.is_(False),
+                            )
+                            result = await session.execute(stmt)
+                            recipient_ids = [u.id for u in result.scalars().all()]
+                            if recipient_ids:
+                                await notif_svc.create_notification(
+                                    tenant_id=sub.tenant_id,
+                                    type=NotificationType.SUBSCRIPTION,
+                                    priority=NotificationPriority.HIGH,
+                                    title=f"{old_plan_name} Expired — Downgraded to {target_plan.name}",
+                                    message=(
+                                        f"Your {old_plan_name} subscription has expired. "
+                                        f"Your account has been downgraded to the {target_plan.name} plan "
+                                        "as scheduled."
+                                    ),
+                                    recipient_ids=recipient_ids,
+                                    metadata={
+                                        "from_plan_code": old_plan_code,
+                                        "to_plan_code": target_plan.code,
+                                        "expired_at": now.isoformat(),
+                                        "event": "scheduled_downgrade_applied",
+                                    },
+                                )
+                        except Exception as notif_exc:
+                            logger.warning(
+                                "scheduled_downgrade_notification_failed",
+                                tenant_id=str(sub.tenant_id),
+                                error=str(notif_exc),
+                            )
+
+                        downgraded_count += 1
+                        continue  # skip the free_plan fallback logic below
+
                 if free_plan:
                     # Downgrade to Free plan — tenant keeps working on the free tier
                     sub.plan_id = free_plan.id

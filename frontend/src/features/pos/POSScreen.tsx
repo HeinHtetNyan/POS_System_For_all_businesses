@@ -116,7 +116,7 @@ export default function POSScreen() {
   // Fetch inventory for the session's branch
   const { data: inventoryData } = useQuery({
     queryKey: ['inventory', branchId],
-    queryFn: () => inventoryService.getBranchInventory(branchId, { page_size: 500 }),
+    queryFn: () => inventoryService.getBranchInventory(branchId, { page_size: 200 }),
     enabled: !!branchId,
   })
 
@@ -333,7 +333,7 @@ export default function POSScreen() {
           </div>
 
           {/* Product grid */}
-          <div className="flex-1 overflow-y-auto min-h-0">
+          <div className="flex-1 min-h-0">
             {productsLoading ? (
               <div className="flex items-center justify-center h-40">
                 <Spinner size={32} />

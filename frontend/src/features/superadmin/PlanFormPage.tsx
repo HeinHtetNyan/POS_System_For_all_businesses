@@ -10,7 +10,7 @@ import type { PlanCreateRequest } from '@/shared/types'
 // These are the exact feature_code strings the backend gates enforce.
 // Limit features need a numeric value; toggle features are simply on/off.
 const TOGGLE_FEATURES: { code: string; label: string; desc: string }[] = [
-  { code: 'POS',              label: 'POS / Checkout',     desc: 'Access the point-of-sale checkout screen' },
+  { code: 'pos',              label: 'POS / Checkout',     desc: 'Access the point-of-sale checkout screen' },
   { code: 'inventory',        label: 'Inventory',          desc: 'Stock tracking, adjustments, and reports' },
   { code: 'analytics',        label: 'Analytics',          desc: 'Sales, inventory, and financial analytics dashboard' },
   { code: 'advanced_reports', label: 'Advanced Reports',   desc: 'Detailed financial reports and data exports' },
@@ -18,12 +18,22 @@ const TOGGLE_FEATURES: { code: string; label: string; desc: string }[] = [
 ]
 
 const LIMIT_FEATURES: { code: string; label: string; desc: string; placeholder: string }[] = [
-  { code: 'max_products',  label: 'Max Products',  desc: 'Maximum number of products (SKUs) per tenant',         placeholder: 'e.g. 100' },
-  { code: 'max_branches',  label: 'Max Branches',  desc: 'Maximum number of branches per tenant',                placeholder: 'e.g. 1' },
-  { code: 'max_users',     label: 'Max Staff',     desc: 'Maximum number of staff/manager accounts per tenant',  placeholder: 'e.g. 5' },
+  { code: 'products',  label: 'Max Products',  desc: 'Maximum number of products (SKUs) per tenant',         placeholder: 'e.g. 100' },
+  { code: 'branches',  label: 'Max Branches',  desc: 'Maximum number of branches per tenant',                placeholder: 'e.g. 1' },
+  { code: 'users',     label: 'Max Staff',     desc: 'Maximum number of staff/manager accounts per tenant',  placeholder: 'e.g. 5' },
+  { code: 'customers', label: 'Max Customers', desc: 'Maximum number of customer records per tenant',        placeholder: 'e.g. 500' },
+  { code: 'devices',   label: 'Max Devices',   desc: 'Maximum number of POS devices per tenant',            placeholder: 'e.g. 3' },
 ]
 
 type EntRow = { feature_code: string; enabled: boolean; limit_value: string }
+
+// Normalize legacy feature codes from DB (before migration) to canonical codes.
+const LEGACY_CODE_MAP: Record<string, string> = {
+  max_products:  'products',
+  max_branches:  'branches',
+  max_users:     'users',
+  max_customers: 'customers',
+}
 
 function buildDefaultEntitlements(): EntRow[] {
   return [
@@ -33,7 +43,12 @@ function buildDefaultEntitlements(): EntRow[] {
 }
 
 function mergeEntitlements(existing: { feature_code: string; enabled: boolean; limit_value: number | null }[]): EntRow[] {
-  const map = new Map(existing.map(e => [e.feature_code, e]))
+  // Normalize any legacy max_* codes so they map to the canonical slot.
+  const normalized = existing.map(e => ({
+    ...e,
+    feature_code: LEGACY_CODE_MAP[e.feature_code] ?? e.feature_code,
+  }))
+  const map = new Map(normalized.map(e => [e.feature_code, e]))
   const defaults = buildDefaultEntitlements()
   return defaults.map(d => {
     const ex = map.get(d.feature_code)

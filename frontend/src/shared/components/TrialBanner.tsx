@@ -5,7 +5,7 @@ import { subscriptionsService } from '@/services/subscriptions/subscriptions.ser
 
 export default function TrialBanner() {
   const user = useAuthStore(s => s.user)
-  const isEligible = !!user && (user.role === 'BUSINESS_OWNER' || user.role === 'MANAGER')
+  const isEligible = !!user && user.role === 'BUSINESS_OWNER'
 
   const { data: status } = useQuery({
     queryKey: ['subscription-status'],

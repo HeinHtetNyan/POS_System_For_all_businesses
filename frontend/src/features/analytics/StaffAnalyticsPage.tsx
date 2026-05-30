@@ -75,14 +75,6 @@ export default function StaffAnalyticsPage() {
           </tbody>
         </Table>
       </ChartCard>
-
-      {/* Manager & Inventory Staff — coming soon notice */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 space-y-1">
-        <p className="text-sm font-semibold text-zinc-300">Manager &amp; Inventory Staff Metrics</p>
-        <p className="text-xs text-zinc-500">
-          Coming soon — refunds processed, purchase orders created, and stock adjustments per manager/inventory staff.
-        </p>
-      </div>
     </div>
   )
 }

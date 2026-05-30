@@ -125,7 +125,7 @@ function ReviewProofModal({ proofId, action, onClose }: { proofId: string; actio
       qc.invalidateQueries({ queryKey: ['admin', 'sub', tenantId] })
       qc.invalidateQueries({ queryKey: ['admin', 'proofs', 'tenant', tenantId] })
       if (action === 'approve') {
-        toast.success('Proof approved. Use "Change Plan" above to activate the tenant\'s new plan.', { duration: 7000 })
+        toast.success('Proof approved — subscription updated automatically.', { duration: 5000 })
       } else {
         toast.success('Proof rejected')
       }
@@ -352,14 +352,20 @@ export default function AdminSubscriptionDetailPage() {
                     <div key={proof.id} className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3.5">
                       <div className="flex items-start justify-between gap-3 flex-wrap">
                         <div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <p className="text-sm font-medium text-zinc-100">
                               {proof.currency} {Number(proof.amount).toLocaleString()}
                             </p>
                             <Badge variant={PROOF_VARIANT[proof.status] ?? 'default'} size="xs">{proof.status}</Badge>
+                            <Badge variant={proof.action_type === 'UPGRADE' ? 'warning' : proof.action_type === 'RENEWAL' ? 'info' : 'default'} size="xs">
+                              {proof.action_type === 'INITIAL_ACTIVATION' ? 'New Activation' : proof.action_type === 'RENEWAL' ? 'Renewal' : 'Plan Upgrade'}
+                            </Badge>
                           </div>
+                          {proof.target_plan_name && (
+                            <p className="text-xs text-green-400 font-semibold mt-0.5">→ Requesting plan: <span className="text-green-300">{proof.target_plan_name}</span></p>
+                          )}
                           {proof.reference_number && (
-                            <p className="text-xs text-amber-300/80 mt-0.5">{proof.reference_number}</p>
+                            <p className="text-xs text-amber-300/80 mt-0.5">Ref: {proof.reference_number}</p>
                           )}
                           <p className="text-xs text-zinc-600 mt-0.5">{proof.created_at ? new Date(proof.created_at).toLocaleDateString() : ''}</p>
                           {proof.review_notes && (

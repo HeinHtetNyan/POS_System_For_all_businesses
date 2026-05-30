@@ -70,7 +70,7 @@ class CustomerService:
             gender=data.gender,
             address=data.address,
             notes=data.notes,
-            credit_limit=Decimal("0"),
+            credit_limit=getattr(data, "credit_limit", Decimal("0")) or Decimal("0"),
             current_balance=Decimal("0"),
         )
 
@@ -259,6 +259,12 @@ class CustomerService:
 
         if entry_type == CustomerLedgerEntryType.SALE_DEBT:
             balance_after = balance_before + amount
+            # Enforce credit limit if set (> 0)
+            if customer.credit_limit and customer.credit_limit > 0:
+                if balance_after > customer.credit_limit:
+                    raise BusinessRuleError(
+                        f"Credit limit exceeded: balance {balance_after} would exceed limit {customer.credit_limit}"
+                    )
         elif entry_type in (CustomerLedgerEntryType.PAYMENT, CustomerLedgerEntryType.REFUND_CREDIT):
             balance_after = balance_before - amount
         else:

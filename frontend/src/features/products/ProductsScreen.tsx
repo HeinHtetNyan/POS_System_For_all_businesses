@@ -383,30 +383,41 @@ function StockBadge({ qty }: { qty: number }) {
   return <span className="text-xs px-2 py-0.5 rounded-full bg-green-950 border border-green-800 text-green-400">In Stock</span>
 }
 
+const PAGE_SIZE = 50
+
 export default function ProductsScreen() {
   const qc = useQueryClient()
   const [search, setSearch]               = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
+  const [page, setPage]                   = useState(1)
   const [selectedId, setSelectedId]       = useState<string | null>(null)
   const [showForm, setShowForm]           = useState(false)
   const [editProduct, setEditProduct]     = useState<BackendProduct | null>(null)
 
-  // Debounce search
+  // Reset to page 1 whenever search or category changes
   function handleSearch(q: string) {
     setSearch(q)
+    setPage(1)
     clearTimeout((handleSearch as { _t?: ReturnType<typeof setTimeout> })._t)
     const t = setTimeout(() => setDebouncedSearch(q), 300)
     ;(handleSearch as { _t?: ReturnType<typeof setTimeout> })._t = t
   }
 
+  function handleCategoryFilter(id: string) {
+    setCategoryFilter(id)
+    setPage(1)
+  }
+
   const { data: productsData, isLoading } = useQuery({
-    queryKey: ['products', debouncedSearch, categoryFilter],
+    queryKey: ['products', debouncedSearch, categoryFilter, page],
     queryFn: () => productsService.list({
       search: debouncedSearch || undefined,
       category_id: categoryFilter || undefined,
-      page_size: 200,
+      page,
+      page_size: PAGE_SIZE,
     }),
+    placeholderData: prev => prev,
   })
 
   const { data: categoriesData } = useQuery({
@@ -432,6 +443,8 @@ export default function ProductsScreen() {
   })
 
   const products = productsData?.items ?? []
+  const total = productsData?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const categories = categoriesData?.items ?? []
   const brands = brandsData?.items ?? []
 
@@ -491,7 +504,7 @@ export default function ProductsScreen() {
         <div className="p-4 sm:p-6 flex flex-col gap-4 sm:gap-5 lg:overflow-auto lg:flex-1 lg:min-h-0">
           {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
-            <StatCard label="Total SKUs"  value={products.length} />
+            <StatCard label="Total SKUs"  value={total} />
             <StatCard label="Active"      value={products.filter(p => p.is_active).length} accent />
             <StatCard label="Inactive"    value={products.filter(p => !p.is_active).length} />
           </div>
@@ -499,7 +512,7 @@ export default function ProductsScreen() {
           {/* Category pills */}
           <div className="flex gap-2 overflow-x-auto pb-1 flex-shrink-0">
             <button
-              onClick={() => setCategoryFilter('')}
+              onClick={() => handleCategoryFilter('')}
               className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
                 !categoryFilter ? 'bg-amber-500 border-amber-400 text-black' : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200'
               }`}
@@ -509,7 +522,7 @@ export default function ProductsScreen() {
             {categories.map(cat => (
               <button
                 key={cat.id}
-                onClick={() => setCategoryFilter(cat.id)}
+                onClick={() => handleCategoryFilter(cat.id)}
                 className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
                   categoryFilter === cat.id ? 'bg-amber-500 border-amber-400 text-black' : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200'
                 }`}
@@ -574,8 +587,27 @@ export default function ProductsScreen() {
                 </tbody>
               </Table>
             )}
-            <div className="px-4 py-2.5 border-t border-zinc-800 flex-shrink-0">
-              <p className="text-xs text-zinc-500">{products.length} products</p>
+            <div className="px-4 py-2.5 border-t border-zinc-800 flex-shrink-0 flex items-center justify-between gap-3">
+              <p className="text-xs text-zinc-500">
+                {total === 0 ? '0 products' : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, total)} of ${total}`}
+              </p>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  ‹ Prev
+                </button>
+                <span className="text-xs text-zinc-500 px-2">{page} / {totalPages}</span>
+                <button
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages}
+                  className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  Next ›
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -6,6 +6,17 @@ import { Badge, Btn, Spinner } from '@/components/ui'
 import { cn } from '@/shared/utils'
 import { subscriptionsService } from '@/services/subscriptions/subscriptions.service'
 
+// Normalize legacy feature codes from DB (before migration) to canonical codes.
+const LEGACY_CODE_MAP: Record<string, string> = {
+  max_products: 'products',
+  max_branches: 'branches',
+  max_users:    'users',
+  max_customers: 'customers',
+}
+function normalizeFeatureCode(code: string): string {
+  return LEGACY_CODE_MAP[code] ?? code
+}
+
 export default function PlanDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -103,7 +114,9 @@ export default function PlanDetailPage() {
               <p className="text-zinc-500 text-sm text-center py-8">No entitlements configured.</p>
             ) : (
               <div className="divide-y divide-zinc-800">
-                {plan.entitlements.map(e => (
+                {plan.entitlements.map(e => {
+                  const displayCode = normalizeFeatureCode(e.feature_code)
+                  return (
                   <div key={e.feature_code} className="flex items-center justify-between px-4 py-3">
                     <div className="flex items-center gap-2.5">
                       <span className={cn(
@@ -117,14 +130,15 @@ export default function PlanDetailPage() {
                         )}
                       </span>
                       <span className={cn('text-sm capitalize', e.enabled ? 'text-zinc-200' : 'text-zinc-600')}>
-                        {e.feature_code.replace(/_/g, ' ')}
+                        {displayCode.replace(/_/g, ' ')}
                       </span>
                     </div>
                     <span className="text-xs text-zinc-500">
                       {e.limit_value === null ? 'Unlimited' : e.limit_value === 0 ? 'Unlimited' : `Limit: ${e.limit_value}`}
                     </span>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>

@@ -7,6 +7,7 @@ import { cn } from '@/shared/utils'
 import { useAuthStore } from '@/store/auth.store'
 import { subscriptionsService } from '@/services/subscriptions/subscriptions.service'
 import type { Plan } from '@/shared/types'
+import { ProofActionType } from '@/shared/types'
 
 const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'danger' | 'info' | 'default'> = {
   ACTIVE:    'success',
@@ -28,12 +29,7 @@ const FEATURE_LABELS: Record<string, string> = {
   notifications: 'Notifications',
   sales:         'Sales',
   inventory:     'Inventory',
-  max_users:     'Users / Staff',
-  max_branches:  'Branches',
-  max_products:  'Products',
-  max_customers: 'Customers',
-  max_devices:   'Devices',
-  max_staff:     'Users / Staff',
+  pos:           'POS / Checkout',
 }
 
 function featureLabel(code: string) {
@@ -80,6 +76,141 @@ function UsageRow({
           {pct >= 90 && <p className="text-[10px] text-red-400 mt-1">Approaching limit</p>}
         </div>
       )}
+    </div>
+  )
+}
+
+// Reusable proof upload modal for renew / upgrade proof submission
+function ProofSubmitModal({
+  title, subtitle, onClose, actionType, targetPlanId,
+}: {
+  title: string; subtitle?: string; onClose: () => void
+  actionType: ProofActionType; targetPlanId?: string
+}) {
+  const qc = useQueryClient()
+  const [amount, setAmount] = useState('')
+  const [currency, setCurrency] = useState('MMK')
+  const [file, setFile] = useState<File | null>(null)
+  const [fileError, setFileError] = useState<string | null>(null)
+  const [uploadProgress, setUploadProgress] = useState<'idle' | 'uploading' | 'done'>('idle')
+  const [uploadedUrl, setUploadedUrl] = useState<string | null>(null)
+  const [done, setDone] = useState(false)
+
+  const submitMutation = useMutation({
+    mutationFn: (payload: Parameters<typeof subscriptionsService.submitPaymentProof>[0]) =>
+      subscriptionsService.submitPaymentProof(payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['subscription', 'proofs'] })
+      setDone(true)
+    },
+    onError: err => toast.error(extractApiMsg(err) ?? 'Failed to submit proof'),
+  })
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0] ?? null
+    setFileError(null); setUploadedUrl(null); setUploadProgress('idle')
+    if (!f) { setFile(null); return }
+    if (!['image/jpeg', 'image/png', 'application/pdf'].includes(f.type)) {
+      setFileError('Only JPG, PNG, or PDF files are accepted'); setFile(null); return
+    }
+    if (f.size > 10 * 1024 * 1024) { setFileError('File must be under 10 MB'); setFile(null); return }
+    setFile(f)
+  }
+
+  async function handleSubmit() {
+    if (!amount || !file) return
+    let proofUrl = uploadedUrl
+    if (!proofUrl) {
+      setUploadProgress('uploading')
+      try {
+        proofUrl = await subscriptionsService.uploadProofFile(file)
+        setUploadedUrl(proofUrl); setUploadProgress('done')
+      } catch (err: unknown) {
+        setUploadProgress('idle')
+        toast.error(extractApiMsg(err) ?? 'File upload failed')
+        return
+      }
+    }
+    submitMutation.mutate({
+      amount,
+      currency,
+      proof_file_url: proofUrl,
+      action_type: actionType,
+      ...(targetPlanId ? { target_plan_id: targetPlanId } : {}),
+    })
+  }
+
+  const busy = uploadProgress === 'uploading' || submitMutation.isPending
+  const inp = 'w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-amber-500'
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+          <div>
+            <h3 className="text-base font-semibold text-zinc-100">{done ? 'Request Submitted' : title}</h3>
+            {!done && subtitle && <p className="text-xs text-zinc-500 mt-0.5">{subtitle}</p>}
+          </div>
+          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-800">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        {done ? (
+          <>
+            <div className="p-6 text-center space-y-3">
+              <div className="w-12 h-12 rounded-full bg-green-900/50 flex items-center justify-center mx-auto">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-green-400"><polyline points="20 6 9 17 4 12" /></svg>
+              </div>
+              <div>
+                <p className="text-base font-semibold text-zinc-100">Proof Submitted</p>
+                <p className="text-sm text-zinc-400 mt-1">Our team will review your payment and process your request. Track status under Billing &gt; Payment Proofs.</p>
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-zinc-800 flex justify-center">
+              <Btn size="sm" onClick={onClose}>Done</Btn>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-zinc-400 mb-1">Amount Paid *</label>
+                  <input type="number" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" className={inp} />
+                </div>
+                <div>
+                  <label className="block text-xs text-zinc-400 mb-1">Currency</label>
+                  <input type="text" value={currency} onChange={e => setCurrency(e.target.value)} placeholder="MMK" className={inp} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-400 mb-1">Receipt File * (JPG, PNG, PDF — max 10 MB)</label>
+                <label className="block w-full cursor-pointer">
+                  <input type="file" accept="image/jpeg,image/png,application/pdf" onChange={handleFileChange} className="sr-only" />
+                  <div className={cn('w-full border-2 border-dashed rounded-xl px-4 py-5 text-center transition-colors',
+                    file ? 'border-amber-500/60 bg-amber-950/20' : 'border-zinc-700 hover:border-zinc-500 bg-zinc-800/50')}>
+                    {file ? (
+                      <div>
+                        <p className="text-sm text-zinc-200 font-medium truncate">{file.name}</p>
+                        <p className="text-xs text-zinc-500 mt-0.5">{(file.size / 1024).toFixed(0)} KB · {uploadProgress === 'done' ? <span className="text-green-400">Uploaded</span> : <span className="text-zinc-400">Click to change</span>}</p>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-zinc-500">Click to select a receipt file</p>
+                    )}
+                  </div>
+                </label>
+                {fileError && <p className="text-xs text-red-400 mt-1">{fileError}</p>}
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-zinc-800 flex gap-2 justify-end">
+              <Btn variant="secondary" size="sm" onClick={onClose} disabled={busy}>Cancel</Btn>
+              <Btn size="sm" disabled={!amount || !file || busy} onClick={handleSubmit}>
+                {uploadProgress === 'uploading' ? 'Uploading…' : submitMutation.isPending ? 'Submitting…' : 'Submit Proof'}
+              </Btn>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   )
 }
@@ -334,7 +465,8 @@ function RequestUpgradeModal({ currentPlan, onClose }: { currentPlan: Plan; onCl
 export default function CurrentSubscriptionPage() {
   const user = useAuthStore(s => s.user)
   const qc = useQueryClient()
-  const [modal, setModal] = useState<'upgrade' | 'downgrade' | 'request-upgrade' | null>(null)
+  const [modal, setModal] = useState<'upgrade' | 'downgrade' | 'request-upgrade' | 'renew-proof' | null>(null)
+  const [upgradePlanId, setUpgradePlanId] = useState<string | null>(null)
   const isOwner = user?.role === 'BUSINESS_OWNER'
 
   const { data: sub, isLoading, error } = useQuery({
@@ -363,21 +495,14 @@ export default function CurrentSubscriptionPage() {
     staleTime: 5 * 60 * 1000,
   })
 
-  const renewMutation = useMutation({
-    mutationFn: subscriptionsService.renew,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['subscription'] }); toast.success('Subscription renewed') },
-    onError: err => toast.error(extractApiMsg(err) ?? 'Failed to renew'),
-  })
-
-  const changePlanMutation = useMutation({
-    mutationFn: ({ mode, planId }: { mode: 'upgrade' | 'downgrade'; planId: string }) =>
-      mode === 'upgrade' ? subscriptionsService.upgrade(planId) : subscriptionsService.downgrade(planId),
-    onSuccess: (_, { mode }) => {
+  const downgradeMutation = useMutation({
+    mutationFn: (planId: string) => subscriptionsService.downgrade(planId),
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['subscription'] })
-      toast.success(`Plan ${mode}d successfully`)
+      toast.success(data.message ?? 'Downgrade scheduled for end of billing period.')
       setModal(null)
     },
-    onError: err => toast.error(extractApiMsg(err) ?? 'Failed to change plan'),
+    onError: err => toast.error(extractApiMsg(err) ?? 'Failed to schedule downgrade'),
   })
 
   const cancelMutation = useMutation({
@@ -412,32 +537,82 @@ export default function CurrentSubscriptionPage() {
   const usageMap: Record<string, number> = {}
   if (trialStatus?.usage) {
     const u = trialStatus.usage
-    if (u.products?.used !== undefined) { usageMap['products'] = u.products.used; usageMap['max_products'] = u.products.used }
-    if (u.staff?.used !== undefined) { usageMap['users'] = u.staff.used; usageMap['max_staff'] = u.staff.used; usageMap['max_users'] = u.staff.used }
-    if (u.branches?.used !== undefined) { usageMap['branches'] = u.branches.used; usageMap['max_branches'] = u.branches.used }
-    if (u.customers?.used !== undefined) { usageMap['customers'] = u.customers.used; usageMap['max_customers'] = u.customers.used }
+    if (u.products?.used !== undefined) { usageMap['products'] = u.products.used }
+    if (u.staff?.used !== undefined) { usageMap['users'] = u.staff.used }
+    if (u.branches?.used !== undefined) { usageMap['branches'] = u.branches.used }
+    if (u.customers?.used !== undefined) { usageMap['customers'] = u.customers.used }
   }
 
   const entitlementItems = effectiveEntitlements ?? plan.entitlements.map(e => ({
     feature_code: e.feature_code, enabled: e.enabled, limit_value: e.limit_value, source: 'plan',
   }))
 
+  // Look up pending downgrade plan name from plansData if available
+  const pendingDowngradePlan = sub.pending_downgrade_plan_id
+    ? (plansData?.items ?? []).find(p => p.id === sub.pending_downgrade_plan_id)
+    : null
+
   return (
     <>
       {modal === 'request-upgrade' && (
         <RequestUpgradeModal currentPlan={plan} onClose={() => setModal(null)} />
       )}
-      {(modal === 'upgrade' || modal === 'downgrade') && !isReferralOrTrial && (
+      {modal === 'upgrade' && !isReferralOrTrial && (
         <PlanPickerModal
-          mode={modal}
+          mode="upgrade"
           currentPlan={plan}
           onClose={() => setModal(null)}
-          onConfirm={planId => changePlanMutation.mutate({ mode: modal, planId })}
+          onConfirm={planId => {
+            setUpgradePlanId(planId)
+            setModal(null)
+          }}
+        />
+      )}
+      {modal === 'downgrade' && !isReferralOrTrial && (
+        <PlanPickerModal
+          mode="downgrade"
+          currentPlan={plan}
+          onClose={() => setModal(null)}
+          onConfirm={planId => downgradeMutation.mutate(planId)}
+        />
+      )}
+      {modal === 'renew-proof' && (
+        <ProofSubmitModal
+          title="Submit Renewal Payment Proof"
+          subtitle="Upload your payment receipt to complete the renewal process."
+          actionType={ProofActionType.RENEWAL}
+          onClose={() => setModal(null)}
+        />
+      )}
+      {upgradePlanId && (
+        <ProofSubmitModal
+          title="Submit Upgrade Payment Proof"
+          subtitle="Upload your payment receipt to complete the upgrade process."
+          actionType={ProofActionType.UPGRADE}
+          targetPlanId={upgradePlanId}
+          onClose={() => setUpgradePlanId(null)}
         />
       )}
 
       <div className="h-full overflow-y-auto p-4 sm:p-6">
         <div className="max-w-2xl space-y-4">
+          {/* Pending downgrade info banner */}
+          {sub.pending_downgrade_plan_id && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 flex items-start gap-3">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-amber-400 flex-shrink-0 mt-0.5">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+              <p className="text-sm text-amber-300">
+                Downgrade to{' '}
+                <span className="font-semibold">{pendingDowngradePlan?.name ?? 'a lower plan'}</span>{' '}
+                scheduled for end of billing period.
+                {sub.pending_downgrade_requested_at && (
+                  <span className="text-amber-400/70 text-xs ml-1">(requested {fmtDate(sub.pending_downgrade_requested_at)})</span>
+                )}
+              </p>
+            </div>
+          )}
+
           {/* Status card */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
             <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -526,17 +701,17 @@ export default function CurrentSubscriptionPage() {
                 {isActive && !isReferralPlan && (
                   <>
                     {hasHigherPlan && (
-                      <Btn size="sm" onClick={() => setModal('upgrade')} disabled={changePlanMutation.isPending}>
+                      <Btn size="sm" onClick={() => setModal('upgrade')}>
                         Upgrade Plan
                       </Btn>
                     )}
-                    {hasLowerPlan && (
-                      <Btn variant="secondary" size="sm" onClick={() => setModal('downgrade')} disabled={changePlanMutation.isPending}>
+                    {hasLowerPlan && !sub.pending_downgrade_plan_id && (
+                      <Btn variant="secondary" size="sm" onClick={() => setModal('downgrade')} disabled={downgradeMutation.isPending}>
                         Downgrade Plan
                       </Btn>
                     )}
-                    <Btn variant="secondary" size="sm" onClick={() => renewMutation.mutate()} disabled={renewMutation.isPending}>
-                      {renewMutation.isPending ? 'Renewing…' : 'Renew Now'}
+                    <Btn variant="secondary" size="sm" onClick={() => setModal('renew-proof')}>
+                      Renew Now
                     </Btn>
                   </>
                 )}

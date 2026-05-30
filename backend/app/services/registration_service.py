@@ -111,6 +111,7 @@ class RegistrationService:
         # abuse + uniqueness checks
         await self._check_abuse(data, redis, ip_address)
 
+        # Determine base trial plan (FREE or time-limited trial)
         trial_plan = await self.plan_repo.get_trial_plan()
         if not trial_plan:
             raise BusinessRuleError(
@@ -118,9 +119,51 @@ class RegistrationService:
                 "No active trial plan configured. Please contact support."
             )
 
-        # True when the default plan is the permanent Free tier (price=0, no trial days).
-        # False when it is a time-limited trial that will expire.
-        is_free_plan = trial_plan.price == 0 and trial_plan.trial_days == 0
+        # Validate referral code early so we know whether to use REFERRAL_TRIAL plan.
+        # Fail-open: any error falls back silently to the default trial plan.
+        validated_referral_code_row = None
+        if data.referral_code:
+            try:
+                from app.reseller_finance.services.referral_service import ReferralService
+                _referral_svc_probe = ReferralService(self.session)
+                validated_referral_code_row = await _referral_svc_probe.validate_and_get_code(
+                    data.referral_code
+                )
+            except Exception as exc:
+                logger.warning(
+                    "referral_code_early_validation_failed",
+                    referral_code=data.referral_code,
+                    error=str(exc),
+                )
+
+        # Select the plan to assign: REFERRAL_TRIAL for valid referrals, else default trial.
+        assigned_plan = trial_plan
+        if validated_referral_code_row is not None:
+            try:
+                referral_trial_plan = await self.plan_repo.get_referral_plan()
+                if referral_trial_plan:
+                    assigned_plan = referral_trial_plan
+                    logger.info(
+                        "referral_trial_plan_selected",
+                        plan_code=referral_trial_plan.code,
+                        referral_code=data.referral_code,
+                    )
+                else:
+                    logger.warning(
+                        "referral_trial_plan_not_found",
+                        detail="REFERRAL_TRIAL plan missing or inactive; falling back to default trial plan",
+                        referral_code=data.referral_code,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "referral_trial_plan_lookup_failed",
+                    referral_code=data.referral_code,
+                    error=str(exc),
+                )
+
+        # True when the assigned plan is the permanent Free tier (price=0, no trial days).
+        # False when it is a time-limited trial that will expire (including REFERRAL_TRIAL).
+        is_free_plan = assigned_plan.price == 0 and assigned_plan.trial_days == 0
 
         # slug generation
         base_slug = _slug(data.business_name)
@@ -182,31 +225,32 @@ class RegistrationService:
 
             now = _now()
             if is_free_plan:
-                fallback_trial_days = 14          # used only if referral upgrades to a trial plan
+                fallback_trial_days = 14
                 sub_status = SubscriptionStatus.ACTIVE
                 sub_expires_at = None
                 sub_trial_ends_at = None
                 history_change_type = SubscriptionChangeType.ACTIVATED
                 history_note = "Free plan assigned via self-service registration."
             else:
-                fallback_trial_days = trial_plan.trial_days if trial_plan.trial_days > 0 else 14
+                fallback_trial_days = assigned_plan.trial_days if assigned_plan.trial_days > 0 else 14
                 trial_end = now + timedelta(days=fallback_trial_days)
                 sub_status = SubscriptionStatus.TRIAL
                 sub_expires_at = trial_end
                 sub_trial_ends_at = trial_end
                 history_change_type = SubscriptionChangeType.TRIAL_STARTED
+                via = "referral " if validated_referral_code_row is not None else ""
                 history_note = (
-                    f"Trial started via self-service registration. "
+                    f"Trial started via {via}self-service registration. "
                     f"Expires {trial_end.date()}."
                 )
 
             # Keep denormalised tenant fields in sync
-            tenant.subscription_plan = trial_plan.code
+            tenant.subscription_plan = assigned_plan.code
             tenant.subscription_expires_at = sub_expires_at
 
             sub = TenantSubscription(
                 tenant_id=tenant.id,
-                plan_id=trial_plan.id,
+                plan_id=assigned_plan.id,
                 status=sub_status,
                 started_at=now,
                 expires_at=sub_expires_at,
@@ -221,7 +265,7 @@ class RegistrationService:
                 tenant_id=tenant.id,
                 subscription_id=sub.id,
                 change_type=history_change_type,
-                new_plan_id=trial_plan.id,
+                new_plan_id=assigned_plan.id,
                 new_status=sub_status,
                 note=history_note,
                 changed_by_user_id=user.id,
@@ -266,44 +310,32 @@ class RegistrationService:
             entity_id=sub.id,
             after_state={
                 "status": sub_status,
-                "plan_id": str(trial_plan.id),
-                "plan_code": trial_plan.code,
+                "plan_id": str(assigned_plan.id),
+                "plan_code": assigned_plan.code,
                 "is_free_plan": is_free_plan,
                 "trial_days": 0 if is_free_plan else fallback_trial_days,
                 "expires_at": sub_expires_at.isoformat() if sub_expires_at else None,
+                "via_referral": validated_referral_code_row is not None,
             },
             ip_address=ip_address,
             request_id=request_id,
         )
 
-        # Referral tracking — fail-open so registration is never blocked
-        if data.referral_code:
+        # Referral tracking — fail-open so registration is never blocked.
+        # The plan has already been selected upfront; this block only records
+        # the referral relationship and commission tracking (no plan changes here).
+        if validated_referral_code_row is not None:
             try:
                 from app.reseller_finance.services.referral_service import ReferralService
                 referral_svc = ReferralService(self.session)
-                code_row = await referral_svc.validate_and_get_code(data.referral_code)
                 await referral_svc.attach_referral_to_tenant(
                     tenant_id=tenant.id,
-                    reseller_id=code_row.reseller_id,
-                    referral_code_id=code_row.id,
-                    code_snapshot=code_row.code,
+                    reseller_id=validated_referral_code_row.reseller_id,
+                    referral_code_id=validated_referral_code_row.id,
+                    code_snapshot=validated_referral_code_row.code,
                     registration_email=data.email,
                     actor_id=user.id,
                 )
-                # Try to upgrade to referral (promo) plan
-                referral_plan = await self.plan_repo.get_referral_plan()
-                if referral_plan and referral_plan.id != trial_plan.id:
-                    promo_days = (
-                        referral_plan.trial_days
-                        if referral_plan.trial_days > 0
-                        else fallback_trial_days
-                    )
-                    promo_end = _now() + timedelta(days=promo_days)
-                    sub.plan_id = referral_plan.id
-                    sub.status = SubscriptionStatus.TRIAL
-                    sub.trial_ends_at = promo_end
-                    sub.expires_at = promo_end
-                    await self.session.flush()
             except Exception as exc:
                 logger.warning(
                     "referral_attach_failed",
@@ -317,23 +349,23 @@ class RegistrationService:
             from app.notifications.services import NotificationService
             notif_svc = NotificationService(self.session)
             if is_free_plan:
-                notif_title = f"Welcome to {trial_plan.name}!"
+                notif_title = f"Welcome to {assigned_plan.name}!"
                 notif_message = (
                     f"Welcome to NexusPOS, {data.first_name}! "
-                    f"You're on the {trial_plan.name} plan. "
+                    f"You're on the {assigned_plan.name} plan. "
                     "Complete your setup and upgrade anytime to unlock more features."
                 )
-                notif_meta: dict = {"plan_code": trial_plan.code, "event": "free_plan_assigned"}
+                notif_meta: dict = {"plan_code": assigned_plan.code, "event": "free_plan_assigned"}
             else:
                 notif_title = f"Welcome! Your {fallback_trial_days}-day trial has started"
                 notif_message = (
                     f"Welcome to NexusPOS, {data.first_name}! "
-                    f"Your free trial of {trial_plan.name} starts today and expires on "
+                    f"Your free trial of {assigned_plan.name} starts today and expires on "
                     f"{sub_expires_at.strftime('%B %d, %Y')}. "  # type: ignore[union-attr]
                     "Complete your setup to get the most out of your trial."
                 )
                 notif_meta = {
-                    "plan_code": trial_plan.code,
+                    "plan_code": assigned_plan.code,
                     "trial_days": fallback_trial_days,
                     "expires_at": sub_expires_at.isoformat(),  # type: ignore[union-attr]
                     "event": "trial_started",
@@ -363,7 +395,7 @@ class RegistrationService:
                     "business_name": tenant.name,
                     "owner_name": f"{data.first_name} {data.last_name}",
                     "owner_email": data.email,
-                    "plan_name": trial_plan.name,
+                    "plan_name": assigned_plan.name,
                     "trial_days": 0 if is_free_plan else fallback_trial_days,
                 },
             ))
@@ -395,7 +427,7 @@ class RegistrationService:
             "self_registration_complete",
             user_id=str(user.id),
             tenant_id=str(tenant.id),
-            plan_code=trial_plan.code,
+            plan_code=assigned_plan.code,
         )
 
         return RegistrationResponse(

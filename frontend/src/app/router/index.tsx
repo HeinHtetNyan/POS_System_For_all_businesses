@@ -35,6 +35,7 @@ const CustomerDetailPage     = lazy(() => import('@/features/customers/CustomerD
 const CustomerLedgerPage     = lazy(() => import('@/features/customers/CustomerLedgerPage'))
 const CustomerPaymentsPage   = lazy(() => import('@/features/customers/CustomerPaymentsPage'))
 const CustomerStatementPage  = lazy(() => import('@/features/customers/CustomerStatementPage'))
+const CustomerSaleFormPage   = lazy(() => import('@/features/customers/CustomerSaleFormPage'))
 const AnalyticsLayout           = lazy(() => import('@/features/analytics/AnalyticsLayout'))
 const AnalyticsDashboardPage    = lazy(() => import('@/features/analytics/AnalyticsDashboardPage'))
 const SalesAnalyticsPage        = lazy(() => import('@/features/analytics/SalesAnalyticsPage'))
@@ -228,6 +229,7 @@ export const router = createBrowserRouter([
                 children: [
                   { index: true,           element: S(CustomerDetailPage)    },
                   { path: 'edit',          element: S(CustomerFormPage)      },
+                  { path: 'new-sale',      element: S(CustomerSaleFormPage)  },
                   { path: 'ledger',        element: S(CustomerLedgerPage)    },
                   { path: 'payments',      element: S(CustomerPaymentsPage)  },
                   { path: 'statements',    element: S(CustomerStatementPage) },

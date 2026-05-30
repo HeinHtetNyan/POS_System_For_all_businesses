@@ -207,8 +207,9 @@ class CheckoutService:
         # 2. Validate input
         if not data.items:
             raise ValidationError("Order must contain at least one item")
-        if not data.payments:
-            raise ValidationError("Order must have at least one payment")
+        # On-account sales (customer_id set, no payment) are allowed — balance is tracked on ledger
+        if not data.payments and not data.customer_id:
+            raise ValidationError("Order must have at least one payment, or assign a customer for on-account sale")
         for pmt in data.payments:
             if pmt.amount <= Decimal("0"):
                 raise ValidationError("Payment amount must be positive")
@@ -271,6 +272,32 @@ class CheckoutService:
             actor_user_id=actor_user_id,
             now=now,
         )
+
+        # 8b. Update customer ledger for on-account / partial / full sales
+        if data.customer_id and total_amount > Decimal("0"):
+            from app.customers.services import CustomerService
+            from app.customers.schemas import RecordPaymentRequest as CustPaymentRequest
+            customer_svc = CustomerService(self.session)
+            await customer_svc.create_sale_debt(
+                customer_id=data.customer_id,
+                tenant_id=tenant_id,
+                amount=total_amount,
+                actor_id=actor_user_id,
+                order_id=str(order.id),
+            )
+            if amount_paid > Decimal("0"):
+                pmt_label = ", ".join(p.payment_method for p in data.payments)
+                await customer_svc.record_payment(
+                    customer_id=data.customer_id,
+                    tenant_id=tenant_id,
+                    data=CustPaymentRequest(
+                        amount=amount_paid,
+                        note=f"Payment for Order #{order_number} ({pmt_label})",
+                        reference_type="ORDER",
+                        reference_id=str(order.id),
+                    ),
+                    actor_id=actor_user_id,
+                )
 
         # 9. Create Receipt
         receipt = await self._create_receipt(

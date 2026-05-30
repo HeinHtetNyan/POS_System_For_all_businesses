@@ -180,8 +180,19 @@ class PaymentProofRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    def _proof_options(self):
+        from app.models.tenant import Tenant
+        return [
+            selectinload(PaymentProof.target_plan),
+            selectinload(PaymentProof.tenant),
+        ]
+
     async def get_by_id(self, proof_id: uuid.UUID) -> PaymentProof | None:
-        stmt = select(PaymentProof).where(PaymentProof.id == proof_id)
+        stmt = (
+            select(PaymentProof)
+            .where(PaymentProof.id == proof_id)
+            .options(*self._proof_options())
+        )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -196,6 +207,7 @@ class PaymentProofRepository:
         stmt = (
             select(PaymentProof)
             .where(PaymentProof.tenant_id == tenant_id)
+            .options(*self._proof_options())
             .order_by(PaymentProof.created_at.desc())
             .offset(offset)
             .limit(limit)
@@ -212,14 +224,19 @@ class PaymentProofRepository:
         limit: int = 20,
         tenant_id: "uuid.UUID | None" = None,
     ) -> tuple[list[PaymentProof], int]:
-        import uuid as _uuid
         filters = []
         if status:
             filters.append(PaymentProof.status == status)
         if tenant_id:
             filters.append(PaymentProof.tenant_id == tenant_id)
         count_stmt = select(func.count()).select_from(PaymentProof)
-        stmt = select(PaymentProof).order_by(PaymentProof.created_at.desc()).offset(offset).limit(limit)
+        stmt = (
+            select(PaymentProof)
+            .options(*self._proof_options())
+            .order_by(PaymentProof.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
         if filters:
             count_stmt = count_stmt.where(*filters)
             stmt = stmt.where(*filters)

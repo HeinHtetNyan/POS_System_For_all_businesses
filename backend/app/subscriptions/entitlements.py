@@ -117,8 +117,11 @@ class TenantSubscriptionValidator:
                 "Your subscription has been suspended. Please contact support."
             )
         if sub.status == SubscriptionStatus.CANCELLED:
+            from datetime import datetime, timezone
+            if sub.expires_at and sub.expires_at > datetime.now(timezone.utc):
+                return sub  # still within paid period — allow access
             raise SubscriptionExpiredException(
-                "Subscription has been cancelled. Please contact support."
+                "Subscription has been cancelled. Please submit a payment proof to reactivate."
             )
         return sub
 

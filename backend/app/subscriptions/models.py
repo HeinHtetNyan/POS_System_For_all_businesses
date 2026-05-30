@@ -4,11 +4,11 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Enum as SAEnum, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.constants import BillingCycle, PaymentProofStatus, SubscriptionStatus  # noqa: F401
+from app.core.constants import BillingCycle, PaymentProofStatus, ProofActionType, SubscriptionStatus  # noqa: F401
 from app.db.base import Base
 
 
@@ -38,7 +38,9 @@ class SubscriptionPlan(Base):
         "PlanEntitlement", back_populates="plan", cascade="all, delete-orphan"
     )
     subscriptions: Mapped[list[TenantSubscription]] = relationship(
-        "TenantSubscription", back_populates="plan"
+        "TenantSubscription",
+        back_populates="plan",
+        foreign_keys="TenantSubscription.plan_id",
     )
 
     def __repr__(self) -> str:
@@ -95,9 +97,20 @@ class TenantSubscription(Base):
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     trial_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     auto_renew: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    pending_downgrade_plan_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("subscription_plans.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    pending_downgrade_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     plan: Mapped[SubscriptionPlan] = relationship(
-        "SubscriptionPlan", back_populates="subscriptions"
+        "SubscriptionPlan", back_populates="subscriptions", foreign_keys="TenantSubscription.plan_id"
+    )
+    pending_downgrade_plan: Mapped[SubscriptionPlan | None] = relationship(
+        "SubscriptionPlan", foreign_keys="TenantSubscription.pending_downgrade_plan_id"
     )
     history: Mapped[list[SubscriptionHistory]] = relationship(
         "SubscriptionHistory", back_populates="subscription"
@@ -176,9 +189,19 @@ class PaymentProof(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False)
     currency: Mapped[str] = mapped_column(String(10), nullable=False, default="MMK")
     reference_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    proof_file_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    proof_file_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     status: Mapped[str] = mapped_column(
         String(50), nullable=False, default=PaymentProofStatus.PENDING
+    )
+    action_type: Mapped[str] = mapped_column(
+        SAEnum(ProofActionType, name="proof_action_type", create_type=True),
+        nullable=False,
+        default=ProofActionType.INITIAL_ACTIVATION,
+    )
+    target_plan_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("subscription_plans.id", ondelete="SET NULL"),
+        nullable=True,
     )
     reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -189,9 +212,43 @@ class PaymentProof(Base):
     subscription: Mapped[TenantSubscription] = relationship(
         "TenantSubscription", back_populates="payment_proofs"
     )
+    target_plan: Mapped[SubscriptionPlan | None] = relationship(
+        "SubscriptionPlan", foreign_keys=[target_plan_id]
+    )
+    tenant: Mapped["Tenant"] = relationship(
+        "Tenant", foreign_keys=[tenant_id], lazy="raise"
+    )
+
+    @property
+    def target_plan_name(self) -> str | None:
+        return self.target_plan.name if self.target_plan else None
+
+    @property
+    def tenant_name(self) -> str | None:
+        """Returns tenant name only if already eagerly loaded; never triggers lazy load."""
+        from sqlalchemy import inspect as _inspect
+        try:
+            state = _inspect(self)
+            if "tenant" in state.unloaded:
+                return None
+            return self.tenant.name if self.tenant else None
+        except Exception:
+            return None
+
+    @property
+    def tenant_email(self) -> str | None:
+        """Returns tenant email only if already eagerly loaded; never triggers lazy load."""
+        from sqlalchemy import inspect as _inspect
+        try:
+            state = _inspect(self)
+            if "tenant" in state.unloaded:
+                return None
+            return self.tenant.email if self.tenant else None
+        except Exception:
+            return None
 
     def __repr__(self) -> str:
-        return f"<PaymentProof tenant={self.tenant_id} status={self.status}>"
+        return f"<PaymentProof tenant={self.tenant_id} status={self.status} action={self.action_type}>"
 
 
 class TenantEntitlementOverride(Base):

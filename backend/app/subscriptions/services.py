@@ -10,10 +10,13 @@ from app.core.constants import (
     AuditAction,
     BillingCycle,
     EntityType,
+    NotificationType,
     PaymentProofStatus,
+    ProofActionType,
     SubscriptionChangeType,
     SubscriptionStatus,
     TenantStatus,
+    UserRole,
 )
 from app.core.exceptions import BusinessRuleError, ConflictError, NotFoundError
 from app.core.logging import get_logger
@@ -395,71 +398,64 @@ class SubscriptionService:
         tenant_id: uuid.UUID,
         actor_id: uuid.UUID,
         request_id: str | None = None,
-    ) -> TenantSubscription:
+    ) -> PaymentProof:
+        """
+        Instead of extending directly, create a PENDING PaymentProof with
+        action_type=RENEWAL. The actual extension happens when a SUPER_ADMIN
+        approves the proof via approve_proof().
+        """
         sub = await self.sub_repo.get_by_tenant(tenant_id)
         if not sub:
             raise NotFoundError("TenantSubscription", tenant_id)
 
-        if sub.status not in {SubscriptionStatus.ACTIVE, SubscriptionStatus.EXPIRED}:
+        if sub.status not in {SubscriptionStatus.ACTIVE, SubscriptionStatus.EXPIRED, SubscriptionStatus.CANCELLED}:
             raise BusinessRuleError(
-                f"Cannot renew subscription in status '{sub.status}'. "
-                "Must be ACTIVE or EXPIRED."
+                f"Cannot request renewal for subscription in status '{sub.status}'. "
+                "Must be ACTIVE, EXPIRED, or CANCELLED."
             )
 
-        # Block renewal only for the actual Free plan (price=0, no expiry)
+        # Block renewal for the Free plan (price=0, no expiry)
         if sub.expires_at is None:
             if sub.plan and sub.plan.price == 0 and sub.plan.trial_days == 0:
                 raise BusinessRuleError(
                     "The Free plan does not expire and cannot be renewed. "
                     "Upgrade to a paid plan instead."
                 )
-            # Paid plan with missing expiry (data inconsistency) — treat now as base
 
-        now = _now()
-        old_status = sub.status
-        base = sub.expires_at if (sub.expires_at is not None and sub.expires_at > now) else now
-        sub.expires_at = _expires_at_for_cycle(sub.plan.billing_cycle, base)
-        if sub.status == SubscriptionStatus.EXPIRED:
-            sub.status = SubscriptionStatus.ACTIVE
+        proof = PaymentProof(
+            tenant_id=tenant_id,
+            subscription_id=sub.id,
+            amount=sub.plan.price if sub.plan else 0,
+            currency=sub.plan.currency if sub.plan else "MMK",
+            status=PaymentProofStatus.PENDING,
+            action_type=ProofActionType.RENEWAL,
+        )
+        self.session.add(proof)
+        await self.session.flush()
+        await self.session.refresh(proof)
 
         self._add_history(
             sub,
-            change_type=SubscriptionChangeType.RENEWED,
+            change_type=SubscriptionChangeType.RENEWAL_REQUESTED,
             new_plan_id=sub.plan_id,
-            old_status=old_status,
+            old_status=sub.status,
             new_status=sub.status,
-            note=f"Extended to {sub.expires_at.isoformat()}",
+            note="Renewal payment proof submitted; awaiting admin approval.",
             changed_by_user_id=actor_id,
         )
         await self.session.flush()
 
         await self.audit.log(
-            action=AuditAction.SUBSCRIPTION_RENEWED,
+            action=AuditAction.PAYMENT_PROOF_SUBMITTED,
             actor_user_id=actor_id,
             tenant_id=tenant_id,
-            entity_type=EntityType.TENANT_SUBSCRIPTION,
-            entity_id=sub.id,
-            after_state={"expires_at": sub.expires_at.isoformat()},
+            entity_type=EntityType.PAYMENT_PROOF,
+            entity_id=proof.id,
+            after_state={"action_type": ProofActionType.RENEWAL, "plan_id": str(sub.plan_id)},
             request_id=request_id,
         )
 
-        result = await self.sub_repo.get_by_tenant(tenant_id)
-        try:
-            from app.events.base import DomainEvent
-            from app.events.publisher import event_publisher
-            from app.events.types import EventType
-            await event_publisher.publish(DomainEvent(
-                event_type=EventType.SUBSCRIPTION_RENEWED,
-                tenant_id=tenant_id,
-                actor_id=actor_id,
-                payload={
-                    "plan_name": sub.plan.name if sub.plan else "",
-                    "expires_at": sub.expires_at.isoformat(),
-                },
-            ))
-        except Exception as exc:
-            logger.warning("subscription_renewed_event_failed", error=str(exc))
-        return result  # type: ignore[return-value]
+        return proof
 
     async def upgrade_subscription(
         self,
@@ -467,12 +463,18 @@ class SubscriptionService:
         data: ChangePlanRequest,
         actor_id: uuid.UUID,
         request_id: str | None = None,
-    ) -> TenantSubscription:
+    ) -> PaymentProof:
+        """
+        Instead of switching plan immediately, create a PENDING PaymentProof with
+        action_type=UPGRADE and target_plan_id. The actual switch happens when a
+        SUPER_ADMIN approves the proof via approve_proof().
+        """
         sub = await self.sub_repo.get_by_tenant(tenant_id)
         if not sub:
             raise NotFoundError("TenantSubscription", tenant_id)
 
-        if sub.plan_id == data.plan_id:
+        reactivating = sub.status in {SubscriptionStatus.CANCELLED, SubscriptionStatus.EXPIRED}
+        if sub.plan_id == data.plan_id and not reactivating:
             raise BusinessRuleError("Already on this plan")
 
         new_plan = await self.plan_repo.get_by_id(data.plan_id)
@@ -481,49 +483,46 @@ class SubscriptionService:
         if not new_plan.is_active:
             raise BusinessRuleError("Target plan is not active")
 
-        old_plan_id = sub.plan_id
-        sub.plan_id = data.plan_id
+        proof = PaymentProof(
+            tenant_id=tenant_id,
+            subscription_id=sub.id,
+            amount=new_plan.price,
+            currency=new_plan.currency,
+            status=PaymentProofStatus.PENDING,
+            action_type=ProofActionType.UPGRADE,
+            target_plan_id=data.plan_id,
+        )
+        self.session.add(proof)
+        await self.session.flush()
+        await self.session.refresh(proof)
 
         self._add_history(
             sub,
-            change_type=SubscriptionChangeType.UPGRADED,
-            old_plan_id=old_plan_id,
+            change_type=SubscriptionChangeType.UPGRADE_REQUESTED,
+            old_plan_id=sub.plan_id,
             new_plan_id=data.plan_id,
             old_status=sub.status,
             new_status=sub.status,
+            note=f"Upgrade to plan '{new_plan.name}' requested; awaiting payment proof approval.",
             changed_by_user_id=actor_id,
         )
         await self.session.flush()
 
         await self.audit.log(
-            action=AuditAction.SUBSCRIPTION_UPGRADED,
+            action=AuditAction.PAYMENT_PROOF_SUBMITTED,
             actor_user_id=actor_id,
             tenant_id=tenant_id,
-            entity_type=EntityType.TENANT_SUBSCRIPTION,
-            entity_id=sub.id,
-            after_state={"old_plan_id": str(old_plan_id), "new_plan_id": str(data.plan_id)},
+            entity_type=EntityType.PAYMENT_PROOF,
+            entity_id=proof.id,
+            after_state={
+                "action_type": ProofActionType.UPGRADE,
+                "target_plan_id": str(data.plan_id),
+                "target_plan_name": new_plan.name,
+            },
             request_id=request_id,
         )
 
-        result = await self.sub_repo.get_by_tenant(tenant_id)
-        try:
-            from app.events.base import DomainEvent
-            from app.events.publisher import event_publisher
-            from app.events.types import EventType
-            old_plan = await self.plan_repo.get_by_id(old_plan_id)
-            await event_publisher.publish(DomainEvent(
-                event_type=EventType.SUBSCRIPTION_UPGRADED,
-                tenant_id=tenant_id,
-                actor_id=actor_id,
-                payload={
-                    "old_plan_name": old_plan.name if old_plan else str(old_plan_id),
-                    "new_plan_name": new_plan.name,
-                    "new_plan_id": str(data.plan_id),
-                },
-            ))
-        except Exception as exc:
-            logger.warning("subscription_upgraded_event_failed", error=str(exc))
-        return result  # type: ignore[return-value]
+        return proof
 
     async def downgrade_subscription(
         self,
@@ -531,7 +530,12 @@ class SubscriptionService:
         data: ChangePlanRequest,
         actor_id: uuid.UUID,
         request_id: str | None = None,
-    ) -> TenantSubscription:
+    ) -> dict[str, Any]:
+        """
+        Schedule a downgrade at end of current billing period instead of
+        switching immediately. Sets pending_downgrade_plan_id on TenantSubscription.
+        The Celery expiry job applies it when the subscription expires.
+        """
         sub = await self.sub_repo.get_by_tenant(tenant_id)
         if not sub:
             raise NotFoundError("TenantSubscription", tenant_id)
@@ -545,16 +549,21 @@ class SubscriptionService:
         if not new_plan.is_active:
             raise BusinessRuleError("Target plan is not active")
 
-        old_plan_id = sub.plan_id
-        sub.plan_id = data.plan_id
+        now = _now()
+        sub.pending_downgrade_plan_id = data.plan_id
+        sub.pending_downgrade_requested_at = now
 
         self._add_history(
             sub,
-            change_type=SubscriptionChangeType.DOWNGRADED,
-            old_plan_id=old_plan_id,
+            change_type=SubscriptionChangeType.DOWNGRADE_REQUESTED,
+            old_plan_id=sub.plan_id,
             new_plan_id=data.plan_id,
             old_status=sub.status,
             new_status=sub.status,
+            note=(
+                f"Downgrade to plan '{new_plan.name}' scheduled for end of billing period "
+                f"(expires_at={sub.expires_at.isoformat() if sub.expires_at else 'N/A'})."
+            ),
             changed_by_user_id=actor_id,
         )
         await self.session.flush()
@@ -565,29 +574,19 @@ class SubscriptionService:
             tenant_id=tenant_id,
             entity_type=EntityType.TENANT_SUBSCRIPTION,
             entity_id=sub.id,
-            after_state={"old_plan_id": str(old_plan_id), "new_plan_id": str(data.plan_id)},
+            after_state={
+                "pending_downgrade_plan_id": str(data.plan_id),
+                "pending_downgrade_plan_name": new_plan.name,
+                "scheduled_at": now.isoformat(),
+            },
             request_id=request_id,
         )
 
-        result = await self.sub_repo.get_by_tenant(tenant_id)
-        try:
-            from app.events.base import DomainEvent
-            from app.events.publisher import event_publisher
-            from app.events.types import EventType
-            old_plan = await self.plan_repo.get_by_id(old_plan_id)
-            await event_publisher.publish(DomainEvent(
-                event_type=EventType.SUBSCRIPTION_DOWNGRADED,
-                tenant_id=tenant_id,
-                actor_id=actor_id,
-                payload={
-                    "old_plan_name": old_plan.name if old_plan else str(old_plan_id),
-                    "new_plan_name": new_plan.name,
-                    "new_plan_id": str(data.plan_id),
-                },
-            ))
-        except Exception as exc:
-            logger.warning("subscription_downgraded_event_failed", error=str(exc))
-        return result  # type: ignore[return-value]
+        return {
+            "message": "Downgrade scheduled for end of current billing period",
+            "pending_downgrade_plan_id": data.plan_id,
+            "pending_downgrade_requested_at": now,
+        }
 
     async def cancel_subscription(
         self,
@@ -853,6 +852,37 @@ class PaymentProofService:
         self.plan_repo = SubscriptionPlanRepository(session)
         self.audit = AuditService(session)
 
+    async def _get_super_admin_ids(self) -> list[uuid.UUID]:
+        from sqlalchemy import select
+        from app.models.user import User
+        result = await self.session.execute(
+            select(User.id).where(User.role == UserRole.SUPER_ADMIN, User.is_deleted.is_(False))
+        )
+        return list(result.scalars().all())
+
+    async def _get_tenant_owner_ids(self, tenant_id: uuid.UUID) -> list[uuid.UUID]:
+        from sqlalchemy import select
+        from app.models.user import User
+        result = await self.session.execute(
+            select(User.id).where(
+                User.tenant_id == tenant_id,
+                User.role == UserRole.BUSINESS_OWNER,
+                User.is_deleted.is_(False),
+            )
+        )
+        return list(result.scalars().all())
+
+    async def _notify_silent(self, *, user_ids: list, **kwargs) -> None:
+        """Fire a notification; skipped when no recipients. Never raises."""
+        if not user_ids:
+            return
+        try:
+            from app.notifications.services import NotificationService
+            svc = NotificationService(self.session)
+            await svc.notify_users(user_ids=user_ids, **kwargs)
+        except Exception as exc:
+            logger.warning("notification_send_failed", error=str(exc))
+
     async def submit_proof(
         self,
         tenant_id: uuid.UUID,
@@ -864,8 +894,7 @@ class PaymentProofService:
         if not sub:
             raise NotFoundError("TenantSubscription", tenant_id)
 
-        if sub.status == SubscriptionStatus.CANCELLED:
-            raise BusinessRuleError("Cannot submit payment proof for a cancelled subscription")
+        # CANCELLED subscriptions may submit a proof to reactivate
 
         proof = PaymentProof(
             tenant_id=tenant_id,
@@ -894,7 +923,181 @@ class PaymentProofService:
             request_id=request_id,
         )
 
+        # Notify all super admins that a new proof is waiting for review
+        tenant = await self.session.get(Tenant, tenant_id)
+        tenant_name = tenant.name if tenant else str(tenant_id)
+        plan_name = sub.plan.name if sub.plan else "Unknown"
+        admin_ids = await self._get_super_admin_ids()
+        await self._notify_silent(
+            tenant_id=None,
+            type=NotificationType.SUBSCRIPTION,
+            priority="HIGH",
+            title="Payment Proof Submitted",
+            message=(
+                f"{tenant_name} submitted a payment proof for {plan_name} "
+                f"({data.currency} {int(data.amount):,}). Review required."
+            ),
+            user_ids=admin_ids,
+            metadata={"proof_id": str(proof.id), "tenant_id": str(tenant_id)},
+        )
+
         return proof
+
+    async def _extend_subscription(
+        self,
+        sub: "TenantSubscription",
+        actor_id: uuid.UUID,
+        proof_amount: "Decimal",
+        proof_currency: str,
+        request_id: str | None = None,
+    ) -> None:
+        """Extend an existing subscription by one billing cycle (RENEWAL path)."""
+        from decimal import Decimal as _Decimal
+
+        plan = await self.plan_repo.get_by_id(sub.plan_id)
+        if not plan:
+            raise NotFoundError("SubscriptionPlan", sub.plan_id)
+
+        now = _now()
+        old_status = sub.status
+        base = sub.expires_at if (sub.expires_at is not None and sub.expires_at > now) else now
+        sub.status = SubscriptionStatus.ACTIVE
+        sub.expires_at = _expires_at_for_cycle(plan.billing_cycle, base)
+        sub.trial_ends_at = None
+
+        # Sync denormalized tenant fields
+        tenant = await self.session.get(Tenant, sub.tenant_id)
+        if tenant:
+            tenant.status = TenantStatus.ACTIVE
+            tenant.subscription_plan = plan.code
+
+        history = SubscriptionHistory(
+            tenant_id=sub.tenant_id,
+            subscription_id=sub.id,
+            change_type=SubscriptionChangeType.RENEWED,
+            new_plan_id=sub.plan_id,
+            old_status=old_status,
+            new_status=SubscriptionStatus.ACTIVE,
+            note=(
+                f"Renewed via payment proof approval. "
+                f"Extended to {sub.expires_at.isoformat()}. "
+                f"Amount: {proof_amount} {proof_currency}"
+            ),
+            changed_by_user_id=actor_id,
+        )
+        self.session.add(history)
+        await self.session.flush()
+
+        await self.audit.log(
+            action=AuditAction.SUBSCRIPTION_RENEWED,
+            actor_user_id=actor_id,
+            tenant_id=sub.tenant_id,
+            entity_type=EntityType.TENANT_SUBSCRIPTION,
+            entity_id=sub.id,
+            after_state={
+                "status": SubscriptionStatus.ACTIVE,
+                "expires_at": sub.expires_at.isoformat(),
+                "triggered_by": "payment_proof_renewal_approval",
+            },
+            request_id=request_id,
+        )
+
+        try:
+            from app.events.base import DomainEvent
+            from app.events.publisher import event_publisher
+            from app.events.types import EventType
+            await event_publisher.publish(DomainEvent(
+                event_type=EventType.SUBSCRIPTION_RENEWED,
+                tenant_id=sub.tenant_id,
+                actor_id=actor_id,
+                payload={
+                    "plan_name": plan.name,
+                    "expires_at": sub.expires_at.isoformat(),
+                },
+            ))
+        except Exception as exc:
+            logger.warning("subscription_renewed_event_failed", error=str(exc))
+
+    async def _apply_upgrade(
+        self,
+        sub: "TenantSubscription",
+        target_plan_id: uuid.UUID,
+        actor_id: uuid.UUID,
+        proof_amount: "Decimal",
+        proof_currency: str,
+        request_id: str | None = None,
+    ) -> None:
+        """Switch plan to target_plan_id immediately (UPGRADE approval path)."""
+        new_plan = await self.plan_repo.get_by_id(target_plan_id)
+        if not new_plan:
+            raise NotFoundError("SubscriptionPlan", target_plan_id)
+        if not new_plan.is_active:
+            raise BusinessRuleError("Target upgrade plan is no longer active")
+
+        now = _now()
+        old_plan_id = sub.plan_id
+        old_status = sub.status
+
+        sub.plan_id = target_plan_id
+        sub.status = SubscriptionStatus.ACTIVE
+        # Keep existing expires_at — tenant already paid for the current period;
+        # next renewal will be on the new plan's billing cycle.
+        sub.trial_ends_at = None
+
+        # Sync denormalized tenant fields
+        tenant = await self.session.get(Tenant, sub.tenant_id)
+        if tenant:
+            tenant.status = TenantStatus.ACTIVE
+            tenant.subscription_plan = new_plan.code
+
+        history = SubscriptionHistory(
+            tenant_id=sub.tenant_id,
+            subscription_id=sub.id,
+            change_type=SubscriptionChangeType.UPGRADED,
+            old_plan_id=old_plan_id,
+            new_plan_id=target_plan_id,
+            old_status=old_status,
+            new_status=SubscriptionStatus.ACTIVE,
+            note=(
+                f"Upgraded via payment proof approval. "
+                f"Amount: {proof_amount} {proof_currency}"
+            ),
+            changed_by_user_id=actor_id,
+        )
+        self.session.add(history)
+        await self.session.flush()
+
+        await self.audit.log(
+            action=AuditAction.SUBSCRIPTION_UPGRADED,
+            actor_user_id=actor_id,
+            tenant_id=sub.tenant_id,
+            entity_type=EntityType.TENANT_SUBSCRIPTION,
+            entity_id=sub.id,
+            after_state={
+                "old_plan_id": str(old_plan_id),
+                "new_plan_id": str(target_plan_id),
+                "triggered_by": "payment_proof_upgrade_approval",
+            },
+            request_id=request_id,
+        )
+
+        try:
+            from app.events.base import DomainEvent
+            from app.events.publisher import event_publisher
+            from app.events.types import EventType
+            old_plan = await self.plan_repo.get_by_id(old_plan_id)
+            await event_publisher.publish(DomainEvent(
+                event_type=EventType.SUBSCRIPTION_UPGRADED,
+                tenant_id=sub.tenant_id,
+                actor_id=actor_id,
+                payload={
+                    "old_plan_name": old_plan.name if old_plan else str(old_plan_id),
+                    "new_plan_name": new_plan.name,
+                    "new_plan_id": str(target_plan_id),
+                },
+            ))
+        except Exception as exc:
+            logger.warning("subscription_upgraded_event_failed", error=str(exc))
 
     async def approve_proof(
         self,
@@ -918,40 +1121,79 @@ class PaymentProofService:
         proof.reviewed_at = now
         proof.review_notes = review_notes
 
-        # Activate the subscription
         sub = await self.sub_repo.get_by_id(proof.subscription_id)
         if not sub:
             raise NotFoundError("TenantSubscription", proof.subscription_id)
 
-        plan = await self.plan_repo.get_by_id(sub.plan_id)
-        if not plan:
-            raise NotFoundError("SubscriptionPlan", sub.plan_id)
+        # Dispatch based on action_type
+        action = getattr(proof, "action_type", ProofActionType.INITIAL_ACTIVATION)
 
-        old_status = sub.status
-        base = sub.expires_at if sub.expires_at > now else now
-        sub.status = SubscriptionStatus.ACTIVE
-        sub.expires_at = _expires_at_for_cycle(plan.billing_cycle, base)
-        sub.trial_ends_at = None
+        if action == ProofActionType.RENEWAL:
+            # Extend existing subscription by one billing cycle
+            await self._extend_subscription(
+                sub=sub,
+                actor_id=actor_id,
+                proof_amount=proof.amount,
+                proof_currency=proof.currency,
+                request_id=request_id,
+            )
+        elif action == ProofActionType.UPGRADE:
+            if not proof.target_plan_id:
+                raise BusinessRuleError(
+                    "Upgrade proof is missing target_plan_id; cannot apply upgrade."
+                )
+            await self._apply_upgrade(
+                sub=sub,
+                target_plan_id=proof.target_plan_id,
+                actor_id=actor_id,
+                proof_amount=proof.amount,
+                proof_currency=proof.currency,
+                request_id=request_id,
+            )
+        else:
+            # INITIAL_ACTIVATION — original behavior
+            plan = await self.plan_repo.get_by_id(sub.plan_id)
+            if not plan:
+                raise NotFoundError("SubscriptionPlan", sub.plan_id)
 
-        # Sync denormalized tenant fields
-        tenant = await self.session.get(Tenant, sub.tenant_id)
-        if tenant:
-            tenant.status = TenantStatus.ACTIVE
-            tenant.subscription_plan = plan.code
+            old_status = sub.status
+            base = sub.expires_at if (sub.expires_at is not None and sub.expires_at > now) else now
+            sub.status = SubscriptionStatus.ACTIVE
+            sub.expires_at = _expires_at_for_cycle(plan.billing_cycle, base)
+            sub.trial_ends_at = None
 
-        # Create subscription history entry
-        history = SubscriptionHistory(
-            tenant_id=sub.tenant_id,
-            subscription_id=sub.id,
-            change_type=SubscriptionChangeType.ACTIVATED,
-            new_plan_id=sub.plan_id,
-            old_status=old_status,
-            new_status=SubscriptionStatus.ACTIVE,
-            note=f"Activated via payment proof approval. Amount: {proof.amount} {proof.currency}",
-            changed_by_user_id=actor_id,
-        )
-        self.session.add(history)
-        await self.session.flush()
+            # Sync denormalized tenant fields
+            tenant = await self.session.get(Tenant, sub.tenant_id)
+            if tenant:
+                tenant.status = TenantStatus.ACTIVE
+                tenant.subscription_plan = plan.code
+
+            history = SubscriptionHistory(
+                tenant_id=sub.tenant_id,
+                subscription_id=sub.id,
+                change_type=SubscriptionChangeType.ACTIVATED,
+                new_plan_id=sub.plan_id,
+                old_status=old_status,
+                new_status=SubscriptionStatus.ACTIVE,
+                note=f"Activated via payment proof approval. Amount: {proof.amount} {proof.currency}",
+                changed_by_user_id=actor_id,
+            )
+            self.session.add(history)
+            await self.session.flush()
+
+            await self.audit.log(
+                action=AuditAction.SUBSCRIPTION_ACTIVATED,
+                actor_user_id=actor_id,
+                tenant_id=sub.tenant_id,
+                entity_type=EntityType.TENANT_SUBSCRIPTION,
+                entity_id=sub.id,
+                after_state={
+                    "status": SubscriptionStatus.ACTIVE,
+                    "expires_at": sub.expires_at.isoformat(),
+                    "triggered_by": "payment_proof_approval",
+                },
+                request_id=request_id,
+            )
 
         await self.audit.log(
             action=AuditAction.PAYMENT_PROOF_APPROVED,
@@ -959,52 +1201,62 @@ class PaymentProofService:
             tenant_id=sub.tenant_id,
             entity_type=EntityType.PAYMENT_PROOF,
             entity_id=proof_id,
-            after_state={"review_notes": review_notes, "subscription_status": sub.status},
-            request_id=request_id,
-        )
-        await self.audit.log(
-            action=AuditAction.SUBSCRIPTION_ACTIVATED,
-            actor_user_id=actor_id,
-            tenant_id=sub.tenant_id,
-            entity_type=EntityType.TENANT_SUBSCRIPTION,
-            entity_id=sub.id,
             after_state={
-                "status": SubscriptionStatus.ACTIVE,
-                "expires_at": sub.expires_at.isoformat(),
-                "triggered_by": "payment_proof_approval",
+                "review_notes": review_notes,
+                "action_type": str(action),
+                "subscription_status": sub.status,
             },
             request_id=request_id,
         )
 
-        # Commission generation — fail-open so approval is never blocked
-        try:
-            from decimal import Decimal
-            from app.reseller_finance.services.commission_service import CommissionService
-            from app.reseller_finance.services.referral_service import ReferralService
-            commission_svc = CommissionService(self.session)
-            referral_svc = ReferralService(self.session)
-            await commission_svc.try_earn_commission(
-                tenant_id=sub.tenant_id,
-                subscription_id=sub.id,
-                payment_proof_id=proof_id,
-                actual_paid_amount=Decimal(str(proof.amount)),
-                currency_code=proof.currency,
-                actor_id=actor_id,
-                request_id=request_id,
-            )
-            # Lock referral on first paid subscription
-            await referral_svc.lock_referral(
-                tenant_id=sub.tenant_id,
-                first_paid_at=now,
-            )
-        except Exception as exc:
-            from app.core.logging import get_logger as _get_logger
-            _get_logger(__name__).warning(
-                "commission_earn_failed",
-                tenant_id=str(sub.tenant_id),
-                proof_id=str(proof_id),
-                error=str(exc),
-            )
+        # Notify tenant owner that proof was approved
+        plan_name = sub.plan.name if sub.plan else "your plan"
+        owner_ids = await self._get_tenant_owner_ids(sub.tenant_id)
+        await self._notify_silent(
+            tenant_id=sub.tenant_id,
+            type=NotificationType.SUBSCRIPTION,
+            priority="HIGH",
+            title="Subscription Activated",
+            message=(
+                f"Your payment proof has been approved. Your {plan_name} subscription "
+                f"is now active."
+                + (f" Note: {review_notes}" if review_notes else "")
+            ),
+            user_ids=owner_ids,
+            metadata={"proof_id": str(proof_id), "plan_name": plan_name, "review_notes": review_notes},
+        )
+
+        # Commission generation — only for INITIAL_ACTIVATION and UPGRADE (paid plan switches).
+        # RENEWAL does NOT re-trigger commission (already earned on first payment).
+        if action in {ProofActionType.INITIAL_ACTIVATION, ProofActionType.UPGRADE}:
+            try:
+                from decimal import Decimal
+                from app.reseller_finance.services.commission_service import CommissionService
+                from app.reseller_finance.services.referral_service import ReferralService
+                commission_svc = CommissionService(self.session)
+                referral_svc = ReferralService(self.session)
+                await commission_svc.try_earn_commission(
+                    tenant_id=sub.tenant_id,
+                    subscription_id=sub.id,
+                    payment_proof_id=proof_id,
+                    actual_paid_amount=proof.amount,
+                    currency_code=proof.currency,
+                    actor_id=actor_id,
+                    request_id=request_id,
+                )
+                # Lock referral on first paid subscription
+                await referral_svc.lock_referral(
+                    tenant_id=sub.tenant_id,
+                    first_paid_at=now,
+                )
+            except Exception as exc:
+                from app.core.logging import get_logger as _get_logger
+                _get_logger(__name__).warning(
+                    "commission_earn_failed",
+                    tenant_id=str(sub.tenant_id),
+                    proof_id=str(proof_id),
+                    error=str(exc),
+                )
 
         return proof
 
@@ -1039,6 +1291,22 @@ class PaymentProofService:
             entity_id=proof_id,
             after_state={"review_notes": review_notes},
             request_id=request_id,
+        )
+
+        # Notify tenant owner that proof was rejected and they must resubmit
+        owner_ids = await self._get_tenant_owner_ids(proof.tenant_id)
+        reason_part = f" Reason: {review_notes}" if review_notes else " No reason provided."
+        await self._notify_silent(
+            tenant_id=proof.tenant_id,
+            type=NotificationType.SUBSCRIPTION,
+            priority="HIGH",
+            title="Payment Proof Rejected",
+            message=(
+                f"Your payment proof was rejected and your subscription was not activated."
+                f"{reason_part} Please resubmit a new payment proof."
+            ),
+            user_ids=owner_ids,
+            metadata={"proof_id": str(proof_id), "review_notes": review_notes},
         )
 
         return proof

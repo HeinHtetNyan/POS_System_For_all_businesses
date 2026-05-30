@@ -7,6 +7,7 @@ from typing import Any
 
 from pydantic import EmailStr, Field, field_validator
 
+from app.core.constants import ProofActionType  # noqa: F401
 from app.schemas.common import BaseSchema, PaginatedResponse, TimestampedSchema
 
 
@@ -160,6 +161,8 @@ class SubscriptionResponse(TimestampedSchema):
     trial_ends_at: datetime | None
     auto_renew: bool
     plan: PlanResponse
+    pending_downgrade_plan_id: uuid.UUID | None = None
+    pending_downgrade_requested_at: datetime | None = None
 
 
 class PaymentProofCreateRequest(BaseSchema):
@@ -167,6 +170,8 @@ class PaymentProofCreateRequest(BaseSchema):
     currency: str = "MMK"
     reference_number: str | None = None
     proof_file_url: str
+    action_type: ProofActionType = ProofActionType.INITIAL_ACTIVATION
+    target_plan_id: uuid.UUID | None = None
 
     @field_validator("amount", mode="before")
     @classmethod
@@ -180,11 +185,22 @@ class PaymentProofResponse(TimestampedSchema):
     amount: Decimal
     currency: str
     reference_number: str | None
-    proof_file_url: str
+    proof_file_url: str | None
     status: str
+    action_type: ProofActionType = ProofActionType.INITIAL_ACTIVATION
+    target_plan_id: uuid.UUID | None = None
+    target_plan_name: str | None = None
+    tenant_name: str | None = None
+    tenant_email: str | None = None
     reviewed_by: uuid.UUID | None
     reviewed_at: datetime | None
     review_notes: str | None
+
+
+class DowngradeScheduledResponse(BaseSchema):
+    message: str
+    pending_downgrade_plan_id: uuid.UUID
+    pending_downgrade_requested_at: datetime
 
 
 class ActivateSubscriptionRequest(BaseSchema):

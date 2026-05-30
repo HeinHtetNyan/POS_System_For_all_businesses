@@ -149,12 +149,21 @@ class SubscriptionChangeType(str, Enum):
     CANCELLED = "CANCELLED"
     EXTENDED = "EXTENDED"
     PLAN_CHANGED = "PLAN_CHANGED"
+    RENEWAL_REQUESTED = "RENEWAL_REQUESTED"
+    UPGRADE_REQUESTED = "UPGRADE_REQUESTED"
+    DOWNGRADE_REQUESTED = "DOWNGRADE_REQUESTED"
 
 
 class PaymentProofStatus(str, Enum):
     PENDING = "PENDING"
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
+
+
+class ProofActionType(str, Enum):
+    INITIAL_ACTIVATION = "INITIAL_ACTIVATION"
+    RENEWAL = "RENEWAL"
+    UPGRADE = "UPGRADE"
 
 
 class CustomerGender(str, Enum):

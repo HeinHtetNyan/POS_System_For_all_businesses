@@ -20,10 +20,10 @@ function PricingCard({ plan, highlighted = false }: { plan: PublicPlan; highligh
   }
 
   const features = [
-    { label: 'Products', value: getLimit('max_products') },
-    { label: 'Staff accounts', value: getLimit('max_staff') },
-    { label: 'Branches', value: getLimit('max_branches') },
-    { label: 'Customers', value: getLimit('max_customers') },
+    { label: 'Products', value: getLimit('products') },
+    { label: 'Staff accounts', value: getLimit('users') },
+    { label: 'Branches', value: getLimit('branches') },
+    { label: 'Customers', value: getLimit('customers') },
     { label: 'Analytics & Reports', value: hasFeature('analytics') ? '✓' : '✗', yes: hasFeature('analytics') },
     { label: 'Procurement', value: hasFeature('procurement') ? '✓' : '✗', yes: hasFeature('procurement') },
     { label: 'POS Checkout', value: '✓', yes: true },

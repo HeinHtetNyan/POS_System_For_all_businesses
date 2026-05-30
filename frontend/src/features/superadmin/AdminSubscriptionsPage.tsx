@@ -108,7 +108,7 @@ function ProofsTab() {
           action={reviewModal.action}
           onClose={() => {
             if (reviewModal.action === 'approve') {
-              toast.info(`Proof approved. Go to tenant subscription to change their plan.`, { duration: 6000 })
+              toast.success('Proof approved — subscription activated automatically.', { duration: 5000 })
             }
             setReviewModal(null)
           }}
@@ -152,18 +152,27 @@ function ProofsTab() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <Link
                         to={`/super-admin/subscriptions/${proof.tenant_id}`}
-                        className="text-sm font-medium text-amber-400 hover:text-amber-300 font-mono transition-colors"
+                        className="text-sm font-semibold text-amber-400 hover:text-amber-300 transition-colors"
                       >
-                        {proof.tenant_id.slice(0, 8)}…
+                        {proof.tenant_name ?? proof.tenant_id.slice(0, 8) + '…'}
                       </Link>
                       <Badge variant={PROOF_VARIANT[proof.status] ?? 'default'} size="xs">{proof.status}</Badge>
+                      <Badge variant={proof.action_type === 'UPGRADE' ? 'warning' : proof.action_type === 'RENEWAL' ? 'info' : 'default'} size="xs">
+                        {proof.action_type === 'INITIAL_ACTIVATION' ? 'New Activation' : proof.action_type === 'RENEWAL' ? 'Renewal' : 'Plan Upgrade'}
+                      </Badge>
                     </div>
-                    <p className="text-xs text-zinc-400 mt-0.5 font-medium">
+                    {proof.tenant_email && (
+                      <p className="text-xs text-zinc-400 mt-0.5">{proof.tenant_email}</p>
+                    )}
+                    {proof.target_plan_name && (
+                      <p className="text-xs text-green-400 font-semibold mt-0.5">→ Requesting plan: <span className="text-green-300">{proof.target_plan_name}</span></p>
+                    )}
+                    <p className="text-xs text-zinc-500 mt-0.5">
                       {proof.currency} {Number(proof.amount).toLocaleString('en-US', { maximumFractionDigits: 0 })}
                       {' · '}{fmtDate(proof.created_at)}
                     </p>
                     {proof.reference_number && (
-                      <p className="text-xs text-amber-300/80 mt-0.5">{proof.reference_number}</p>
+                      <p className="text-xs text-amber-300/80 mt-0.5">Ref: {proof.reference_number}</p>
                     )}
                     {proof.review_notes && (
                       <p className="text-xs text-zinc-600 mt-0.5 italic">Note: {proof.review_notes}</p>
