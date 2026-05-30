@@ -27,6 +27,7 @@ from app.reseller_finance.events import handlers as _reseller_finance_handlers #
 from app.middleware.error_handler import ErrorHandlerMiddleware
 from app.middleware.idempotency import IdempotencyMiddleware
 from app.middleware.logging import RequestLoggingMiddleware
+from app.middleware.rate_limit import PerUserRateLimitMiddleware
 from app.middleware.request_id import RequestIDMiddleware
 
 logger = get_logger(__name__)
@@ -61,9 +62,11 @@ def create_application() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # Middleware — order matters: outer first
+    # Middleware — last added = outermost (executes first on request)
+    # Execution order: CORS → RequestID → Logging → PerUserRateLimit → Idempotency → ErrorHandler → route
     app.add_middleware(ErrorHandlerMiddleware)
     app.add_middleware(IdempotencyMiddleware)
+    app.add_middleware(PerUserRateLimitMiddleware)
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(RequestIDMiddleware)
     app.add_middleware(

@@ -60,7 +60,7 @@ class Settings(BaseSettings):
 
     # Rate Limiting
     RATE_LIMIT_ENABLED: bool = True
-    RATE_LIMIT_REQUESTS_PER_MINUTE: int = 60
+    RATE_LIMIT_REQUESTS_PER_MINUTE: int = 120
     RATE_LIMIT_BURST: int = 100
     REGISTRATION_MAX_PER_IP_PER_HOUR: int = 5
     REGISTRATION_ABUSE_MAX_PER_IP_PER_DAY: int = 10
