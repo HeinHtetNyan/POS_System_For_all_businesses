@@ -127,7 +127,7 @@ class CustomerService:
         if not customer:
             raise NotFoundError("Customer", customer_id)
 
-        update_data = data.model_dump(exclude_none=True)
+        update_data = data.model_dump(exclude_unset=True)
 
         if "phone" in update_data:
             if await self.repo.phone_exists(tenant_id, update_data["phone"], exclude_id=customer_id):

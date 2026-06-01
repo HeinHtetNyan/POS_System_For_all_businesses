@@ -8,6 +8,8 @@ import { IconPlus, IconCash } from '@/components/icons'
 import { customersService } from '@/services/customers/customers.service'
 import type { LedgerEntry } from '@/shared/types'
 
+const PAGE_SIZE = 30
+
 export default function CustomerPaymentsPage() {
   const { id } = useParams<{ id: string }>()
   const qc = useQueryClient()
@@ -16,6 +18,7 @@ export default function CustomerPaymentsPage() {
   const [amount, setAmount]         = useState('')
   const [note, setNote]             = useState('')
   const [reference, setReference]   = useState('')
+  const [page, setPage]             = useState(1)
 
   const { data: ledgerData, isLoading } = useQuery({
     queryKey: ['customer-ledger', id, 1],
@@ -63,6 +66,9 @@ export default function CustomerPaymentsPage() {
   )
 
   const totalPaid = debtPayments.reduce((sum, e) => sum + parseFloat(e.credit ?? '0'), 0)
+
+  const totalPages = Math.max(1, Math.ceil(debtPayments.length / PAGE_SIZE))
+  const paginatedPayments = debtPayments.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   function closeModal() {
     setShowModal(false)
@@ -113,6 +119,7 @@ export default function CustomerPaymentsPage() {
             }
           />
         ) : (
+          <>
           <Table>
             <thead>
               <tr>
@@ -124,7 +131,7 @@ export default function CustomerPaymentsPage() {
               </tr>
             </thead>
             <tbody>
-              {debtPayments.map((entry, i) => (
+              {paginatedPayments.map((entry, i) => (
                 <tr key={entry.id ?? i} className="hover:bg-zinc-800/40 transition-colors">
                   <Td muted>{entry.date ? fmtDateTime(entry.date) : '—'}</Td>
                   <Td>{entry.description || '—'}</Td>
@@ -139,6 +146,25 @@ export default function CustomerPaymentsPage() {
               ))}
             </tbody>
           </Table>
+          <div className="px-4 py-2.5 border-t border-zinc-800 flex items-center justify-between gap-3">
+            <p className="text-xs text-zinc-500">
+              {debtPayments.length === 0 ? '0 payments' : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, debtPayments.length)} of ${debtPayments.length}`}
+            </p>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >‹ Prev</button>
+              <span className="text-xs text-zinc-500 px-2">{page} / {totalPages}</span>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >Next ›</button>
+            </div>
+          </div>
+          </>
         )}
       </div>
 

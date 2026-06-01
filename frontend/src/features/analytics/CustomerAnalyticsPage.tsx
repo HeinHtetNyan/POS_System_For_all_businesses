@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useQueries } from '@tanstack/react-query'
 import { fmt } from '@/lib/utils'
 import { StatCard, Table, Th, Td, Badge } from '@/components/ui'
@@ -5,8 +6,11 @@ import { analyticsService } from '@/services/analytics/analytics.service'
 import { customersService } from '@/services/customers/customers.service'
 import { useAnalyticsFilters, AnalyticsFilters, ChartCard } from './analyticsHelpers'
 
+const PAGE_SIZE = 30
+
 export default function CustomerAnalyticsPage() {
   const filters = useAnalyticsFilters()
+  const [custPage, setCustPage] = useState(1)
 
   const [dashboardQ, totalQ, activeQ, topCustomersQ] = useQueries({
     queries: [
@@ -26,7 +30,7 @@ export default function CustomerAnalyticsPage() {
       },
       {
         queryKey: ['customers-top-balance'],
-        queryFn:  () => customersService.list({ page_size: 50 }),
+        queryFn:  () => customersService.list({ page_size: 200 }),
       },
     ],
   })
@@ -38,7 +42,9 @@ export default function CustomerAnalyticsPage() {
   const topCustomers = (topCustomersQ.data?.items ?? [])
     .filter(c => parseFloat(c.balance) > 0)
     .sort((a, b) => parseFloat(b.balance) - parseFloat(a.balance))
-    .slice(0, 10)
+
+  const custTotalPages = Math.max(1, Math.ceil(topCustomers.length / PAGE_SIZE))
+  const paginatedCustomers = topCustomers.slice((custPage - 1) * PAGE_SIZE, custPage * PAGE_SIZE)
 
   const kpisLoading = dashboardQ.isLoading || totalQ.isLoading || activeQ.isLoading
 
@@ -84,9 +90,9 @@ export default function CustomerAnalyticsPage() {
             </tr>
           </thead>
           <tbody>
-            {topCustomers.map((c, i) => (
+            {paginatedCustomers.map((c, i) => (
               <tr key={c.id} className="hover:bg-zinc-800/40 transition-colors">
-                <Td muted>{i + 1}</Td>
+                <Td muted>{(custPage - 1) * PAGE_SIZE + i + 1}</Td>
                 <Td>{c.name}</Td>
                 <Td muted mono>{c.phone}</Td>
                 <Td>
@@ -101,6 +107,18 @@ export default function CustomerAnalyticsPage() {
             ))}
           </tbody>
         </Table>
+        <div className="px-4 py-2.5 border-t border-zinc-800 flex items-center justify-between gap-3">
+          <p className="text-xs text-zinc-500">
+            {topCustomers.length === 0 ? '0 customers' : `${(custPage - 1) * PAGE_SIZE + 1}–${Math.min(custPage * PAGE_SIZE, topCustomers.length)} of ${topCustomers.length}`}
+          </p>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setCustPage(p => Math.max(1, p - 1))} disabled={custPage === 1}
+              className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">‹ Prev</button>
+            <span className="text-xs text-zinc-500 px-2">{custPage} / {custTotalPages}</span>
+            <button onClick={() => setCustPage(p => Math.min(custTotalPages, p + 1))} disabled={custPage >= custTotalPages}
+              className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">Next ›</button>
+          </div>
+        </div>
       </ChartCard>
 
       <div className="text-xs text-zinc-600 bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3">

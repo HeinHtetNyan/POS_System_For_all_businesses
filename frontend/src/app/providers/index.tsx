@@ -1,5 +1,4 @@
 import { QueryClientProvider, useQuery } from '@tanstack/react-query'
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { Toaster } from 'sonner'
 import { type ReactNode, useEffect } from 'react'
 import { queryClient } from '@/lib/queryClient'
@@ -71,7 +70,6 @@ export function Providers({ children }: { children: ReactNode }) {
           },
         }}
       />
-      {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
     </QueryClientProvider>
   )
 }

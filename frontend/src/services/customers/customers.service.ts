@@ -3,6 +3,7 @@ import type { Customer, CustomerContact, CreateCustomerRequest, PaginatedRespons
 
 export interface UpdateCustomerRequest extends Partial<CreateCustomerRequest> {
   is_active?: boolean
+  notes?: string | null
 }
 
 export interface RecordPaymentRequest {

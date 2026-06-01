@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useCartStore, useCartTotals } from '@/store/cartStore'
 import { useSessionStore } from '@/store/session.store'
-import { useTenantStore } from '@/store/tenant.store'
 import { useUIStore } from '@/store/ui.store'
 import { productsService } from '@/services/products/products.service'
 import { inventoryService } from '@/services/inventory/inventory.service'
@@ -102,7 +101,6 @@ export default function POSScreen() {
   }, [setPosFocusMode])
 
   const { activeSession }  = useSessionStore()
-  const { selectedBranch } = useTenantStore()
   const addItem            = useCartStore(s => s.addItem)
   const items              = useCartStore(s => s.items)
   const clearCart          = useCartStore(s => s.clearCart)
@@ -121,7 +119,7 @@ export default function POSScreen() {
     if (!activeSession) navigate('/app/session-open', { replace: true })
   }, [activeSession, navigate])
 
-  const branchId = activeSession?.branch_id ?? selectedBranch?.id ?? ''
+  const branchId = activeSession?.branch_id ?? ''
 
   // Fetch products
   const { data: productsData, isLoading: productsLoading } = useQuery({

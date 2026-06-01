@@ -127,6 +127,9 @@ function OrderDetailModal({ orderId, onClose }: { orderId: string; onClose: () =
             <div>
               <p className="text-xs text-zinc-500 uppercase tracking-wider">Order Number</p>
               <p className="font-mono font-semibold text-zinc-100">{order.order_number}</p>
+              {order.branch_name && (
+                <p className="text-xs text-blue-400 mt-0.5 font-medium">{order.branch_name}</p>
+              )}
             </div>
             <div className="text-right">
               <p className="text-xs text-zinc-500">{order.created_at ? fmtDateTime(order.created_at) : '—'}</p>
@@ -195,9 +198,12 @@ function OrderDetailModal({ orderId, onClose }: { orderId: string; onClose: () =
   )
 }
 
+const PAGE_SIZE = 30
+
 export default function CustomerStatementPage() {
   const { id } = useParams<{ id: string }>()
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
 
   const { data: statement, isLoading: stmtLoading } = useQuery({
     queryKey: ['customer-statement', id],
@@ -223,6 +229,28 @@ export default function CustomerStatementPage() {
 
   const allEntries: LedgerEntry[] = ledgerData?.items ?? []
   const rows = buildMergedRows(allEntries)
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
+  const paginatedRows = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+
+  const now = new Date()
+  const currentMonth = now.getMonth()
+  const currentYear  = now.getFullYear()
+
+  const monthlyCharges = allEntries
+    .filter(e => {
+      if (e.type !== 'SALE' || !e.debit || !e.date) return false
+      const d = new Date(e.date)
+      return d.getMonth() === currentMonth && d.getFullYear() === currentYear
+    })
+    .reduce((sum, e) => sum + parseFloat(e.debit ?? '0'), 0)
+
+  const monthlyPayments = allEntries
+    .filter(e => {
+      if ((e.type !== 'PAYMENT' && e.type !== 'CREDIT_NOTE') || !e.credit || !e.date) return false
+      const d = new Date(e.date)
+      return d.getMonth() === currentMonth && d.getFullYear() === currentYear
+    })
+    .reduce((sum, e) => sum + parseFloat(e.credit ?? '0'), 0)
 
   return (
     <div className="p-4 sm:p-6 space-y-4">
@@ -242,24 +270,18 @@ export default function CustomerStatementPage() {
         </div>
       </div>
 
-      {/* Summary cards */}
-      {statement && (
-        <div className="grid grid-cols-3 gap-3">
-          {statement.total_debits != null && (
-            <StatCard label="Total Charges" value={fmt(statement.total_debits)} />
-          )}
-          {statement.total_credits != null && (
-            <StatCard label="Total Payments" value={fmt(statement.total_credits)} />
-          )}
-          {statement.closing_balance != null && (
-            <StatCard
-              label="Remaining Debt"
-              value={fmt(statement.closing_balance)}
-              accent={parseFloat(statement.closing_balance) > 0}
-            />
-          )}
-        </div>
-      )}
+      {/* Summary cards — charges & payments are this month; debt is all-time */}
+      <div className="grid grid-cols-3 gap-3">
+        <StatCard label="Charges (This Month)"  value={fmt(monthlyCharges)} />
+        <StatCard label="Payments (This Month)" value={fmt(monthlyPayments)} />
+        {statement?.closing_balance != null && (
+          <StatCard
+            label="Remaining Debt"
+            value={fmt(statement.closing_balance)}
+            accent={parseFloat(statement.closing_balance) > 0}
+          />
+        )}
+      </div>
 
       {/* Transactions */}
       {rows.length === 0 ? (
@@ -285,7 +307,7 @@ export default function CustomerStatementPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map(row => (
+              {paginatedRows.map(row => (
                 <tr
                   key={row.id}
                   onClick={() => row.orderId ? setSelectedOrderId(row.orderId) : undefined}
@@ -332,6 +354,24 @@ export default function CustomerStatementPage() {
               ))}
             </tbody>
           </Table>
+          <div className="px-4 py-2.5 border-t border-zinc-800 flex items-center justify-between gap-3">
+            <p className="text-xs text-zinc-500">
+              {rows.length === 0 ? '0 transactions' : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, rows.length)} of ${rows.length}`}
+            </p>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >‹ Prev</button>
+              <span className="text-xs text-zinc-500 px-2">{page} / {totalPages}</span>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >Next ›</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

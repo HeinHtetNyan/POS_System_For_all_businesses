@@ -23,6 +23,7 @@ from app.api.deps import (
 )
 from app.cashiers.models import CashierSession
 from app.customers.models import Customer
+from app.models.branch import Branch
 from app.core.constants import UserRole
 from app.sales.schemas import (
     CartCreateRequest,
@@ -325,11 +326,22 @@ async def list_orders(
         for row in crows.all():
             customer_name_map[row[0]] = row[1]
 
+    # Batch-load branch names.
+    branch_ids = list({o.branch_id for o in items if o.branch_id})
+    branch_name_map: dict[uuid.UUID, str] = {}
+    if branch_ids:
+        brows = await db.execute(
+            _sa_select(Branch.id, Branch.name).where(Branch.id.in_(branch_ids))
+        )
+        for row in brows.all():
+            branch_name_map[row[0]] = row[1]
+
     order_responses = [
         OrderResponse.model_validate(o).model_copy(
             update={
                 "cashier_name": name_map.get(o.cashier_session_id),
                 "customer_name": customer_name_map.get(o.customer_id) if o.customer_id else None,
+                "branch_name": branch_name_map.get(o.branch_id),
             }
         )
         for o in items
@@ -356,9 +368,15 @@ async def get_order_by_number(
     svc = OrderService(db)
     order = await svc.get_order_by_number(order_number, tenant_id)
     resp = OrderResponse.model_validate(order)
+    updates: dict = {}
     if order.customer_id:
         row = await db.execute(_sa_select(Customer.name).where(Customer.id == order.customer_id))
-        resp = resp.model_copy(update={"customer_name": row.scalar_one_or_none()})
+        updates["customer_name"] = row.scalar_one_or_none()
+    if order.branch_id:
+        brow = await db.execute(_sa_select(Branch.name).where(Branch.id == order.branch_id))
+        updates["branch_name"] = brow.scalar_one_or_none()
+    if updates:
+        resp = resp.model_copy(update=updates)
     return resp
 
 
@@ -376,9 +394,15 @@ async def get_order(
     svc = OrderService(db)
     order = await svc.get_order(order_id, tenant_id)
     resp = OrderResponse.model_validate(order)
+    updates: dict = {}
     if order.customer_id:
         row = await db.execute(_sa_select(Customer.name).where(Customer.id == order.customer_id))
-        resp = resp.model_copy(update={"customer_name": row.scalar_one_or_none()})
+        updates["customer_name"] = row.scalar_one_or_none()
+    if order.branch_id:
+        brow = await db.execute(_sa_select(Branch.name).where(Branch.id == order.branch_id))
+        updates["branch_name"] = brow.scalar_one_or_none()
+    if updates:
+        resp = resp.model_copy(update=updates)
     return resp
 
 

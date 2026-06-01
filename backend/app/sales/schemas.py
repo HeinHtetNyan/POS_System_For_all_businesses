@@ -159,6 +159,7 @@ class OrderResponse(BaseModel):
     created_by: uuid.UUID
     cashier_name: str | None = None
     customer_name: str | None = None
+    branch_name: str | None = None
     items: list[OrderItemResponse] = []
     created_at: datetime
     updated_at: datetime

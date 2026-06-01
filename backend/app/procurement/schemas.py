@@ -76,6 +76,7 @@ class PurchaseOrderSummary(TimestampedSchema):
     created_by: uuid.UUID
     created_by_name: str | None = None
     approved_by_name: str | None = None
+    supplier_name: str | None = None
 
 
 class PurchaseOrderDetail(PurchaseOrderSummary):
@@ -173,6 +174,7 @@ class SupplierPayableSummary(TimestampedSchema):
     paid_amount: Decimal
     remaining_amount: Decimal
     status: str
+    supplier_name: str | None = None
 
 
 class SupplierPayableDetail(SupplierPayableSummary):

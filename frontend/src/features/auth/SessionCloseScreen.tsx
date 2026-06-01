@@ -13,7 +13,7 @@ import { IconLogout, IconCash, IconCard, IconAlert } from '@/components/icons'
 export default function SessionCloseScreen() {
   const navigate   = useNavigate()
   const qc         = useQueryClient()
-  const { user, logout } = useAuthStore()
+  const { user } = useAuthStore()
   const { activeSession, clearSession } = useSessionStore()
 
   const [actualCash, setActualCash] = useState('')
@@ -77,8 +77,7 @@ export default function SessionCloseScreen() {
       clearSession()
       qc.clear()
       toast.success('Session closed successfully')
-      await logout()
-      navigate('/login')
+      navigate('/app/session-open', { replace: true })
     } catch (err: unknown) {
       const msg = extractApiMsg(err) ?? 'Failed to close session'
       toast.error(msg)

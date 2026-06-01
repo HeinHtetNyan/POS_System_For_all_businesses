@@ -59,15 +59,15 @@ export function ProductFormModal({ product, initialBarcode, onClose, onSaved }: 
     category_id:   product?.category_id   ?? '',
     brand_id:      product?.brand_id      ?? '',
     barcode:       product?.barcode        ?? initialBarcode ?? '',
-    cost_price:    product?.cost_price     ?? '',
-    selling_price: product?.selling_price  ?? '',
+    cost_price:    product?.cost_price    ? parseFloat(product.cost_price).toFixed(2)    : '',
+    selling_price: product?.selling_price ? parseFloat(product.selling_price).toFixed(2) : '',
     reorder_point: String(product?.reorder_point ?? 0),
     is_active:     product?.is_active ?? true,
     initial_stock: '',
     // Promotion / discount
     has_discount:      !!(product?.discount_type),
     discount_type:     (product?.discount_type ?? 'PERCENTAGE') as 'PERCENTAGE' | 'AMOUNT',
-    discount_value:    product?.discount_value ?? '',
+    discount_value:    product?.discount_value ? parseFloat(product.discount_value).toFixed(2) : '',
     discount_start_at: product?.discount_start_at ? product.discount_start_at.slice(0, 16) : '',
     discount_end_at:   product?.discount_end_at   ? product.discount_end_at.slice(0, 16)   : '',
   })

@@ -351,6 +351,9 @@ function OrderDetailPanel({ order, onClose }: { order: Order; onClose: () => voi
         </div>
         <p className="text-xs text-zinc-400">{fmtDateTime(order.created_at)}</p>
         <p className="text-xs text-zinc-600">{timeAgo(order.created_at)}</p>
+        {(order.branch_name || detail?.branch_name) && (
+          <p className="text-xs text-zinc-500">Branch <span className="text-blue-400 font-medium">{order.branch_name ?? detail?.branch_name}</span></p>
+        )}
         {order.cashier_name && (
           <p className="text-xs text-zinc-500">By <span className="text-zinc-300">{order.cashier_name}</span></p>
         )}

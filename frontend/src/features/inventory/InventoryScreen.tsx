@@ -11,12 +11,18 @@ import AdjustmentModal from '@/features/inventory/AdjustmentModal'
 import StockHistoryModal from '@/features/inventory/StockHistoryModal'
 import type { InventoryItem } from '@/shared/types'
 
+const PAGE_SIZE = 30
+
 export default function InventoryScreen() {
   const { selectedBranch, availableBranches } = useTenantStore()
   const [search, setSearch]               = useState('')
   const [adjustingItem, setAdjustingItem] = useState<InventoryItem | null>(null)
   const [historyItem, setHistoryItem]     = useState<InventoryItem | null>(null)
   const [stockSort, setStockSort]         = useState<'asc' | 'desc'>('asc')
+  const [page, setPage]                   = useState(1)
+
+  function handleSearch(q: string) { setSearch(q); setPage(1) }
+  function handleSort(s: 'asc' | 'desc') { setStockSort(s); setPage(1) }
 
   // Inventory is a management view — always follows the globally selected branch.
   // The POS cashier session is irrelevant here (that's operational, not reporting).
@@ -62,6 +68,9 @@ export default function InventoryScreen() {
       const diff = parseFloat(a.quantity_available) - parseFloat(b.quantity_available)
       return stockSort === 'asc' ? diff : -diff
     })
+
+  const totalPages  = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const paginated   = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   const outOfStock  = items.filter(i => parseFloat(i.quantity_on_hand) === 0).length
   const lowStock    = items.filter(i => {
@@ -115,7 +124,7 @@ export default function InventoryScreen() {
             <input
               type="text"
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={e => handleSearch(e.target.value)}
               placeholder="Search products…"
               className="bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-600 text-sm
                 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 transition-all
@@ -147,7 +156,7 @@ export default function InventoryScreen() {
                   <Th right>Available</Th>
                   <Th>
                     <button
-                      onClick={() => setStockSort(s => s === 'asc' ? 'desc' : 'asc')}
+                      onClick={() => handleSort(stockSort === 'asc' ? 'desc' : 'asc')}
                       className="flex items-center gap-1 hover:text-amber-400 transition-colors group"
                       title={stockSort === 'asc' ? 'Sorted: Low → High (click for High → Low)' : 'Sorted: High → Low (click for Low → High)'}
                     >
@@ -168,7 +177,7 @@ export default function InventoryScreen() {
                       <Empty icon={<IconInventory width="40" height="40" />} title="No inventory found" subtitle="Adjust your search or check the branch" />
                     </td>
                   </tr>
-                ) : filtered.map(item => {
+                ) : paginated.map(item => {
                   const available = parseFloat(item.quantity_available)
                   const sold      = parseFloat(item.quantity_sold ?? '0')
                   const reorderPt = item.reorder_point ?? 0
@@ -211,8 +220,23 @@ export default function InventoryScreen() {
               </tbody>
             </Table>
           )}
-          <div className="px-4 py-2.5 border-t border-zinc-800 flex-shrink-0">
-            <p className="text-xs text-zinc-500">{filtered.length} of {items.length} items</p>
+          <div className="px-4 py-2.5 border-t border-zinc-800 flex-shrink-0 flex items-center justify-between gap-3">
+            <p className="text-xs text-zinc-500">
+              {filtered.length === 0 ? '0 items' : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, filtered.length)} of ${filtered.length}`}
+            </p>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >‹ Prev</button>
+              <span className="text-xs text-zinc-500 px-2">{page} / {totalPages}</span>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >Next ›</button>
+            </div>
           </div>
         </div>
       </div>

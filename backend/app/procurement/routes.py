@@ -40,6 +40,7 @@ from app.procurement.services import (
     SupplierPayableService,
 )
 from app.models.user import User
+from app.models.supplier import Supplier
 from app.schemas.common import PaginatedResponse
 
 router = APIRouter()
@@ -51,6 +52,14 @@ async def _user_names(db: DbSession, ids: set[uuid.UUID]) -> dict[uuid.UUID, str
     stmt = select(User.id, User.first_name, User.last_name).where(User.id.in_(ids))
     rows = await db.execute(stmt)
     return {r.id: f"{r.first_name} {r.last_name}".strip() for r in rows}
+
+
+async def _supplier_names(db: DbSession, ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
+    if not ids:
+        return {}
+    stmt = select(Supplier.id, Supplier.name).where(Supplier.id.in_(ids))
+    rows = await db.execute(stmt)
+    return {r.id: r.name for r in rows}
 
 
 
@@ -103,11 +112,14 @@ async def list_purchase_orders(
     )
     actor_ids = {p.created_by for p in items} | {p.approved_by for p in items if p.approved_by}
     names = await _user_names(db, actor_ids)
+    sup_ids = {p.supplier_id for p in items}
+    sup_names = await _supplier_names(db, sup_ids)
     return PaginatedResponse.create(
         items=[
             PurchaseOrderSummary.model_validate(p).model_copy(update={
-                "created_by_name": names.get(p.created_by),
+                "created_by_name":  names.get(p.created_by),
                 "approved_by_name": names.get(p.approved_by) if p.approved_by else None,
+                "supplier_name":    sup_names.get(p.supplier_id),
             })
             for p in items
         ],
@@ -300,8 +312,15 @@ async def list_payables(
         supplier_id=supplier_id,
         status=status,
     )
+    sup_ids = {p.supplier_id for p in items}
+    sup_names = await _supplier_names(db, sup_ids)
     return PaginatedResponse.create(
-        items=[SupplierPayableSummary.model_validate(p) for p in items],
+        items=[
+            SupplierPayableSummary.model_validate(p).model_copy(update={
+                "supplier_name": sup_names.get(p.supplier_id),
+            })
+            for p in items
+        ],
         total=total,
         page=page,
         page_size=page_size,

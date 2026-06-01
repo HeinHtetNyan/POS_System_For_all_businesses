@@ -112,10 +112,23 @@ export default function CartPanel({ onBackToProducts }: { onBackToProducts?: () 
               </div>
             )}
 
+            <div className="flex justify-between text-xs text-zinc-500">
+              <span>
+                {totals.taxEnabled && totals.taxInclusive
+                  ? `${totals.taxName} (included)`
+                  : totals.taxEnabled
+                    ? `${totals.taxName} (${totals.taxRate}%)`
+                    : 'Tax'}
+              </span>
+              <span className="font-mono">
+                {totals.taxEnabled ? fmt(totals.tax) : '-'}
+              </span>
+            </div>
+
             <div className="flex items-center justify-between py-1.5 border-t border-zinc-800 mt-0.5">
               <span className="text-sm font-semibold text-zinc-200">Total</span>
               <span className="font-mono text-lg font-bold text-amber-400">
-                {fmt(totals.itemSubtotal)}
+                {fmt(totals.total)}
               </span>
             </div>
 

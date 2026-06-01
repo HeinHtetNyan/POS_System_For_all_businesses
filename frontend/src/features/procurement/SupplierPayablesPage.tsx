@@ -6,12 +6,12 @@ import { z } from 'zod'
 import { toast } from 'sonner'
 import { cn, fmt, fmtDate, fmtDateTime, timeAgo, extractApiMsg } from '@/lib/utils'
 import { Btn, Table, Th, Td, Empty, Spinner, SectionHeader, StatCard, Badge } from '@/components/ui'
-import { IconChevRight, IconChevLeft } from '@/components/icons'
 import { procurementService } from '@/services/procurement/procurement.service'
 import { PayableStatusBadge, inputCls, FormField } from './procurementHelpers'
 import type { SupplierPayableDetail } from '@/shared/types'
 
-const PAGE_SIZE = 20
+const PAGE_SIZE = 30
+
 
 const paymentSchema = z.object({
   payment_method:   z.string().min(1, 'Payment method required'),
@@ -32,7 +32,7 @@ function RecordPaymentModal({ payable, onClose }: { payable: SupplierPayableDeta
     resolver: zodResolver(paymentSchema),
     defaultValues: {
       payment_method:   'BANK_TRANSFER',
-      amount:           payable.remaining_amount,
+      amount:           parseFloat(payable.remaining_amount).toFixed(2),
       payment_date:     new Date().toISOString().split('T')[0],
       reference_number: '',
       notes:            '',
@@ -128,7 +128,7 @@ function PaymentHistoryRow({ payableId }: { payableId: string }) {
   if (isLoading) {
     return (
       <tr className="bg-zinc-800/30">
-        <td colSpan={7} className="px-4 py-3">
+        <td colSpan={8} className="px-4 py-3">
           <div className="flex items-center justify-center h-10"><Spinner size={16} /></div>
         </td>
       </tr>
@@ -137,7 +137,7 @@ function PaymentHistoryRow({ payableId }: { payableId: string }) {
 
   return (
     <tr className="bg-zinc-800/30">
-      <td colSpan={7} className="px-4 py-3">
+      <td colSpan={8} className="px-4 py-3">
         {!detail || detail.payments.length === 0 ? (
           <p className="text-xs text-zinc-600">No payments recorded yet.</p>
         ) : (
@@ -163,23 +163,30 @@ function PaymentHistoryRow({ payableId }: { payableId: string }) {
 
 
 export default function SupplierPayablesPage() {
-  const [status, setStatus] = useState<string | undefined>(undefined)
-  const [page, setPage] = useState(1)
-  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [status, setStatus]             = useState<string | undefined>(undefined)
+  const [selMonth, setSelMonth] = useState(() => new Date().getMonth() + 1)
+  const [selYear,  setSelYear]  = useState(() => new Date().getFullYear())
+  const [page, setPage]                 = useState(1)
+  const [expandedId, setExpandedId]   = useState<string | null>(null)
   const [activePayable, setActivePayable] = useState<SupplierPayableDetail | null>(null)
 
   const { data, isLoading } = useQuery({
-    queryKey: ['supplier-payables', { status, page }],
-    queryFn: () => procurementService.listPayables({ status, page, page_size: PAGE_SIZE }),
+    queryKey: ['supplier-payables', { status }],
+    queryFn: () => procurementService.listPayables({ status, page: 1, page_size: 500 }),
     placeholderData: prev => prev,
   })
 
   const { data: openData }    = useQuery({ queryKey: ['supplier-payables', { status: 'OPEN',    page_size: 100 }], queryFn: () => procurementService.listPayables({ status: 'OPEN',    page_size: 100 }) })
   const { data: partialData } = useQuery({ queryKey: ['supplier-payables', { status: 'PARTIAL', page_size: 100 }], queryFn: () => procurementService.listPayables({ status: 'PARTIAL', page_size: 100 }) })
 
-  const payables   = data?.items ?? []
-  const total      = data?.total ?? 0
-  const totalPages = data?.total_pages ?? 1
+  const allPayables = data?.items ?? []
+
+  const monthStr = `${selYear}-${String(selMonth).padStart(2, '0')}`
+  const payables = allPayables.filter(p => (p.created_at ?? '').slice(0, 7) === monthStr)
+
+  const total      = payables.length
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const paginatedPayables = payables.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   const openTotal    = (openData?.items    ?? []).reduce((s, p) => s + parseFloat(p.remaining_amount), 0)
   const partialTotal = (partialData?.items ?? []).reduce((s, p) => s + parseFloat(p.remaining_amount), 0)
@@ -204,6 +211,28 @@ export default function SupplierPayablesPage() {
             <StatCard label="Open Payables"    value={(openData?.total ?? 0).toLocaleString()} />
             <StatCard label="Partially Paid"   value={(partialData?.total ?? 0).toLocaleString()} />
             <StatCard label="Total Outstanding" value={fmt(outstanding)} accent={outstanding > 0} />
+          </div>
+
+          {/* Month / Year selectors */}
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={selMonth}
+              onChange={e => { setSelMonth(Number(e.target.value)); setPage(1) }}
+              className="bg-zinc-900 border border-zinc-700 rounded-xl text-zinc-200 text-sm px-3 py-1.5 focus:outline-none focus:border-amber-500"
+            >
+              {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m, i) => (
+                <option key={i + 1} value={i + 1}>{m}</option>
+              ))}
+            </select>
+            <select
+              value={selYear}
+              onChange={e => { setSelYear(Number(e.target.value)); setPage(1) }}
+              className="bg-zinc-900 border border-zinc-700 rounded-xl text-zinc-200 text-sm px-3 py-1.5 focus:outline-none focus:border-amber-500"
+            >
+              {Array.from({ length: 80 }, (_, i) => 2020 + i).map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
           </div>
 
           {/* Status filters */}
@@ -244,6 +273,7 @@ export default function SupplierPayablesPage() {
                 <thead>
                   <tr>
                     <Th>Payable ID</Th>
+                    <Th>Supplier</Th>
                     <Th>Status</Th>
                     <Th right>Total</Th>
                     <Th right>Paid</Th>
@@ -253,13 +283,16 @@ export default function SupplierPayablesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {payables.map(p => (
+                  {paginatedPayables.map(p => (
                     <Fragment key={p.id}>
                       <tr
                         className="cursor-pointer hover:bg-zinc-800/60 transition-colors"
                         onClick={() => setExpandedId(prev => prev === p.id ? null : p.id)}
                       >
                         <Td muted mono>{p.id.slice(0, 8)}…</Td>
+                        <Td>
+                          <span className="text-sm text-zinc-200">{p.supplier_name ?? '—'}</span>
+                        </Td>
                         <Td><PayableStatusBadge status={p.status} /></Td>
                         <Td right><span className="font-mono">{fmt(p.total_amount)}</span></Td>
                         <Td right><span className="font-mono text-green-400">{fmt(p.paid_amount)}</span></Td>
@@ -283,19 +316,24 @@ export default function SupplierPayablesPage() {
             )}
           </div>
 
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between text-xs text-zinc-500">
-              <span>Page {page} of {totalPages} · {total} total</span>
-              <div className="flex gap-1">
-                <Btn variant="secondary" size="xs" disabled={page === 1} onClick={() => setPage(p => p - 1)}>
-                  <IconChevLeft width="12" height="12" />
-                </Btn>
-                <Btn variant="secondary" size="xs" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>
-                  <IconChevRight width="12" height="12" />
-                </Btn>
-              </div>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-zinc-500">
+              {total === 0 ? '0 payables' : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, total)} of ${total}`}
+            </p>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >‹ Prev</button>
+              <span className="text-xs text-zinc-500 px-2">{page} / {totalPages}</span>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >Next ›</button>
             </div>
-          )}
+          </div>
         </div>
       </div>
 

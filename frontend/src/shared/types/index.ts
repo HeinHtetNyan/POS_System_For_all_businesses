@@ -330,6 +330,7 @@ export interface Order {
   void_reason: string | null
   cashier_name?: string | null
   customer_name?: string | null
+  branch_name?: string | null
   created_at: string
   updated_at: string
   items?: OrderItem[]
@@ -1211,6 +1212,7 @@ export interface PurchaseOrderSummary {
   created_by: string
   created_by_name?: string | null
   approved_by_name?: string | null
+  supplier_name?: string | null
   created_at: string
   updated_at: string
 }
@@ -1312,6 +1314,7 @@ export interface SupplierPayableSummary {
   paid_amount: string
   remaining_amount: string
   status: string
+  supplier_name?: string | null
   created_at: string
   updated_at: string
 }
