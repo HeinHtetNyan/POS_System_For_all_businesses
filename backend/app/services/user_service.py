@@ -69,10 +69,33 @@ class UserService:
                 pass  # fail-open, don't break user creation
         return user
 
-    async def get_user(self, user_id: uuid.UUID) -> User:
+    def _assert_same_tenant(
+        self,
+        user: User,
+        actor_id: uuid.UUID | None,
+        actor_tenant_id: uuid.UUID | None,
+        actor_role: str,
+    ) -> None:
+        """Raise AuthorizationError if actor cannot access a user from another tenant."""
+        if actor_role == UserRole.SUPER_ADMIN.value:
+            return
+        # Always allow reading/writing one's own record
+        if actor_id is not None and user.id == actor_id:
+            return
+        if actor_tenant_id is None or user.tenant_id != actor_tenant_id:
+            raise AuthorizationError("User not found")
+
+    async def get_user(
+        self,
+        user_id: uuid.UUID,
+        actor_id: uuid.UUID | None = None,
+        actor_tenant_id: uuid.UUID | None = None,
+        actor_role: str = "",
+    ) -> User:
         user = await self.user_repo.get_by_id_active(user_id)
         if not user:
             raise NotFoundError("User", user_id)
+        self._assert_same_tenant(user, actor_id, actor_tenant_id, actor_role)
         return user
 
     async def list_users(
@@ -99,11 +122,13 @@ class UserService:
         data: UserUpdateRequest,
         actor_id: uuid.UUID,
         tenant_id: uuid.UUID | None = None,
+        actor_role: str = "",
         request_id: str | None = None,
     ) -> User:
         user = await self.user_repo.get_by_id_active(user_id)
         if not user:
             raise NotFoundError("User", user_id)
+        self._assert_same_tenant(user, actor_id, tenant_id, actor_role)
 
         before_state = {
             "first_name": user.first_name,
@@ -134,11 +159,13 @@ class UserService:
         status: UserStatus,
         actor_id: uuid.UUID,
         tenant_id: uuid.UUID | None = None,
+        actor_role: str = "",
         request_id: str | None = None,
     ) -> User:
         user = await self.user_repo.get_by_id_active(user_id)
         if not user:
             raise NotFoundError("User", user_id)
+        self._assert_same_tenant(user, actor_id, tenant_id, actor_role)
         if user.role == UserRole.SUPER_ADMIN:
             raise AuthorizationError("SUPER_ADMIN account cannot be modified")
 
@@ -167,11 +194,13 @@ class UserService:
         role: UserRole,
         actor_id: uuid.UUID,
         tenant_id: uuid.UUID | None = None,
+        actor_role: str = "",
         request_id: str | None = None,
     ) -> User:
         user = await self.user_repo.get_by_id_active(user_id)
         if not user:
             raise NotFoundError("User", user_id)
+        self._assert_same_tenant(user, actor_id, tenant_id, actor_role)
         if user.role == UserRole.SUPER_ADMIN:
             raise AuthorizationError("SUPER_ADMIN account cannot be modified")
         if role == UserRole.SUPER_ADMIN:
@@ -202,11 +231,13 @@ class UserService:
         new_password: str,
         actor_id: uuid.UUID,
         tenant_id: uuid.UUID | None = None,
+        actor_role: str = "",
         request_id: str | None = None,
     ) -> None:
         user = await self.user_repo.get_by_id_active(user_id)
         if not user:
             raise NotFoundError("User", user_id)
+        self._assert_same_tenant(user, actor_id, tenant_id, actor_role)
         if user.role == UserRole.SUPER_ADMIN:
             raise AuthorizationError("SUPER_ADMIN account cannot be modified")
 
@@ -227,11 +258,13 @@ class UserService:
         user_id: uuid.UUID,
         actor_id: uuid.UUID,
         tenant_id: uuid.UUID | None = None,
+        actor_role: str = "",
         request_id: str | None = None,
     ) -> None:
         user = await self.user_repo.get_by_id_active(user_id)
         if not user:
             raise NotFoundError("User", user_id)
+        self._assert_same_tenant(user, actor_id, tenant_id, actor_role)
         if user.role == UserRole.SUPER_ADMIN:
             raise AuthorizationError("SUPER_ADMIN account cannot be deleted")
 

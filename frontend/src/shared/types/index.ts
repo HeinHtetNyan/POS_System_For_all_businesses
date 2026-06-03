@@ -18,17 +18,12 @@ export interface LoginRequest {
 
 export interface TokenResponse {
   access_token: string
-  refresh_token: string
   token_type: string
   expires_in: number
 }
 
-export interface RefreshTokenRequest {
-  refresh_token: string
-}
-
 export interface LogoutRequest {
-  refresh_token: string | null
+  refresh_token?: string | null
 }
 
 
@@ -1431,7 +1426,6 @@ export interface RegisterRequest {
 
 export interface RegistrationResponse {
   access_token: string
-  refresh_token: string
   token_type: string
   expires_in: number
   user_id: string

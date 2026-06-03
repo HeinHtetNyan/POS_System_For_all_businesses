@@ -32,7 +32,7 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null })
         try {
           const tokens = await authService.login(creds)
-          tokenStorage.setTokens(tokens.access_token, tokens.refresh_token)
+          tokenStorage.setTokens(tokens.access_token)
           const user = await authService.me()
           set({ user, isAuthenticated: true, isLoading: false })
         } catch (err: unknown) {
@@ -43,11 +43,9 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: async () => {
-        const refreshToken = tokenStorage.getRefresh()
         try {
-          if (refreshToken) {
-            await authService.logout({ refresh_token: refreshToken })
-          }
+          // Cookie-based refresh token is revoked server-side; no body needed
+          await authService.logout({})
         } catch {
           // logout best-effort
         } finally {

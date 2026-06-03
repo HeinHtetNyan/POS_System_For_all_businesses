@@ -99,6 +99,12 @@ async def update_tenant(
     current_user: CurrentUser,
     request_id: RequestId,
 ) -> TenantResponse:
+    if current_user.role == UserRole.RESELLER.value:
+        from app.reseller_finance.routes.reseller_routes import _assert_referred_tenant
+        await _assert_referred_tenant(db, current_user.id, tenant_id)
+    elif current_user.role != UserRole.SUPER_ADMIN.value:
+        if not current_user.tenant_id or str(current_user.tenant_id) != str(tenant_id):
+            raise AuthorizationError("You can only update your own tenant")
     service = TenantService(db)
     tenant = await service.update_tenant(
         tenant_id=tenant_id, data=payload, actor_id=current_user.id, request_id=request_id
@@ -156,7 +162,14 @@ async def update_tenant_settings(
     tenant_id: uuid.UUID,
     payload: TenantSettingsUpdateRequest,
     db: DbSession,
+    current_user: CurrentUser,
 ) -> TenantSettingsResponse:
+    if current_user.role == UserRole.RESELLER.value:
+        from app.reseller_finance.routes.reseller_routes import _assert_referred_tenant
+        await _assert_referred_tenant(db, current_user.id, tenant_id)
+    elif current_user.role != UserRole.SUPER_ADMIN.value:
+        if not current_user.tenant_id or str(current_user.tenant_id) != str(tenant_id):
+            raise AuthorizationError("You can only update your own tenant settings")
     service = TenantService(db)
     settings = await service.update_tenant_settings(tenant_id, payload)
     return TenantSettingsResponse.model_validate(settings)

@@ -47,6 +47,30 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
     def __init__(self, app: ASGIApp) -> None:
         super().__init__(app)
 
+    @staticmethod
+    def _extract_tenant_id(request: Request) -> str:
+        """Parse JWT to get tenant_id for namespace isolation. Falls back to 'global'."""
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            token = auth[7:]
+            try:
+                from jose import JWTError, jwt as _jwt
+                from app.core.config import settings
+                payload = _jwt.decode(
+                    token,
+                    settings.JWT_SECRET_KEY,
+                    algorithms=[settings.JWT_ALGORITHM],
+                    audience=settings.JWT_AUDIENCE,
+                    issuer=settings.JWT_ISSUER,
+                    options={"verify_exp": False},
+                )
+                tid = payload.get("tenant_id")
+                if tid:
+                    return str(tid)
+            except Exception:
+                pass
+        return "global"
+
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         if request.method != "POST" or request.url.path not in _IDEMPOTENT_PATHS:
             return await call_next(request)
@@ -55,8 +79,7 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
         if not idempotency_key:
             return await call_next(request)
 
-        # Tenant context injected by auth middleware via request.state
-        tenant_id = str(getattr(request.state, "tenant_id", "global"))
+        tenant_id = self._extract_tenant_id(request)
         redis_key = f"idempotency:{tenant_id}:{idempotency_key}"
 
         try:

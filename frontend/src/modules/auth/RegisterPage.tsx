@@ -77,7 +77,7 @@ export default function RegisterPage() {
         password: form.password,
         referral_code: form.referral_code.trim().toUpperCase() || undefined,
       })
-      tokenStorage.setTokens(result.access_token, result.refresh_token)
+      tokenStorage.setAccess(result.access_token)
       const me = await authService.me()
       setUser(me)
       localStorage.setItem('nexuspos_onboarding_pending', '1')

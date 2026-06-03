@@ -91,7 +91,7 @@ async def list_users(
     db: DbSession,
     current_user: CurrentUser,
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=500),
+    page_size: int = Query(default=20, ge=1, le=100),
     tenant_id: str | None = Query(default=None, description="Filter by tenant (super admin only)"),
     role: str | None = Query(default=None, description="Filter by role (super admin only)"),
 ) -> PaginatedResponse[UserResponse]:
@@ -130,9 +130,15 @@ async def list_users(
 async def get_user(
     user_id: uuid.UUID,
     db: DbSession,
+    current_user: CurrentUser,
 ) -> UserResponse:
     service = UserService(db)
-    user = await service.get_user(user_id)
+    user = await service.get_user(
+        user_id,
+        actor_id=current_user.id,
+        actor_tenant_id=current_user.tenant_id,
+        actor_role=current_user.role,
+    )
     return UserResponse.model_validate(user)
 
 
@@ -161,6 +167,7 @@ async def update_user(
         data=payload,
         actor_id=current_user.id,
         tenant_id=current_user.tenant_id,
+        actor_role=current_user.role,
         request_id=request_id,
     )
     return UserResponse.model_validate(user)
@@ -185,6 +192,7 @@ async def update_user_status(
         status=payload.status,
         actor_id=current_user.id,
         tenant_id=current_user.tenant_id,
+        actor_role=current_user.role,
         request_id=request_id,
     )
     return UserResponse.model_validate(user)
@@ -209,6 +217,7 @@ async def update_user_role(
         role=payload.role,
         actor_id=current_user.id,
         tenant_id=current_user.tenant_id,
+        actor_role=current_user.role,
         request_id=request_id,
     )
     return UserResponse.model_validate(user)
@@ -233,6 +242,7 @@ async def reset_user_password(
         new_password=payload.new_password,
         actor_id=current_user.id,
         tenant_id=current_user.tenant_id,
+        actor_role=current_user.role,
         request_id=request_id,
     )
     return SuccessResponse(message="Password reset successfully")
@@ -255,6 +265,7 @@ async def delete_user(
         user_id=user_id,
         actor_id=current_user.id,
         tenant_id=current_user.tenant_id,
+        actor_role=current_user.role,
         request_id=request_id,
     )
     return SuccessResponse(message="User deleted successfully")

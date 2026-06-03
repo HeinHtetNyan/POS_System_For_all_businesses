@@ -19,6 +19,20 @@ _ALLOWED: dict[str, str] = {
     "application/pdf": ".pdf",
 }
 
+# Magic byte signatures for each allowed MIME type
+_MAGIC_BYTES: list[tuple[bytes, str]] = [
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"%PDF-", "application/pdf"),
+]
+
+
+def _sniff_mime(data: bytes) -> str | None:
+    for magic, mime in _MAGIC_BYTES:
+        if data[: len(magic)] == magic:
+            return mime
+    return None
+
 
 def _upload_root() -> Path:
     return Path(settings.UPLOAD_DIR).resolve()
@@ -45,6 +59,16 @@ async def save_payment_proof(
     if len(contents) > max_bytes:
         raise ValidationError(
             f"File too large. Maximum size is {settings.UPLOAD_MAX_FILE_SIZE_MB} MB."
+        )
+
+    # Verify actual file bytes match the declared content-type
+    actual_mime = _sniff_mime(contents)
+    if actual_mime is None:
+        raise ValidationError("File contents do not match any allowed file type.")
+    if actual_mime != content_type:
+        raise ValidationError(
+            f"File contents appear to be '{actual_mime}' but "
+            f"Content-Type declared '{content_type}'."
         )
 
     ext = _ALLOWED[content_type]

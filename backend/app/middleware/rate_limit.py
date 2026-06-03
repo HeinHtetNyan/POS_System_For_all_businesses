@@ -17,9 +17,9 @@ logger = get_logger(__name__)
 # One sliding window: 60 seconds
 _WINDOW = 60
 
-# Auth paths are already handled by Nginx's stricter auth_limit zone
-# plus the existing check_registration_rate_limit helper — skip them here
 _AUTH_PREFIX = "/api/v1/auth/"
+_LOGIN_PATH = "/api/v1/auth/login"
+_LOGIN_LIMIT = 10  # attempts per minute per IP
 
 
 class PerUserRateLimitMiddleware(BaseHTTPMiddleware):
@@ -42,7 +42,31 @@ class PerUserRateLimitMiddleware(BaseHTTPMiddleware):
 
         path = request.url.path
 
-        # Only rate-limit API routes; skip auth paths (Nginx handles those)
+        # Apply a strict per-IP limit on the login endpoint regardless of Nginx
+        if path == _LOGIN_PATH:
+            try:
+                from app.db.redis import get_redis_pool
+                redis = await get_redis_pool()
+                ip = self._get_real_ip(request)
+                exceeded = await self._sliding_window(redis, f"rl:login:{ip}", _LOGIN_LIMIT, _WINDOW)
+                if exceeded:
+                    return JSONResponse(
+                        status_code=429,
+                        content={
+                            "success": False,
+                            "error": {
+                                "code": "RATE_LIMIT_EXCEEDED",
+                                "message": "Too many login attempts. Please wait a minute and try again.",
+                                "details": {"retry_after_seconds": _WINDOW},
+                            },
+                        },
+                        headers={"Retry-After": str(_WINDOW)},
+                    )
+            except Exception:
+                pass  # fail-open so a Redis outage never blocks legitimate logins
+            return await call_next(request)
+
+        # Skip remaining auth paths (register handled by its own helper)
         if not path.startswith("/api/") or path.startswith(_AUTH_PREFIX):
             return await call_next(request)
 
@@ -85,6 +109,14 @@ class PerUserRateLimitMiddleware(BaseHTTPMiddleware):
 
         return await call_next(request)
 
+    def _get_real_ip(self, request: Request) -> str:
+        """Return the real client IP, trusting X-Forwarded-For only when configured."""
+        if settings.TRUST_PROXY_HEADERS:
+            forwarded = request.headers.get("X-Forwarded-For", "")
+            if forwarded:
+                return forwarded.split(",")[0].strip()
+        return request.client.host if request.client else "unknown"
+
     def _resolve_identity(self, request: Request) -> tuple[str, bool]:
         """Return (identity_key, is_authenticated_user).
 
@@ -110,12 +142,7 @@ class PerUserRateLimitMiddleware(BaseHTTPMiddleware):
             except JWTError:
                 pass  # invalid signature → fall through to IP
 
-        # IP fallback — respect X-Forwarded-For set by Nginx
-        forwarded = request.headers.get("X-Forwarded-For", "")
-        ip = forwarded.split(",")[0].strip() if forwarded else (
-            request.client.host if request.client else "unknown"
-        )
-        return ip, False
+        return self._get_real_ip(request), False
 
     @staticmethod
     async def _sliding_window(redis, key: str, limit: int, window: int) -> bool:

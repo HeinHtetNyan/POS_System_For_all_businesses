@@ -131,7 +131,8 @@ class RegisterRequest(BaseSchema):
 
 class RegistrationResponse(BaseSchema):
     access_token: str
-    refresh_token: str
+    # Internal use only — set as httponly cookie, excluded from JSON response
+    refresh_token: str = Field(exclude=True)
     token_type: str = "bearer"
     expires_in: int
     user_id: str
@@ -172,6 +173,13 @@ class PaymentProofCreateRequest(BaseSchema):
     proof_file_url: str
     action_type: ProofActionType = ProofActionType.INITIAL_ACTIVATION
     target_plan_id: uuid.UUID | None = None
+
+    @field_validator("proof_file_url")
+    @classmethod
+    def must_be_internal_upload(cls, v: str) -> str:
+        if not v.startswith("/uploads/proofs/"):
+            raise ValueError("proof_file_url must be an internal upload path starting with /uploads/proofs/")
+        return v
 
     @field_validator("amount", mode="before")
     @classmethod

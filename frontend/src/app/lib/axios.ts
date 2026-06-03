@@ -6,25 +6,17 @@ export const apiClient = axios.create({
   baseURL: BASE_URL,
   headers: { 'Content-Type': 'application/json' },
   timeout: 15_000,
+  withCredentials: true,
 })
 
 
 const TOKEN_KEY = 'nexuspos_access_token'
-const REFRESH_KEY = 'nexuspos_refresh_token'
 
 export const tokenStorage = {
-  getAccess:    ()            => localStorage.getItem(TOKEN_KEY),
-  getRefresh:   ()            => localStorage.getItem(REFRESH_KEY),
-  setAccess:    (t: string)   => localStorage.setItem(TOKEN_KEY, t),
-  setRefresh:   (t: string)   => localStorage.setItem(REFRESH_KEY, t),
-  setTokens:    (a: string, r: string) => {
-    localStorage.setItem(TOKEN_KEY, a)
-    localStorage.setItem(REFRESH_KEY, r)
-  },
-  clear: () => {
-    localStorage.removeItem(TOKEN_KEY)
-    localStorage.removeItem(REFRESH_KEY)
-  },
+  getAccess:  ()           => localStorage.getItem(TOKEN_KEY),
+  setAccess:  (t: string)  => localStorage.setItem(TOKEN_KEY, t),
+  setTokens:  (a: string)  => localStorage.setItem(TOKEN_KEY, a),
+  clear:      ()           => localStorage.removeItem(TOKEN_KEY),
 }
 
 
@@ -87,14 +79,6 @@ apiClient.interceptors.response.use(
         return Promise.reject(err)
       }
 
-      const refreshToken = tokenStorage.getRefresh()
-
-      if (!refreshToken) {
-        tokenStorage.clear()
-        window.location.href = '/login'
-        return Promise.reject(err)
-      }
-
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject })
@@ -108,10 +92,9 @@ apiClient.interceptors.response.use(
       isRefreshing = true
 
       try {
-        const { data } = await axios.post(`${BASE_URL}/auth/refresh`, {
-          refresh_token: refreshToken,
-        })
-        tokenStorage.setTokens(data.access_token, data.refresh_token)
+        // The refresh token travels as an httponly cookie automatically
+        const { data } = await axios.post(`${BASE_URL}/auth/refresh`, {}, { withCredentials: true })
+        tokenStorage.setTokens(data.access_token)
         processQueue(null, data.access_token)
         original.headers.Authorization = `Bearer ${data.access_token}`
         return apiClient(original)

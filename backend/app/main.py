@@ -113,6 +113,16 @@ def create_application() -> FastAPI:
             },
         )
 
+    # Security headers on every response
+    @app.middleware("http")
+    async def add_security_headers(request: Request, call_next):  # type: ignore[no-untyped-def]
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        return response
+
     # Routes
     app.include_router(api_router, prefix=API_V1_PREFIX)
 
@@ -165,16 +175,15 @@ def create_application() -> FastAPI:
         if not file_path.is_file():
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
-        return FileResponse(file_path)
+        return FileResponse(
+            file_path,
+            headers={"Content-Disposition": f"attachment; filename={file_path.name}"},
+        )
 
     @app.get("/health", tags=["Health"], include_in_schema=False)
     async def health_check() -> dict:
         """Basic liveness probe — returns 200 as long as the process is alive."""
-        return {
-            "status": "healthy",
-            "version": settings.APP_VERSION,
-            "environment": settings.APP_ENV,
-        }
+        return {"status": "healthy"}
 
     @app.get("/health/ready", tags=["Health"], include_in_schema=False)
     async def readiness_check(request: Request) -> JSONResponse:

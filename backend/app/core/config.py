@@ -56,7 +56,18 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173"]
     CORS_ALLOW_CREDENTIALS: bool = True
     CORS_ALLOW_METHODS: list[str] = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-    CORS_ALLOW_HEADERS: list[str] = ["*"]
+    CORS_ALLOW_HEADERS: list[str] = [
+        "Authorization",
+        "Content-Type",
+        "Accept",
+        "Origin",
+        "X-Request-ID",
+        "Idempotency-Key",
+    ]
+
+    # Proxy trust — set True only when running behind a trusted reverse proxy (Nginx/LB)
+    # that correctly sets X-Forwarded-For. When False the real connection IP is always used.
+    TRUST_PROXY_HEADERS: bool = False
 
     # Rate Limiting
     RATE_LIMIT_ENABLED: bool = True

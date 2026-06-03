@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 
 from app.api.deps import (
     ClientIp,
@@ -15,8 +15,6 @@ from app.db.redis import get_redis
 from app.schemas.auth import (
     ChangePasswordRequest,
     LoginRequest,
-    LogoutRequest,
-    RefreshTokenRequest,
     TokenResponse,
 )
 from app.schemas.common import SuccessResponse
@@ -61,16 +59,27 @@ async def login(
 
 @router.post("/refresh", response_model=TokenResponse, summary="Refresh access token")
 async def refresh_token(
-    payload: RefreshTokenRequest,
+    request: Request,
     response: Response,
     db: DbSession,
     ip: ClientIp,
     ua: UserAgent,
     request_id: RequestId,
 ) -> TokenResponse:
+    from app.core.exceptions import AuthenticationError as _AuthErr
+    # Read refresh token from httponly cookie (preferred) or fall back to JSON body
+    token_str: str | None = request.cookies.get(settings.JWT_REFRESH_TOKEN_COOKIE_NAME)
+    if not token_str:
+        try:
+            body = await request.json()
+            token_str = body.get("refresh_token")
+        except Exception:
+            pass
+    if not token_str:
+        raise _AuthErr("No refresh token provided")
     service = AuthService(db)
     token_response, new_refresh_token = await service.refresh_tokens(
-        refresh_token=payload.refresh_token,
+        refresh_token=token_str,
         ip_address=ip,
         user_agent=ua,
         request_id=request_id,
@@ -88,16 +97,24 @@ async def refresh_token(
 
 @router.post("/logout", response_model=SuccessResponse, summary="Logout user")
 async def logout(
-    payload: LogoutRequest,
+    request: Request,
     response: Response,
     db: DbSession,
     current_user: CurrentUser,
     request_id: RequestId,
 ) -> SuccessResponse:
+    # Prefer cookie; fall back to JSON body for backward compatibility
+    token_str: str | None = request.cookies.get(settings.JWT_REFRESH_TOKEN_COOKIE_NAME)
+    if not token_str:
+        try:
+            body = await request.json()
+            token_str = body.get("refresh_token")
+        except Exception:
+            pass
     service = AuthService(db)
     await service.logout(
         user_id=current_user.id,
-        refresh_token=payload.refresh_token,
+        refresh_token=token_str,
         tenant_id=current_user.tenant_id,
         request_id=request_id,
     )

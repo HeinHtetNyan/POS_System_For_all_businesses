@@ -61,14 +61,26 @@ class AuthService:
             user = await self.user_repo.get_by_phone(phone)
 
         if not user or not verify_password(password, user.hashed_password):
-            await self.audit_service.log(
-                action=AuditAction.LOGIN_FAILED,
-                entity_type=EntityType.AUTH_SESSION,
-                metadata={"identifier": email or identifier, "reason": "Invalid credentials"},
-                ip_address=ip_address,
-                user_agent=user_agent,
-                request_id=request_id,
-            )
+            import hashlib as _hl
+            _raw = (email or identifier or "").encode()
+            _id_hash = _hl.sha256(_raw).hexdigest()[:16]
+            try:
+                # Use an independent session so the audit write is committed even
+                # though we're about to raise (which rolls back the main session).
+                from app.db.session import AsyncSessionLocal
+                async with AsyncSessionLocal() as _audit_session:
+                    from app.services.audit_service import AuditService as _AuditSvc
+                    await _AuditSvc(_audit_session).log(
+                        action=AuditAction.LOGIN_FAILED,
+                        entity_type=EntityType.AUTH_SESSION,
+                        metadata={"identifier_hash": _id_hash, "reason": "Invalid credentials"},
+                        ip_address=ip_address,
+                        user_agent=user_agent,
+                        request_id=request_id,
+                    )
+                    await _audit_session.commit()
+            except Exception:
+                pass  # audit failure must never block a login attempt
             raise AuthenticationError("Invalid credentials")
 
         if user.status != UserStatus.ACTIVE:
@@ -112,7 +124,6 @@ class AuthService:
 
         token_response = TokenResponse(
             access_token=access_token,
-            refresh_token=refresh_token_str,
             expires_in=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         )
         return token_response, refresh_token_str
@@ -180,7 +191,6 @@ class AuthService:
 
         token_response = TokenResponse(
             access_token=access_token,
-            refresh_token=new_refresh_token,
             expires_in=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         )
         return token_response, new_refresh_token
