@@ -35,6 +35,7 @@ class SubscriptionPlan(Base):
     is_referral_plan: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_custom: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     contact_links: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    payment_info: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     entitlements: Mapped[list[PlanEntitlement]] = relationship(
         "PlanEntitlement", back_populates="plan", cascade="all, delete-orphan"
@@ -47,6 +48,17 @@ class SubscriptionPlan(Base):
 
     def __repr__(self) -> str:
         return f"<SubscriptionPlan {self.code} price={self.price}>"
+
+
+class PlatformSettings(Base):
+    """Singleton row (key='default') holding platform-wide configuration."""
+    __tablename__ = "platform_settings"
+
+    settings_key: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, default="default")
+    payment_methods: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
+    def __repr__(self) -> str:
+        return f"<PlatformSettings key={self.settings_key}>"
 
 
 class PlanEntitlement(Base):

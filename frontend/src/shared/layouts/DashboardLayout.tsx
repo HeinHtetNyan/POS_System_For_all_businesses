@@ -46,6 +46,7 @@ const SUPER_ADMIN_NAV: NavItem[] = [
   { to: '/super-admin/businesses',       section: 'businesses',       label: 'nav.sa.businesses',       icon: <span className="w-[18px] h-[18px] flex items-center justify-center text-base leading-none">🏢</span> },
   { to: '/super-admin/resellers',        section: 'resellers',        label: 'nav.sa.resellers',        icon: <span className="w-[18px] h-[18px] flex items-center justify-center text-base leading-none">🤝</span> },
   { to: '/super-admin/plans',            section: 'plans',            label: 'nav.sa.plans',            icon: <span className="w-[18px] h-[18px] flex items-center justify-center text-base leading-none">📋</span> },
+  { to: '/super-admin/payment-methods',  section: 'payment-methods',  label: 'nav.sa.payment_methods',  icon: <span className="w-[18px] h-[18px] flex items-center justify-center text-base leading-none">💳</span> },
   { to: '/super-admin/notifications',    section: 'notifications',    label: 'nav.sa.notifications',    icon: <span className="w-[18px] h-[18px] flex items-center justify-center text-base leading-none">🔔</span> },
   { to: '/super-admin/audit-logs',       section: 'audit-logs',       label: 'nav.sa.audit_logs',       icon: <span className="w-[18px] h-[18px] flex items-center justify-center text-base leading-none">📝</span> },
   { to: '/super-admin/reseller-finance', section: 'reseller-finance', label: 'nav.sa.reseller_finance', icon: <span className="w-[18px] h-[18px] flex items-center justify-center text-base leading-none">💰</span> },

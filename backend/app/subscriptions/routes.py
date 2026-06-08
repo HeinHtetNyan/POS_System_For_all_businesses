@@ -26,6 +26,7 @@ from app.subscriptions.schemas import (
     PaginatedSubscriptionHistory,
     PaymentProofCreateRequest,
     PaymentProofResponse,
+    PlatformPaymentMethodsResponse,
     PlanCreateRequest,
     PlanResponse,
     PlanUpdateRequest,
@@ -35,7 +36,7 @@ from app.subscriptions.schemas import (
     TrialStatusResponse,
 )
 from app.subscriptions.entitlements import EntitlementService
-from app.subscriptions.services import PaymentProofService, PlanService, SubscriptionService, TrialStatusService
+from app.subscriptions.services import PaymentProofService, PlanService, PlatformSettingsService, SubscriptionService, TrialStatusService
 from app.schemas.common import PaginatedResponse
 
 router = APIRouter()
@@ -325,3 +326,13 @@ async def reject_payment_proof(
         request_id=request_id,
     )
     return PaymentProofResponse.model_validate(proof)
+
+
+@router.get("/platform/payment-methods", response_model=PlatformPaymentMethodsResponse)
+async def get_platform_payment_methods(
+    db: DbSession,
+    _: CurrentUser,
+) -> PlatformPaymentMethodsResponse:
+    svc = PlatformSettingsService(db)
+    methods = await svc.get_payment_methods()
+    return PlatformPaymentMethodsResponse(payment_methods=methods)

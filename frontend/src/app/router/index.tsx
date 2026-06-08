@@ -99,8 +99,9 @@ const AdminUserDetailPage         = lazy(() => import('@/features/superadmin/Adm
 const ResellersPage               = lazy(() => import('@/features/superadmin/ResellersPage'))
 const ResellerDetailPage          = lazy(() => import('@/features/superadmin/ResellerDetailPage'))
 const AuditLogsPage               = lazy(() => import('@/features/superadmin/AuditLogsPage'))
-const PlatformNotificationsPage   = lazy(() => import('@/features/superadmin/PlatformNotificationsPage'))
-const ResellerFinancePage         = lazy(() => import('@/features/superadmin/ResellerFinancePage'))
+const PlatformNotificationsPage     = lazy(() => import('@/features/superadmin/PlatformNotificationsPage'))
+const PlatformPaymentMethodsPage    = lazy(() => import('@/features/superadmin/PlatformPaymentMethodsPage'))
+const ResellerFinancePage           = lazy(() => import('@/features/superadmin/ResellerFinancePage'))
 
 function Loading() {
   return (
@@ -381,9 +382,10 @@ export const router = createBrowserRouter([
           { path: 'entitlements', element: <Navigate to="/super-admin/businesses" replace /> },
           { path: 'analytics',    element: <Navigate to="/super-admin/dashboard" replace /> },
           { path: 'devices',      element: <Navigate to="/super-admin/businesses" replace /> },
-          { path: 'notifications',  element: S(PlatformNotificationsPage) },
-          { path: 'audit-logs',     element: S(AuditLogsPage)             },
-          { path: 'reseller-finance', element: S(ResellerFinancePage)     },
+          { path: 'notifications',       element: S(PlatformNotificationsPage)  },
+          { path: 'payment-methods',    element: S(PlatformPaymentMethodsPage) },
+          { path: 'audit-logs',         element: S(AuditLogsPage)              },
+          { path: 'reseller-finance',   element: S(ResellerFinancePage)        },
           { path: 'audit',          element: <Navigate to="/super-admin/audit-logs" replace /> },
         ],
       },

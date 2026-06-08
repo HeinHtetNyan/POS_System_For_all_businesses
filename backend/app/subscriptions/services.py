@@ -27,6 +27,7 @@ logger = get_logger(__name__)
 from app.subscriptions.models import (
     PaymentProof,
     PlanEntitlement,
+    PlatformSettings,
     SubscriptionHistory,
     SubscriptionPlan,
     TenantSubscription,
@@ -1467,3 +1468,32 @@ class PaymentProofService:
         return await self.proof_repo.get_all(
             status=status, offset=offset, limit=page_size, tenant_id=tenant_id
         )
+
+
+class PlatformSettingsService:
+    SETTINGS_KEY = "default"
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def _get_or_create(self) -> PlatformSettings:
+        from sqlalchemy import select
+        result = await self.session.execute(
+            select(PlatformSettings).where(PlatformSettings.settings_key == self.SETTINGS_KEY)
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            row = PlatformSettings(settings_key=self.SETTINGS_KEY, payment_methods=[])
+            self.session.add(row)
+            await self.session.flush()
+        return row
+
+    async def get_payment_methods(self) -> list:
+        row = await self._get_or_create()
+        return row.payment_methods or []
+
+    async def set_payment_methods(self, methods: list) -> list:
+        row = await self._get_or_create()
+        row.payment_methods = [m.model_dump() if hasattr(m, 'model_dump') else dict(m) for m in methods]
+        await self.session.flush()
+        return row.payment_methods

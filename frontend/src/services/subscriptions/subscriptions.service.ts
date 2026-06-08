@@ -9,6 +9,7 @@ import type {
   PaginatedResponse,
   PublicPlan,
   TrialStatus,
+  SubscriptionPaymentMethod,
 } from '@/shared/types'
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api/v1'
@@ -128,4 +129,18 @@ export const subscriptionsService = {
 
   getMyEntitlements: () =>
     apiClient.get<EffectiveEntitlement[]>('/subscriptions/entitlements').then(r => r.data),
+
+  getPlatformPaymentMethods: () =>
+    apiClient.get<{ payment_methods: SubscriptionPaymentMethod[] }>('/subscriptions/platform/payment-methods').then(r => r.data.payment_methods),
+
+  adminSetPlatformPaymentMethods: (methods: SubscriptionPaymentMethod[]) =>
+    apiClient.put<{ payment_methods: SubscriptionPaymentMethod[] }>('/subscriptions/admin/platform/payment-methods', { payment_methods: methods }).then(r => r.data.payment_methods),
+
+  adminUploadPaymentMethodIcon: (file: File) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return apiClient.post<{ icon_url: string }>('/subscriptions/admin/platform/payment-method-icon', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(r => r.data.icon_url)
+  },
 }

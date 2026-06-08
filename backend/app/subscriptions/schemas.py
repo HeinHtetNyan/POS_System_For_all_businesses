@@ -40,6 +40,7 @@ class PlanCreateRequest(BaseSchema):
     is_referral_plan: bool = False
     is_custom: bool = False
     contact_links: dict | None = None
+    payment_info: list | None = None
     entitlements: list[PlanEntitlementCreate] = Field(default_factory=list)
 
     @field_validator("price", mode="before")
@@ -62,6 +63,7 @@ class PlanUpdateRequest(BaseSchema):
     is_referral_plan: bool | None = None
     is_custom: bool | None = None
     contact_links: dict | None = None
+    payment_info: list | None = None
     entitlements: list[PlanEntitlementCreate] | None = None
 
     @field_validator("price", mode="before")
@@ -87,7 +89,28 @@ class PlanResponse(TimestampedSchema):
     is_referral_plan: bool
     is_custom: bool
     contact_links: dict | None
+    payment_info: list | None
     entitlements: list[PlanEntitlementResponse]
+
+
+class PlatformPaymentMethodItem(BaseSchema):
+    type: str
+    label: str
+    account_number: str
+    account_name: str
+    icon_url: str | None = None
+
+
+class PlatformPaymentMethodsResponse(BaseSchema):
+    payment_methods: list[PlatformPaymentMethodItem]
+
+
+class PlatformPaymentMethodsUpdateRequest(BaseSchema):
+    payment_methods: list[PlatformPaymentMethodItem]
+
+
+class PaymentMethodIconResponse(BaseSchema):
+    icon_url: str
 
 
 class TrialStatusResponse(BaseSchema):

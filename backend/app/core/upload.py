@@ -157,3 +157,40 @@ def get_receipt_logo_path(tenant_id: uuid.UUID) -> tuple[Path, str] | None:
         if path.exists():
             return path, mime
     return None
+
+
+async def save_payment_method_icon(file: UploadFile) -> str:
+    """Validate and save a platform payment method icon (JPEG/PNG, max 2 MB).
+
+    Returns a path like ``/uploads/payment-icons/<uuid>.ext``.
+    """
+    content_type = file.content_type or ""
+    if content_type not in _LOGO_ALLOWED:
+        raise ValidationError(
+            f"Unsupported file type '{content_type}'. Allowed: JPEG, PNG"
+        )
+
+    max_bytes = _LOGO_MAX_MB * 1024 * 1024
+    contents = await file.read()
+    if len(contents) > max_bytes:
+        raise ValidationError(f"Icon too large. Maximum size is {_LOGO_MAX_MB} MB.")
+
+    actual_mime = _sniff_mime(contents)
+    if actual_mime not in _LOGO_ALLOWED:
+        raise ValidationError("File contents do not appear to be a valid image.")
+    if actual_mime != content_type:
+        raise ValidationError(
+            f"File contents appear to be '{actual_mime}' but "
+            f"Content-Type declared '{content_type}'."
+        )
+
+    ext = _LOGO_ALLOWED[content_type]
+    icons_dir = _upload_root() / "payment-icons"
+    icons_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = f"{uuid.uuid4().hex}{ext}"
+    dest_path = icons_dir / filename
+    dest_path.write_bytes(contents)
+
+    logger.info("payment_method_icon_saved", filename=filename, size=len(contents))
+    return f"/uploads/payment-icons/{filename}"

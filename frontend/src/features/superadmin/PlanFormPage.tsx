@@ -7,8 +7,6 @@ import { Btn, Spinner } from '@/components/ui'
 import { subscriptionsService } from '@/services/subscriptions/subscriptions.service'
 import type { PlanCreateRequest } from '@/shared/types'
 
-// These are the exact feature_code strings the backend gates enforce.
-// Limit features need a numeric value; toggle features are simply on/off.
 const TOGGLE_FEATURES: { code: string; label: string; desc: string }[] = [
   { code: 'pos',              label: 'POS / Checkout',     desc: 'Access the point-of-sale checkout screen' },
   { code: 'inventory',        label: 'Inventory',          desc: 'Stock tracking, adjustments, and reports' },
@@ -25,9 +23,19 @@ const LIMIT_FEATURES: { code: string; label: string; desc: string; placeholder: 
   { code: 'devices',   label: 'Max Devices',   desc: 'Maximum number of POS devices per tenant',            placeholder: 'e.g. 3' },
 ]
 
-type EntRow = { feature_code: string; enabled: boolean; limit_value: string }
+const FIXED_CONTACT_KEYS = ['viber', 'telegram', 'facebook', 'tiktok'] as const
+type FixedContactKey = typeof FIXED_CONTACT_KEYS[number]
+const FIXED_CONTACT_LABELS: Record<FixedContactKey, string> = {
+  viber: 'Viber URL', telegram: 'Telegram URL', facebook: 'Facebook URL', tiktok: 'TikTok URL',
+}
+const FIXED_CONTACT_PLACEHOLDERS: Record<FixedContactKey, string> = {
+  viber: 'viber://chat?number=+95...', telegram: 'https://t.me/yourusername',
+  facebook: 'https://facebook.com/yourpage', tiktok: 'https://tiktok.com/@youraccount',
+}
 
-// Normalize legacy feature codes from DB (before migration) to canonical codes.
+type EntRow = { feature_code: string; enabled: boolean; limit_value: string }
+type CustomLink = { label: string; url: string }
+
 const LEGACY_CODE_MAP: Record<string, string> = {
   max_products:  'products',
   max_branches:  'branches',
@@ -43,7 +51,6 @@ function buildDefaultEntitlements(): EntRow[] {
 }
 
 function mergeEntitlements(existing: { feature_code: string; enabled: boolean; limit_value: number | null }[]): EntRow[] {
-  // Normalize any legacy max_* codes so they map to the canonical slot.
   const normalized = existing.map(e => ({
     ...e,
     feature_code: LEGACY_CODE_MAP[e.feature_code] ?? e.feature_code,
@@ -68,7 +75,8 @@ export default function PlanFormPage() {
     price: '', currency: 'MMK', trial_days: '14', sort_order: '0', is_active: true,
     is_referral_plan: false, is_custom: false,
   })
-  const [contactLinks, setContactLinks] = useState({ viber: '', telegram: '', facebook: '', tiktok: '' })
+  const [fixedLinks, setFixedLinks] = useState<Record<FixedContactKey, string>>({ viber: '', telegram: '', facebook: '', tiktok: '' })
+  const [customLinks, setCustomLinks] = useState<CustomLink[]>([])
   const [entitlements, setEntitlements] = useState<EntRow[]>(buildDefaultEntitlements)
 
   const { data: existingPlan, isLoading: planLoading } = useQuery({
@@ -92,12 +100,14 @@ export default function PlanFormPage() {
       is_referral_plan: existingPlan.is_referral_plan,
       is_custom:        existingPlan.is_custom ?? false,
     })
-    setContactLinks({
-      viber:    existingPlan.contact_links?.viber    ?? '',
-      telegram: existingPlan.contact_links?.telegram ?? '',
-      facebook: existingPlan.contact_links?.facebook ?? '',
-      tiktok:   existingPlan.contact_links?.tiktok   ?? '',
+    const cl = existingPlan.contact_links
+    setFixedLinks({
+      viber:    cl?.viber    ?? '',
+      telegram: cl?.telegram ?? '',
+      facebook: cl?.facebook ?? '',
+      tiktok:   cl?.tiktok   ?? '',
     })
+    setCustomLinks(cl?.custom ?? [])
     setEntitlements(mergeEntitlements(existingPlan.entitlements))
   }, [existingPlan])
 
@@ -123,6 +133,16 @@ export default function PlanFormPage() {
   })
 
   function handleSubmit() {
+    const hasAnyFixed = FIXED_CONTACT_KEYS.some(k => fixedLinks[k].trim())
+    const hasCustom = customLinks.some(l => l.label.trim() || l.url.trim())
+    const contact_links = (form.is_custom && (hasAnyFixed || hasCustom)) ? {
+      viber:    fixedLinks.viber.trim()    || null,
+      telegram: fixedLinks.telegram.trim() || null,
+      facebook: fixedLinks.facebook.trim() || null,
+      tiktok:   fixedLinks.tiktok.trim()   || null,
+      custom:   customLinks.filter(l => l.label.trim() && l.url.trim()),
+    } : null
+
     const payload: PlanCreateRequest = {
       name:             form.name.trim(),
       code:             form.code.trim(),
@@ -135,13 +155,8 @@ export default function PlanFormPage() {
       is_active:        form.is_active,
       is_referral_plan: form.is_referral_plan,
       is_custom:        form.is_custom,
-      contact_links:    form.is_custom ? {
-        viber:    contactLinks.viber.trim()    || null,
-        telegram: contactLinks.telegram.trim() || null,
-        facebook: contactLinks.facebook.trim() || null,
-        tiktok:   contactLinks.tiktok.trim()   || null,
-      } : null,
-      entitlements:     entitlements.map(e => ({
+      contact_links,
+      entitlements: entitlements.map(e => ({
         feature_code: e.feature_code,
         enabled: e.enabled,
         limit_value: e.limit_value.trim() ? Number(e.limit_value) : null,
@@ -155,6 +170,18 @@ export default function PlanFormPage() {
     setEntitlements(prev => prev.map(e => e.feature_code === code ? { ...e, ...patch } : e))
   }
 
+  function addCustomLink() {
+    setCustomLinks(prev => [...prev, { label: '', url: '' }])
+  }
+
+  function updateCustomLink(idx: number, patch: Partial<CustomLink>) {
+    setCustomLinks(prev => prev.map((l, i) => i === idx ? { ...l, ...patch } : l))
+  }
+
+  function removeCustomLink(idx: number) {
+    setCustomLinks(prev => prev.filter((_, i) => i !== idx))
+  }
+
   const isPending = createMutation.isPending || updateMutation.isPending
   const canSubmit = form.name.trim() && form.code.trim() && form.price && !isPending
 
@@ -163,6 +190,7 @@ export default function PlanFormPage() {
   }
 
   const inp = 'w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-amber-500'
+  const inpSm = 'w-full bg-zinc-800 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-sm text-zinc-100 focus:outline-none focus:border-amber-500'
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -180,6 +208,7 @@ export default function PlanFormPage() {
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
         <div className="max-w-2xl space-y-5">
 
+          {/* Plan Details */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 space-y-4">
             <h3 className="text-sm font-semibold text-zinc-100">Plan Details</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -249,31 +278,71 @@ export default function PlanFormPage() {
             </div>
           </div>
 
+          {/* Contact Links — only for custom plans */}
           {form.is_custom && (
             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 space-y-4">
               <div>
                 <h3 className="text-sm font-semibold text-zinc-100">Contact Links</h3>
-                <p className="text-xs text-zinc-500 mt-0.5">Social / messaging links shown on the plan card. Leave blank to hide a platform.</p>
+                <p className="text-xs text-zinc-500 mt-0.5">Social / messaging links shown on the custom plan card. Leave blank to hide.</p>
               </div>
-              {([
-                { key: 'viber',    label: 'Viber URL',    placeholder: 'viber://chat?number=+95...' },
-                { key: 'telegram', label: 'Telegram URL',  placeholder: 'https://t.me/yourusername' },
-                { key: 'facebook', label: 'Facebook URL',  placeholder: 'https://facebook.com/yourpage' },
-                { key: 'tiktok',   label: 'TikTok URL',    placeholder: 'https://tiktok.com/@youraccount' },
-              ] as const).map(({ key, label, placeholder }) => (
+
+              {FIXED_CONTACT_KEYS.map(key => (
                 <div key={key}>
-                  <label className="block text-xs text-zinc-400 mb-1">{label}</label>
+                  <label className="block text-xs text-zinc-400 mb-1">{FIXED_CONTACT_LABELS[key]}</label>
                   <input
-                    value={contactLinks[key]}
-                    onChange={e => setContactLinks(p => ({ ...p, [key]: e.target.value }))}
-                    placeholder={placeholder}
+                    value={fixedLinks[key]}
+                    onChange={e => setFixedLinks(p => ({ ...p, [key]: e.target.value }))}
+                    placeholder={FIXED_CONTACT_PLACEHOLDERS[key]}
                     className={inp}
                   />
                 </div>
               ))}
+
+              {customLinks.length > 0 && (
+                <div className="space-y-2 pt-1">
+                  <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">Additional Links</p>
+                  {customLinks.map((link, idx) => (
+                    <div key={idx} className="flex gap-2 items-start">
+                      <div className="flex-[0_0_35%]">
+                        <input
+                          value={link.label}
+                          onChange={e => updateCustomLink(idx, { label: e.target.value })}
+                          placeholder="Label (e.g. WhatsApp)"
+                          className={inpSm}
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <input
+                          value={link.url}
+                          onChange={e => updateCustomLink(idx, { url: e.target.value })}
+                          placeholder="https://…"
+                          className={inpSm}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeCustomLink(idx)}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center text-zinc-600 hover:text-red-400 hover:bg-red-950/50 transition-colors flex-shrink-0 mt-0.5"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={addCustomLink}
+                className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
+                Add another contact link
+              </button>
             </div>
           )}
 
+          {/* Feature Access */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
             <div className="px-5 py-3.5 border-b border-zinc-800">
               <p className="text-sm font-semibold text-zinc-100">Feature Access</p>
@@ -305,6 +374,7 @@ export default function PlanFormPage() {
             </div>
           </div>
 
+          {/* Usage Limits */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
             <div className="px-5 py-3.5 border-b border-zinc-800">
               <p className="text-sm font-semibold text-zinc-100">Usage Limits</p>

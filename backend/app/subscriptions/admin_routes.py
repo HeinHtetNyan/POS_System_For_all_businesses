@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Response, UploadFile, File
 
 from app.api.deps import DbSession, RequestId, require_super_admin
 from app.models.user import User
@@ -13,6 +13,7 @@ from app.subscriptions.entitlements import (
     EntitlementService,
     TenantOverrideService,
 )
+from app.subscriptions.services import PlatformSettingsService
 from app.subscriptions.schemas import (
     AdminChangePlanRequest,
     EffectiveEntitlementResponse,
@@ -21,6 +22,9 @@ from app.subscriptions.schemas import (
     PaginatedPaymentProofs,
     PaginatedSubscriptionHistory,
     PaymentProofResponse,
+    PaymentMethodIconResponse,
+    PlatformPaymentMethodsResponse,
+    PlatformPaymentMethodsUpdateRequest,
     SubscriptionHistoryResponse,
     SubscriptionOverviewResponse,
     SubscriptionResponse,
@@ -342,3 +346,29 @@ async def repair_subscription_statuses(
 
     await db.flush()
     return {"fixed": fixed, "message": f"Repaired {fixed} subscription(s)"}
+
+
+@router.put("/platform/payment-methods", response_model=PlatformPaymentMethodsResponse)
+async def update_platform_payment_methods(
+    db: DbSession,
+    _: Annotated[User, Depends(require_super_admin)],
+    data: PlatformPaymentMethodsUpdateRequest,
+) -> PlatformPaymentMethodsResponse:
+    svc = PlatformSettingsService(db)
+    methods = await svc.set_payment_methods(data.payment_methods)
+    return PlatformPaymentMethodsResponse(payment_methods=methods)
+
+
+@router.post("/platform/payment-method-icon", response_model=PaymentMethodIconResponse)
+async def upload_payment_method_icon(
+    _: Annotated[User, Depends(require_super_admin)],
+    file: UploadFile = File(...),
+) -> PaymentMethodIconResponse:
+    from app.core.upload import save_payment_method_icon
+    from app.core.exceptions import ValidationError
+    try:
+        icon_url = await save_payment_method_icon(file)
+    except ValidationError as exc:
+        from fastapi import HTTPException, status
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    return PaymentMethodIconResponse(icon_url=icon_url)

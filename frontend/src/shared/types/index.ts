@@ -552,6 +552,15 @@ export interface ContactLinks {
   telegram?: string | null
   facebook?: string | null
   tiktok?: string | null
+  custom?: { label: string; url: string }[]
+}
+
+export interface SubscriptionPaymentMethod {
+  type: string
+  label: string
+  account_number: string
+  account_name: string
+  icon_url?: string | null
 }
 
 export interface Plan {
@@ -567,6 +576,7 @@ export interface Plan {
   is_referral_plan: boolean
   is_custom: boolean
   contact_links: ContactLinks | null
+  payment_info: SubscriptionPaymentMethod[] | null
   sort_order: number
   entitlements: PlanEntitlement[]
   created_at: string
@@ -677,6 +687,7 @@ export interface PlanCreateRequest {
   is_referral_plan?: boolean
   is_custom?: boolean
   contact_links?: ContactLinks | null
+  payment_info?: SubscriptionPaymentMethod[] | null
   sort_order?: number
   entitlements?: { feature_code: string; enabled: boolean; limit_value?: number | null }[]
 }
@@ -692,6 +703,7 @@ export interface PlanUpdateRequest {
   is_referral_plan?: boolean
   is_custom?: boolean
   contact_links?: ContactLinks | null
+  payment_info?: SubscriptionPaymentMethod[] | null
   sort_order?: number
   entitlements?: { feature_code: string; enabled: boolean; limit_value?: number | null }[]
 }

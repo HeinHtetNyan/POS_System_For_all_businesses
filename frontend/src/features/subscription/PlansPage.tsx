@@ -6,7 +6,7 @@ import { Badge, Btn, Spinner } from '@/components/ui'
 import { cn } from '@/shared/utils'
 import { extractApiMsg } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth.store'
-import type { ContactLinks, Plan } from '@/shared/types'
+import type { ContactLinks, Plan, SubscriptionPaymentMethod } from '@/shared/types'
 import { ProofActionType } from '@/shared/types'
 
 const FEATURE_LABELS: Record<string, string> = {
@@ -71,6 +71,68 @@ const SOCIAL_PLATFORMS = [
   },
 ]
 
+const PAYMENT_METHOD_ICONS: Record<string, string> = {
+  KPAY: '💙', WAVEPAY: '🧡', AYA_PAY: '🟡', CB_PAY: '🔵',
+  BANK_TRANSFER: '🏦', OTHER: '💳',
+}
+
+const PAYMENT_METHOD_COLORS: Record<string, string> = {
+  KPAY: 'border-sky-700/50 bg-sky-900/20',
+  WAVEPAY: 'border-orange-700/50 bg-orange-900/20',
+  AYA_PAY: 'border-amber-700/50 bg-amber-900/20',
+  CB_PAY: 'border-indigo-700/50 bg-indigo-900/20',
+  BANK_TRANSFER: 'border-teal-700/50 bg-teal-900/20',
+  OTHER: 'border-zinc-700 bg-zinc-800/50',
+}
+
+const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+
+function PaymentMethodLogo({ method }: { method: SubscriptionPaymentMethod }) {
+  const src = method.icon_url
+    ? (method.icon_url.startsWith('http') ? method.icon_url : `${API_BASE}${method.icon_url}`)
+    : null
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt={method.label}
+        className="w-7 h-7 rounded-lg object-contain bg-white/5 flex-shrink-0"
+        onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+      />
+    )
+  }
+  return <span className="text-base leading-none flex-shrink-0">{PAYMENT_METHOD_ICONS[method.type] ?? '💳'}</span>
+}
+
+function HowToPaySection({ methods }: { methods: SubscriptionPaymentMethod[] | undefined }) {
+  if (!methods || methods.length === 0) return null
+  return (
+    <div className="p-5 border-b border-zinc-800 space-y-3">
+      <div className="flex items-center gap-2">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-amber-400 flex-shrink-0">
+          <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+        </svg>
+        <p className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">How to Pay</p>
+      </div>
+      <p className="text-[11px] text-zinc-500">Transfer the payment to one of the accounts below, then upload your receipt.</p>
+      <div className="space-y-2">
+        {methods.map((m, i) => (
+          <div key={i} className={cn('rounded-xl border px-4 py-3 space-y-1', PAYMENT_METHOD_COLORS[m.type] ?? 'border-zinc-700 bg-zinc-800/50')}>
+            <div className="flex items-center gap-2.5">
+              <PaymentMethodLogo method={m} />
+              <span className="text-sm font-semibold text-zinc-100">{m.label}</span>
+            </div>
+            <div className="pl-10 space-y-0.5">
+              <p className="text-sm font-mono text-amber-300 font-bold tracking-wide">{m.account_number}</p>
+              {m.account_name && <p className="text-xs text-zinc-400">{m.account_name}</p>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function ContactFooter({ links }: { links: ContactLinks | null }) {
   const active = SOCIAL_PLATFORMS.filter(p => links?.[p.key])
   return (
@@ -98,8 +160,8 @@ function ContactFooter({ links }: { links: ContactLinks | null }) {
   )
 }
 
-// Proof submission modal — plan is pre-selected, just show the payment form
-function UpgradeProofModal({ plan, onClose }: { plan: Plan; onClose: () => void }) {
+// Proof submission modal — plan is pre-selected, shows payment info then upload form
+function UpgradeProofModal({ plan, paymentMethods, onClose }: { plan: Plan; paymentMethods: SubscriptionPaymentMethod[]; onClose: () => void }) {
   const qc = useQueryClient()
   const [amount, setAmount] = useState('')
   const [currency, setCurrency] = useState('MMK')
@@ -157,8 +219,8 @@ function UpgradeProofModal({ plan, onClose }: { plan: Plan; onClose: () => void 
   const inp = 'w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-amber-500'
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 overflow-y-auto">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl my-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
           <div>
             <h3 className="text-base font-semibold text-zinc-100">
@@ -200,6 +262,7 @@ function UpgradeProofModal({ plan, onClose }: { plan: Plan; onClose: () => void 
           </>
         ) : (
           <>
+            <HowToPaySection methods={paymentMethods} />
             <div className="p-5 space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -291,7 +354,7 @@ function ConfirmDowngradeModal({
 }
 
 // Proof upload modal for upgrade — plan is pre-selected
-function UpgradeProofSubmitModal({ plan, onClose }: { plan: Plan; onClose: () => void }) {
+function UpgradeProofSubmitModal({ plan, paymentMethods, onClose }: { plan: Plan; paymentMethods: SubscriptionPaymentMethod[]; onClose: () => void }) {
   const qc = useQueryClient()
   const [amount, setAmount] = useState('')
   const [currency, setCurrency] = useState('MMK')
@@ -350,8 +413,8 @@ function UpgradeProofSubmitModal({ plan, onClose }: { plan: Plan; onClose: () =>
   const inp = 'w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-amber-500'
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 overflow-y-auto">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl my-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
           <div>
             <h3 className="text-base font-semibold text-zinc-100">{done ? 'Request Submitted' : 'Submit Upgrade Payment Proof'}</h3>
@@ -388,6 +451,7 @@ function UpgradeProofSubmitModal({ plan, onClose }: { plan: Plan; onClose: () =>
           </>
         ) : (
           <>
+            <HowToPaySection methods={paymentMethods} />
             <div className="p-5 space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -460,6 +524,12 @@ export default function PlansPage() {
     staleTime: 60_000,
   })
 
+  const { data: platformPaymentMethods = [] } = useQuery({
+    queryKey: ['platform', 'payment-methods'],
+    queryFn: subscriptionsService.getPlatformPaymentMethods,
+    staleTime: 300_000,
+  })
+
   const downgradeMutation = useMutation({
     mutationFn: (planId: string) => subscriptionsService.downgrade(planId),
     onSuccess: (data, planId) => {
@@ -507,10 +577,10 @@ export default function PlansPage() {
   return (
     <>
       {proofPlan && (
-        <UpgradeProofModal plan={proofPlan} onClose={() => setProofPlan(null)} />
+        <UpgradeProofModal plan={proofPlan} paymentMethods={platformPaymentMethods} onClose={() => setProofPlan(null)} />
       )}
       {upgradeProofPlan && (
-        <UpgradeProofSubmitModal plan={upgradeProofPlan} onClose={() => setUpgradeProofPlan(null)} />
+        <UpgradeProofSubmitModal plan={upgradeProofPlan} paymentMethods={platformPaymentMethods} onClose={() => setUpgradeProofPlan(null)} />
       )}
       {confirmDowngrade && (
         <ConfirmDowngradeModal

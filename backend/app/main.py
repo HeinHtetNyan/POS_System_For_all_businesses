@@ -180,6 +180,16 @@ def create_application() -> FastAPI:
             headers={"Content-Disposition": f"attachment; filename={file_path.name}"},
         )
 
+    @app.get("/uploads/payment-icons/{filename}", include_in_schema=False)
+    async def serve_payment_icon(filename: str) -> FileResponse:
+        upload_root = Path(settings.UPLOAD_DIR).resolve()
+        file_path = (upload_root / "payment-icons" / filename).resolve()
+        if not str(file_path).startswith(str(upload_root)):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid path")
+        if not file_path.is_file():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+        return FileResponse(file_path)
+
     @app.get("/health", tags=["Health"], include_in_schema=False)
     async def health_check() -> dict:
         """Basic liveness probe — returns 200 as long as the process is alive."""
