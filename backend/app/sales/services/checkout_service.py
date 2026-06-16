@@ -2,7 +2,6 @@ from __future__ import annotations
 
 """
 Transactional Checkout Engine
-==============================
 ALL-OR-NOTHING: every checkout operation runs inside a single database
 transaction. On any failure the entire transaction is rolled back, leaving
 inventory, orders, payments, and receipts in a consistent state.
@@ -136,9 +135,19 @@ def _compute_order_totals(
         item_subtotal = item.unit_price * item.quantity
         subtotal += item_subtotal
         item_discount_total += item.discount_amount
-        # Tax computed on (subtotal - item_discount)
+        # Tax computed on (item_subtotal - item_discount) before order discount
         taxable = item_subtotal - item.discount_amount
         tax_amount += taxable * item.tax_rate
+
+    # The order-level discount reduces the tax base proportionally across items.
+    # Without this, the backend charges tax on the order discount itself, causing
+    # a mismatch with the frontend (which applies order discount before tax).
+    # e.g. 100 Ks order discount at 10% tax → 10 Ks overcharge on every order.
+    item_taxable_total = subtotal - item_discount_total
+    if item_taxable_total > Decimal("0") and order_discount > Decimal("0"):
+        effective_disc = min(order_discount, item_taxable_total)
+        # Scale tax down proportionally (works for both uniform and mixed rates)
+        tax_amount = tax_amount * (item_taxable_total - effective_disc) / item_taxable_total
 
     total_discount = item_discount_total + order_discount
     total_amount = subtotal - total_discount + tax_amount
@@ -208,8 +217,9 @@ class CheckoutService:
         # 2. Validate input
         if not data.items:
             raise ValidationError("Order must contain at least one item")
-        if not data.payments:
-            raise ValidationError("Order must have at least one payment")
+        # On-account sales (customer_id set, no payment) are allowed — balance is tracked on ledger
+        if not data.payments and not data.customer_id:
+            raise ValidationError("Order must have at least one payment, or assign a customer for on-account sale")
         for pmt in data.payments:
             if pmt.amount <= Decimal("0"):
                 raise ValidationError("Payment amount must be positive")
@@ -226,7 +236,7 @@ class CheckoutService:
         # 4. Compute order totals
         totals = _compute_order_totals(data.items, data.order_discount_amount)
         total_amount = totals["total_amount"]
-        amount_paid = sum(p.amount for p in data.payments).quantize(Decimal("0.0001"))
+        amount_paid = sum((p.amount for p in data.payments), Decimal("0")).quantize(Decimal("0.0001"))
 
         # 5. Generate order number (uses locked counter row)
         branch_code = str(branch_id).replace("-", "")[:8].upper()
@@ -272,6 +282,32 @@ class CheckoutService:
             actor_user_id=actor_user_id,
             now=now,
         )
+
+        # 8b. Update customer ledger for on-account / partial / full sales
+        if data.customer_id and total_amount > Decimal("0"):
+            from app.customers.services import CustomerService
+            from app.customers.schemas import RecordPaymentRequest as CustPaymentRequest
+            customer_svc = CustomerService(self.session)
+            await customer_svc.create_sale_debt(
+                customer_id=data.customer_id,
+                tenant_id=tenant_id,
+                amount=total_amount,
+                actor_id=actor_user_id,
+                order_id=str(order.id),
+            )
+            if amount_paid > Decimal("0"):
+                pmt_label = ", ".join(p.payment_method for p in data.payments)
+                await customer_svc.record_payment(
+                    customer_id=data.customer_id,
+                    tenant_id=tenant_id,
+                    data=CustPaymentRequest(
+                        amount=amount_paid,
+                        note=f"Payment for Order #{order_number} ({pmt_label})",
+                        reference_type="ORDER",
+                        reference_id=str(order.id),
+                    ),
+                    actor_id=actor_user_id,
+                )
 
         # 9. Create Receipt
         receipt = await self._create_receipt(
@@ -456,7 +492,7 @@ class CheckoutService:
             order_items.append(order_item)
 
             # SALE stock movement — the ONLY way to deduct inventory
-            await self.inventory_svc.create_stock_movement(
+            _, inv_after = await self.inventory_svc.create_stock_movement(
                 tenant_id=tenant_id,
                 branch_id=branch_id,
                 product_id=item.product_id,
@@ -469,6 +505,26 @@ class CheckoutService:
                 unit_cost=entry["unit_cost_snapshot"],
                 reason=f"Sale: {order.order_number}",
             )
+
+            # Fire low stock alert if stock just hit or crossed the reorder point
+            if (
+                inv_after.reorder_point is not None
+                and inv_after.quantity_on_hand <= inv_after.reorder_point
+            ):
+                await self.publisher.publish(
+                    DomainEvent(
+                        event_type=EventType.LOW_STOCK,
+                        tenant_id=tenant_id,
+                        payload={
+                            "product_id":    str(product.id),
+                            "product_name":  product.name,
+                            "sku":           product.sku or "",
+                            "current_stock": float(inv_after.quantity_on_hand),
+                            "reorder_level": float(inv_after.reorder_point),
+                            "branch_id":     str(branch_id),
+                        },
+                    )
+                )
 
         await self.session.flush()
         return order_items
@@ -558,6 +614,7 @@ class CheckoutService:
                 "method": p.payment_method,
                 "amount": str(p.amount),
                 "reference_number": p.reference_number,
+                "notes": p.notes,
             }
             for p in payments
         ]

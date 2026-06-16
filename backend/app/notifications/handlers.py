@@ -37,6 +37,44 @@ async def _get_tenant_user_ids(session, tenant_id) -> list:  # type: ignore[no-u
     return list(result.scalars().all())
 
 
+async def _get_inventory_alert_ids(session, tenant_id) -> list:  # type: ignore[no-untyped-def]
+    """Return active user IDs for inventory alerts: owner + manager + inventory staff."""
+    from sqlalchemy import select
+
+    from app.core.constants import UserRole, UserStatus
+    from app.models.user import User
+
+    result = await session.execute(
+        select(User.id).where(
+            User.tenant_id == tenant_id,
+            User.status == UserStatus.ACTIVE,
+            User.role.in_([
+                UserRole.BUSINESS_OWNER.value,
+                UserRole.MANAGER.value,
+                UserRole.INVENTORY_STAFF.value,
+            ]),
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def _get_tenant_owner_ids(session, tenant_id) -> list:  # type: ignore[no-untyped-def]
+    """Return active BUSINESS_OWNER user IDs for a tenant (plan changes — owner only)."""
+    from sqlalchemy import select
+
+    from app.core.constants import UserRole, UserStatus
+    from app.models.user import User
+
+    result = await session.execute(
+        select(User.id).where(
+            User.tenant_id == tenant_id,
+            User.status == UserStatus.ACTIVE,
+            User.role == UserRole.BUSINESS_OWNER.value,
+        )
+    )
+    return list(result.scalars().all())
+
+
 async def _get_super_admin_ids(session) -> list:  # type: ignore[no-untyped-def]
     from sqlalchemy import select
 
@@ -56,7 +94,6 @@ async def _get_super_admin_ids(session) -> list:  # type: ignore[no-untyped-def]
 @event_publisher.on(EventType.LOW_STOCK)
 async def handle_low_stock(event: DomainEvent) -> None:
     from app.db.session import AsyncSessionLocal
-    from app.notifications.email import email_service
     from app.notifications.services import NotificationService
 
     product_name = event.payload.get("product_name", "Unknown Product")
@@ -66,12 +103,12 @@ async def handle_low_stock(event: DomainEvent) -> None:
 
     async with AsyncSessionLocal() as session:
         try:
-            recipient_ids = await _get_tenant_user_ids(session, event.tenant_id)
+            recipient_ids = await _get_inventory_alert_ids(session, event.tenant_id)
             if not recipient_ids:
                 return
 
             svc = NotificationService(session)
-            notification = await svc.notify_users(
+            await svc.notify_users(
                 tenant_id=event.tenant_id,
                 type=NotificationType.INVENTORY,
                 priority=NotificationPriority.HIGH,
@@ -85,22 +122,6 @@ async def handle_low_stock(event: DomainEvent) -> None:
             )
             await session.commit()
 
-            # Queue email for each recipient who has email + inventory enabled
-            for uid in recipient_ids:
-                if await svc.is_email_enabled_for_type(uid, NotificationType.INVENTORY):
-                    await email_service.queue_email_notification(
-                        to="",  # resolved by Celery task from user_id
-                        template_name="low_stock",
-                        context={
-                            "recipient_name": "",
-                            "product_name": product_name,
-                            "sku": sku,
-                            "current_stock": current_stock,
-                            "reorder_level": reorder_level,
-                        },
-                        user_id=uid,
-                    )
-
         except Exception:
             await session.rollback()
             logger.exception("handle_low_stock_error", tenant_id=str(event.tenant_id))
@@ -110,7 +131,6 @@ async def handle_low_stock(event: DomainEvent) -> None:
 @event_publisher.on(EventType.PURCHASE_ORDER_APPROVED)
 async def handle_purchase_order_approved(event: DomainEvent) -> None:
     from app.db.session import AsyncSessionLocal
-    from app.notifications.email import email_service
     from app.notifications.services import NotificationService
 
     po_number = event.payload.get("po_number", "")
@@ -139,22 +159,6 @@ async def handle_purchase_order_approved(event: DomainEvent) -> None:
                 metadata=event.payload,
             )
             await session.commit()
-
-            for uid in recipient_ids:
-                if await svc.is_email_enabled_for_type(uid, NotificationType.PROCUREMENT):
-                    await email_service.queue_email_notification(
-                        to="",
-                        template_name="purchase_order_approved",
-                        context={
-                            "recipient_name": "",
-                            "po_number": po_number,
-                            "supplier_name": supplier_name,
-                            "total_amount": total_amount,
-                            "currency": currency,
-                            "expected_date": expected_date,
-                        },
-                        user_id=uid,
-                    )
 
         except Exception:
             await session.rollback()
@@ -639,7 +643,7 @@ async def handle_subscription_renewed(event: DomainEvent) -> None:
 
 @event_publisher.on(EventType.SUBSCRIPTION_UPGRADED)
 async def handle_subscription_upgraded(event: DomainEvent) -> None:
-    """Notify super admins when a tenant upgrades their plan."""
+    """Notify super admins and the tenant's owners/managers when a plan is upgraded."""
     from app.db.session import AsyncSessionLocal
     from app.notifications.services import NotificationService
     from app.models.tenant import Tenant
@@ -650,27 +654,40 @@ async def handle_subscription_upgraded(event: DomainEvent) -> None:
 
     async with AsyncSessionLocal() as session:
         try:
-            super_admin_ids = await _get_super_admin_ids(session)
-            if not super_admin_ids:
-                return
-
             tenant_name = "Unknown"
             if event.tenant_id:
                 row = await session.execute(select(Tenant.name).where(Tenant.id == event.tenant_id))
                 tenant_name = row.scalar_one_or_none() or "Unknown"
 
             svc = NotificationService(session)
-            await svc.notify_users(
-                tenant_id=None,
-                type=NotificationType.SUBSCRIPTION,
-                priority=NotificationPriority.HIGH,
-                title=f"Plan Upgraded: {tenant_name}",
-                message=(
-                    f"'{tenant_name}' upgraded from '{old_plan}' to '{new_plan}'."
-                ),
-                user_ids=super_admin_ids,
-                metadata=event.payload,
-            )
+
+            # Notify super admins
+            super_admin_ids = await _get_super_admin_ids(session)
+            if super_admin_ids:
+                await svc.notify_users(
+                    tenant_id=None,
+                    type=NotificationType.SUBSCRIPTION,
+                    priority=NotificationPriority.HIGH,
+                    title=f"Plan Upgraded: {tenant_name}",
+                    message=f"'{tenant_name}' upgraded from '{old_plan}' to '{new_plan}'.",
+                    user_ids=super_admin_ids,
+                    metadata=event.payload,
+                )
+
+            # Notify the tenant's business owner only (not managers)
+            if event.tenant_id:
+                owner_ids = await _get_tenant_owner_ids(session, event.tenant_id)
+                if owner_ids:
+                    await svc.notify_users(
+                        tenant_id=event.tenant_id,
+                        type=NotificationType.SUBSCRIPTION,
+                        priority=NotificationPriority.HIGH,
+                        title="Plan Upgraded",
+                        message=f"Your plan has been upgraded from '{old_plan}' to '{new_plan}'.",
+                        user_ids=owner_ids,
+                        metadata=event.payload,
+                    )
+
             await session.commit()
         except Exception:
             await session.rollback()
@@ -679,7 +696,7 @@ async def handle_subscription_upgraded(event: DomainEvent) -> None:
 
 @event_publisher.on(EventType.SUBSCRIPTION_DOWNGRADED)
 async def handle_subscription_downgraded(event: DomainEvent) -> None:
-    """Notify super admins when a tenant downgrades their plan."""
+    """Notify super admins and the tenant's owners/managers when a plan is downgraded."""
     from app.db.session import AsyncSessionLocal
     from app.notifications.services import NotificationService
     from app.models.tenant import Tenant
@@ -690,27 +707,40 @@ async def handle_subscription_downgraded(event: DomainEvent) -> None:
 
     async with AsyncSessionLocal() as session:
         try:
-            super_admin_ids = await _get_super_admin_ids(session)
-            if not super_admin_ids:
-                return
-
             tenant_name = "Unknown"
             if event.tenant_id:
                 row = await session.execute(select(Tenant.name).where(Tenant.id == event.tenant_id))
                 tenant_name = row.scalar_one_or_none() or "Unknown"
 
             svc = NotificationService(session)
-            await svc.notify_users(
-                tenant_id=None,
-                type=NotificationType.SUBSCRIPTION,
-                priority=NotificationPriority.MEDIUM,
-                title=f"Plan Downgraded: {tenant_name}",
-                message=(
-                    f"'{tenant_name}' downgraded from '{old_plan}' to '{new_plan}'."
-                ),
-                user_ids=super_admin_ids,
-                metadata=event.payload,
-            )
+
+            # Notify super admins
+            super_admin_ids = await _get_super_admin_ids(session)
+            if super_admin_ids:
+                await svc.notify_users(
+                    tenant_id=None,
+                    type=NotificationType.SUBSCRIPTION,
+                    priority=NotificationPriority.MEDIUM,
+                    title=f"Plan Downgraded: {tenant_name}",
+                    message=f"'{tenant_name}' downgraded from '{old_plan}' to '{new_plan}'.",
+                    user_ids=super_admin_ids,
+                    metadata=event.payload,
+                )
+
+            # Notify the tenant's business owner only (not managers)
+            if event.tenant_id:
+                owner_ids = await _get_tenant_owner_ids(session, event.tenant_id)
+                if owner_ids:
+                    await svc.notify_users(
+                        tenant_id=event.tenant_id,
+                        type=NotificationType.SUBSCRIPTION,
+                        priority=NotificationPriority.MEDIUM,
+                        title="Plan Downgraded",
+                        message=f"Your plan has been downgraded from '{old_plan}' to '{new_plan}'.",
+                        user_ids=owner_ids,
+                        metadata=event.payload,
+                    )
+
             await session.commit()
         except Exception:
             await session.rollback()

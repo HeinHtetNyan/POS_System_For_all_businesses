@@ -14,6 +14,7 @@ from app.core.constants import (
     EntityType,
     SubscriptionChangeType,
     SubscriptionStatus,
+    TenantStatus,
 )
 from app.core.exceptions import (
     ConflictError,
@@ -107,17 +108,20 @@ class TenantSubscriptionValidator:
                 "No subscription found. Please contact your administrator."
             )
         if sub.status == SubscriptionStatus.EXPIRED:
+            expires_text = sub.expires_at.strftime("%Y-%m-%d") if sub.expires_at else "unknown date"
             raise SubscriptionExpiredException(
-                f"Subscription expired on {sub.expires_at.strftime('%Y-%m-%d')}. "
-                "Please renew to continue."
+                f"Subscription expired on {expires_text}. Please renew to continue."
             )
         if sub.status == SubscriptionStatus.SUSPENDED:
             raise SubscriptionSuspendedException(
                 "Your subscription has been suspended. Please contact support."
             )
         if sub.status == SubscriptionStatus.CANCELLED:
+            from datetime import datetime, timezone
+            if sub.expires_at and sub.expires_at > datetime.now(timezone.utc):
+                return sub  # still within paid period — allow access
             raise SubscriptionExpiredException(
-                "Subscription has been cancelled. Please contact support."
+                "Subscription has been cancelled. Please submit a payment proof to reactivate."
             )
         return sub
 
@@ -489,7 +493,38 @@ class AdminSubscriptionService:
             raise NotFoundError("SubscriptionPlan", plan_id)
 
         old_plan_id = sub.plan_id
+        old_status = sub.status
         sub.plan_id = plan_id
+
+        # Promote TRIAL → ACTIVE when admin assigns a plan
+        if sub.status == SubscriptionStatus.TRIAL:
+            sub.status = SubscriptionStatus.ACTIVE
+            sub.trial_ends_at = None
+
+        # When switching from the Free plan (expires_at=NULL) to a paid plan,
+        # set a proper expiry based on the billing cycle starting now.
+        now = _now()
+        if sub.expires_at is None and plan.price > 0:
+            from app.core.constants import BillingCycle
+            sub.expires_at = now + (
+                __import__("datetime").timedelta(days=365)
+                if plan.billing_cycle == BillingCycle.YEARLY
+                else __import__("datetime").timedelta(days=30)
+            )
+
+        # When switching TO the Free plan, clear the expiry
+        if plan.price == 0 and plan.trial_days == 0:
+            sub.expires_at = None
+            sub.trial_ends_at = None
+            sub.status = SubscriptionStatus.ACTIVE
+
+        # Sync denormalized tenant fields so UI shows the correct plan/status
+        tenant = await self.session.get(Tenant, tenant_id)
+        if tenant:
+            tenant.subscription_plan = plan.code
+            tenant.subscription_expires_at = sub.expires_at
+            if sub.status == SubscriptionStatus.ACTIVE:
+                tenant.status = TenantStatus.ACTIVE
 
         history = SubscriptionHistory(
             tenant_id=tenant_id,
@@ -497,7 +532,7 @@ class AdminSubscriptionService:
             change_type=SubscriptionChangeType.PLAN_CHANGED,
             old_plan_id=old_plan_id,
             new_plan_id=plan_id,
-            old_status=sub.status,
+            old_status=old_status,
             new_status=sub.status,
             note=f"Admin plan change. Reason: {reason or 'N/A'}",
             changed_by_user_id=actor_id,
@@ -540,3 +575,60 @@ class AdminSubscriptionService:
         except Exception as exc:
             logger.warning("admin_change_plan_event_failed", error=str(exc))
         return result  # type: ignore[return-value]
+
+    async def reactivate_subscription(
+        self,
+        tenant_id: uuid.UUID,
+        extension_days: int,
+        actor_id: uuid.UUID,
+        request_id: str | None = None,
+    ) -> TenantSubscription:
+        sub = await self.sub_repo.get_by_tenant(tenant_id)
+        if not sub:
+            raise NotFoundError("TenantSubscription", tenant_id)
+
+        old_status = sub.status
+        now = _now()
+        sub.status = SubscriptionStatus.ACTIVE
+        sub.cancelled_at = None
+
+        # For paid plans, extend from now if already expired/null
+        if sub.plan and sub.plan.price > 0:
+            base = sub.expires_at if (sub.expires_at and sub.expires_at > now) else now
+            sub.expires_at = base + timedelta(days=extension_days)
+
+        tenant = await self.session.get(Tenant, tenant_id)
+        if tenant:
+            tenant.status = TenantStatus.ACTIVE
+            if sub.plan:
+                tenant.subscription_plan = sub.plan.code
+            tenant.subscription_expires_at = sub.expires_at
+
+        history = SubscriptionHistory(
+            tenant_id=tenant_id,
+            subscription_id=sub.id,
+            change_type=SubscriptionChangeType.ACTIVATED,
+            new_plan_id=sub.plan_id,
+            old_status=old_status,
+            new_status=SubscriptionStatus.ACTIVE,
+            note=f"Admin reactivation. Extended by {extension_days} days.",
+            changed_by_user_id=actor_id,
+        )
+        self.session.add(history)
+        await self.session.flush()
+
+        await self.audit.log(
+            action=AuditAction.SUBSCRIPTION_ACTIVATED,
+            actor_user_id=actor_id,
+            tenant_id=tenant_id,
+            entity_type=EntityType.TENANT_SUBSCRIPTION,
+            entity_id=sub.id,
+            after_state={
+                "old_status": old_status,
+                "new_status": SubscriptionStatus.ACTIVE,
+                "extension_days": extension_days,
+            },
+            request_id=request_id,
+        )
+
+        return await self.sub_repo.get_by_tenant(tenant_id)  # type: ignore[return-value]

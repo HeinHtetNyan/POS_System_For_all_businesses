@@ -12,6 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, ORJSONResponse
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.router import api_router
 from app.api.deps import get_current_user
 from app.models.user import User
@@ -20,13 +21,14 @@ from app.core.constants import API_V1_PREFIX
 from app.core.exceptions import AppBaseException
 from app.core.logging import configure_logging, get_logger
 from app.db.redis import close_redis_pool, get_redis_pool
-from app.db.session import engine
+from app.db.session import engine, get_db
 from app.events import handlers as _event_handlers  # noqa: F401 — registers handlers
 from app.notifications import handlers as _notification_handlers  # noqa: F401 — registers notification handlers
 from app.reseller_finance.events import handlers as _reseller_finance_handlers # noqa: F401 — handlers
 from app.middleware.error_handler import ErrorHandlerMiddleware
 from app.middleware.idempotency import IdempotencyMiddleware
 from app.middleware.logging import RequestLoggingMiddleware
+from app.middleware.rate_limit import PerUserRateLimitMiddleware
 from app.middleware.request_id import RequestIDMiddleware
 
 logger = get_logger(__name__)
@@ -61,9 +63,11 @@ def create_application() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # Middleware — order matters: outer first
+    # Middleware — last added = outermost (executes first on request)
+    # Execution order: CORS → RequestID → Logging → PerUserRateLimit → Idempotency → ErrorHandler → route
     app.add_middleware(ErrorHandlerMiddleware)
     app.add_middleware(IdempotencyMiddleware)
+    app.add_middleware(PerUserRateLimitMiddleware)
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(RequestIDMiddleware)
     app.add_middleware(
@@ -109,6 +113,16 @@ def create_application() -> FastAPI:
             },
         )
 
+    # Security headers on every response
+    @app.middleware("http")
+    async def add_security_headers(request: Request, call_next):  # type: ignore[no-untyped-def]
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        return response
+
     # Routes
     app.include_router(api_router, prefix=API_V1_PREFIX)
 
@@ -123,11 +137,32 @@ def create_application() -> FastAPI:
         tenant_id: str,
         filename: str,
         current_user: Annotated[User, Depends(get_current_user)],
+        db: AsyncSession = Depends(get_db),
     ) -> FileResponse:
         from app.core.constants import UserRole
+        from sqlalchemy import select
 
-        # Tenant users can only access their own tenant's files
-        if current_user.role != UserRole.SUPER_ADMIN and str(current_user.tenant_id) != tenant_id:
+        if current_user.role == UserRole.SUPER_ADMIN:
+            pass  # full access
+        elif current_user.tenant_id and str(current_user.tenant_id) == tenant_id:
+            pass  # own tenant
+        elif current_user.role == UserRole.RESELLER:
+            # Resellers may access proof files for their referred tenants
+            from app.reseller_finance.models.referral import TenantReferral
+            import uuid as _uuid
+            try:
+                tid = _uuid.UUID(tenant_id)
+            except ValueError:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid tenant_id")
+            result = await db.execute(
+                select(TenantReferral).where(
+                    TenantReferral.reseller_id == current_user.id,
+                    TenantReferral.tenant_id == tid,
+                )
+            )
+            if not result.scalar_one_or_none():
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+        else:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
         upload_root = Path(settings.UPLOAD_DIR).resolve()
@@ -140,16 +175,25 @@ def create_application() -> FastAPI:
         if not file_path.is_file():
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
+        return FileResponse(
+            file_path,
+            headers={"Content-Disposition": f"attachment; filename={file_path.name}"},
+        )
+
+    @app.get("/uploads/payment-icons/{filename}", include_in_schema=False)
+    async def serve_payment_icon(filename: str) -> FileResponse:
+        upload_root = Path(settings.UPLOAD_DIR).resolve()
+        file_path = (upload_root / "payment-icons" / filename).resolve()
+        if not str(file_path).startswith(str(upload_root)):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid path")
+        if not file_path.is_file():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
         return FileResponse(file_path)
 
     @app.get("/health", tags=["Health"], include_in_schema=False)
     async def health_check() -> dict:
         """Basic liveness probe — returns 200 as long as the process is alive."""
-        return {
-            "status": "healthy",
-            "version": settings.APP_VERSION,
-            "environment": settings.APP_ENV,
-        }
+        return {"status": "healthy"}
 
     @app.get("/health/ready", tags=["Health"], include_in_schema=False)
     async def readiness_check(request: Request) -> JSONResponse:

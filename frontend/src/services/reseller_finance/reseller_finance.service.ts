@@ -1,7 +1,7 @@
 import apiClient from '@/app/lib/axios'
-import type { PaginatedResponse, CommissionRecord } from '@/shared/types'
+import type { PaginatedResponse, CommissionRecord, Subscription, PaymentProof, PaymentProofCreateRequest } from '@/shared/types'
 
-// ─── Shared ──────────────────────────────────────────────────────────────────
+// Shared
 
 export interface ReferralCodeResponse {
   id: string
@@ -22,6 +22,8 @@ export interface TenantReferralResponse {
   locked_at: string | null
   first_paid_subscription_at: string | null
   tenant_name: string | null
+  subscription_status: string | null
+  subscription_expires_at: string | null
 }
 
 export interface ReferralStatsResponse {
@@ -65,6 +67,8 @@ export interface WalletTransactionResponse {
 export interface PayoutRequestResponse {
   id: string
   reseller_id: string
+  reseller_name?: string
+  reseller_email?: string
   wallet_id: string
   amount: string
   currency_code: string
@@ -108,7 +112,7 @@ export interface ResellerFinanceOverviewResponse {
   currency_code: string
 }
 
-// ─── Reseller-facing API ─────────────────────────────────────────────────────
+// Reseller-facing API
 
 export const resellerFinanceService = {
   // Referral codes
@@ -152,9 +156,33 @@ export const resellerFinanceService = {
 
   cancelPayout: (payoutId: string) =>
     apiClient.delete<PayoutRequestResponse>(`/reseller/payouts/${payoutId}`).then(r => r.data),
+
+  // Referred-tenant subscription management
+  getBusinessSubscription: (tenantId: string) =>
+    apiClient.get<Subscription>(`/reseller/tenants/${tenantId}/subscription`).then(r => r.data),
+
+  uploadBusinessProof: async (tenantId: string, file: File): Promise<string> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await apiClient.post<{ url: string }>(
+      `/reseller/tenants/${tenantId}/payment-proofs/upload`,
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    )
+    return res.data.url
+  },
+
+  submitBusinessProof: (tenantId: string, payload: PaymentProofCreateRequest) =>
+    apiClient.post<PaymentProof>(`/reseller/tenants/${tenantId}/payment-proofs`, payload).then(r => r.data),
+
+  getBusinessLatestProof: (tenantId: string) =>
+    apiClient.get<PaymentProof | null>(`/reseller/tenants/${tenantId}/payment-proofs/latest`).then(r => r.data),
+
+  downgradeBusinessSubscription: (tenantId: string, planId: string) =>
+    apiClient.post<{ message: string }>(`/reseller/tenants/${tenantId}/downgrade`, { plan_id: planId }).then(r => r.data),
 }
 
-// ─── Super-admin API ─────────────────────────────────────────────────────────
+// Super-admin API
 
 export const resellerFinanceAdminService = {
   // Overview

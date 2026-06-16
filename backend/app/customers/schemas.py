@@ -19,6 +19,7 @@ class CreateCustomerRequest(BaseSchema):
     gender: CustomerGender | None = None
     address: str | None = None
     notes: str | None = None
+    credit_limit: Decimal = Field(default=Decimal("0"), ge=0)
 
     @field_validator("phone")
     @classmethod

@@ -7,9 +7,14 @@ import { Spinner } from '@/components/ui'
 export function useAnalyticsFilters() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { selectedBranch } = useTenantStore()
-  const from   = searchParams.get('from')   ?? ''
-  const to     = searchParams.get('to')     ?? ''
-  const branch = searchParams.get('branch') ?? selectedBranch?.id ?? ''
+  const from = searchParams.get('from') ?? ''
+  const to   = searchParams.get('to')   ?? ''
+
+  // branch key absent = first visit (fall back to selectedBranch)
+  // branch key present with '' value = user explicitly chose "All Branches"
+  // branch key present with uuid = user chose a specific branch
+  const rawBranch = searchParams.get('branch')
+  const branch = rawBranch !== null ? rawBranch : (selectedBranch?.id ?? '')
 
   // Whenever the globally selected branch changes, sync it to the URL so all
   // analytics queries immediately refetch for the new branch.
@@ -34,7 +39,13 @@ export function useAnalyticsFilters() {
     setSearchParams(prev => {
       const next = new URLSearchParams(prev)
       for (const [k, v] of Object.entries(updates) as [string, string][]) {
-        if (v) next.set(k, v); else next.delete(k)
+        if (k === 'branch') {
+          // Always keep the branch key in the URL so empty string ("All Branches")
+          // is distinguishable from absent (= first-visit default).
+          next.set(k, v)
+        } else {
+          if (v) next.set(k, v); else next.delete(k)
+        }
       }
       return next
     }, { replace: true })

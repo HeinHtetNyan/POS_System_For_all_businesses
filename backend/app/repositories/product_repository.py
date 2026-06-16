@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -136,7 +136,11 @@ class ProductRepository(BaseRepository[Product]):
             filters.append(Product.is_active == is_active)
         if search:
             filters.append(
-                Product.name.ilike(f"%{search}%")
+                or_(
+                    Product.name.ilike(f"%{search}%"),
+                    Product.barcode.ilike(f"%{search}%"),
+                    Product.sku.ilike(f"%{search}%"),
+                )
             )
         return await self.get_all(offset=offset, limit=limit, filters=filters)
 

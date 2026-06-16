@@ -7,6 +7,7 @@ from typing import Any
 
 from pydantic import EmailStr, Field, field_validator
 
+from app.core.constants import ProofActionType  # noqa: F401
 from app.schemas.common import BaseSchema, PaginatedResponse, TimestampedSchema
 
 
@@ -37,6 +38,9 @@ class PlanCreateRequest(BaseSchema):
     is_public: bool = True
     sort_order: int = 0
     is_referral_plan: bool = False
+    is_custom: bool = False
+    contact_links: dict | None = None
+    payment_info: list | None = None
     entitlements: list[PlanEntitlementCreate] = Field(default_factory=list)
 
     @field_validator("price", mode="before")
@@ -57,6 +61,9 @@ class PlanUpdateRequest(BaseSchema):
     is_public: bool | None = None
     sort_order: int | None = None
     is_referral_plan: bool | None = None
+    is_custom: bool | None = None
+    contact_links: dict | None = None
+    payment_info: list | None = None
     entitlements: list[PlanEntitlementCreate] | None = None
 
     @field_validator("price", mode="before")
@@ -80,7 +87,30 @@ class PlanResponse(TimestampedSchema):
     is_public: bool
     sort_order: int
     is_referral_plan: bool
+    is_custom: bool
+    contact_links: dict | None
+    payment_info: list | None
     entitlements: list[PlanEntitlementResponse]
+
+
+class PlatformPaymentMethodItem(BaseSchema):
+    type: str
+    label: str
+    account_number: str
+    account_name: str
+    icon_url: str | None = None
+
+
+class PlatformPaymentMethodsResponse(BaseSchema):
+    payment_methods: list[PlatformPaymentMethodItem]
+
+
+class PlatformPaymentMethodsUpdateRequest(BaseSchema):
+    payment_methods: list[PlatformPaymentMethodItem]
+
+
+class PaymentMethodIconResponse(BaseSchema):
+    icon_url: str
 
 
 class TrialStatusResponse(BaseSchema):
@@ -88,7 +118,7 @@ class TrialStatusResponse(BaseSchema):
     plan_name: str
     plan_code: str
     started_at: str
-    expires_at: str
+    expires_at: str | None
     days_remaining: int
     is_expired: bool
     usage: dict[str, dict]
@@ -130,7 +160,8 @@ class RegisterRequest(BaseSchema):
 
 class RegistrationResponse(BaseSchema):
     access_token: str
-    refresh_token: str
+    # Internal use only — set as httponly cookie, excluded from JSON response
+    refresh_token: str = Field(exclude=True)
     token_type: str = "bearer"
     expires_in: int
     user_id: str
@@ -155,11 +186,13 @@ class SubscriptionResponse(TimestampedSchema):
     plan_id: uuid.UUID
     status: str
     started_at: datetime
-    expires_at: datetime
+    expires_at: datetime | None
     cancelled_at: datetime | None
     trial_ends_at: datetime | None
     auto_renew: bool
     plan: PlanResponse
+    pending_downgrade_plan_id: uuid.UUID | None = None
+    pending_downgrade_requested_at: datetime | None = None
 
 
 class PaymentProofCreateRequest(BaseSchema):
@@ -167,6 +200,15 @@ class PaymentProofCreateRequest(BaseSchema):
     currency: str = "MMK"
     reference_number: str | None = None
     proof_file_url: str
+    action_type: ProofActionType = ProofActionType.INITIAL_ACTIVATION
+    target_plan_id: uuid.UUID | None = None
+
+    @field_validator("proof_file_url")
+    @classmethod
+    def must_be_internal_upload(cls, v: str) -> str:
+        if not v.startswith("/uploads/proofs/"):
+            raise ValueError("proof_file_url must be an internal upload path starting with /uploads/proofs/")
+        return v
 
     @field_validator("amount", mode="before")
     @classmethod
@@ -180,11 +222,22 @@ class PaymentProofResponse(TimestampedSchema):
     amount: Decimal
     currency: str
     reference_number: str | None
-    proof_file_url: str
+    proof_file_url: str | None
     status: str
+    action_type: ProofActionType = ProofActionType.INITIAL_ACTIVATION
+    target_plan_id: uuid.UUID | None = None
+    target_plan_name: str | None = None
+    tenant_name: str | None = None
+    tenant_email: str | None = None
     reviewed_by: uuid.UUID | None
     reviewed_at: datetime | None
     review_notes: str | None
+
+
+class DowngradeScheduledResponse(BaseSchema):
+    message: str
+    pending_downgrade_plan_id: uuid.UUID
+    pending_downgrade_requested_at: datetime
 
 
 class ActivateSubscriptionRequest(BaseSchema):

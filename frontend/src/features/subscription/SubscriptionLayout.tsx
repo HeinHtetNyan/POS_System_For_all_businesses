@@ -3,6 +3,7 @@ import { cn } from '@/shared/utils'
 
 const TABS = [
   { to: '/app/subscription/current', label: 'Current Plan' },
+  { to: '/app/subscription/plans',   label: 'Plans'        },
   { to: '/app/subscription/billing', label: 'Billing History' },
 ]
 
@@ -28,7 +29,7 @@ export default function SubscriptionLayout() {
           ))}
         </nav>
       </div>
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         <Outlet />
       </div>
     </div>

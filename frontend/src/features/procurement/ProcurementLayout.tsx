@@ -1,22 +1,25 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/store/auth.store'
 
-const TABS = [
-  { to: '/app/procurement/dashboard',       label: 'Overview'         },
-  { to: '/app/procurement/suppliers',       label: 'Suppliers'        },
-  { to: '/app/procurement/purchase-orders', label: 'Purchase Orders'  },
-  { to: '/app/procurement/receipts',        label: 'Receipts'         },
-  { to: '/app/procurement/payables',        label: 'Payables'         },
-  { to: '/app/procurement/payments',        label: 'Payments'         },
+const ALL_TABS = [
+  { to: '/app/procurement/dashboard',       label: 'Overview',        managerOnly: false },
+  { to: '/app/procurement/suppliers',       label: 'Suppliers',       managerOnly: false },
+  { to: '/app/procurement/purchase-orders', label: 'Purchase Orders', managerOnly: false },
+  { to: '/app/procurement/payments',        label: 'Payments',        managerOnly: false },
 ]
 
 export default function ProcurementLayout() {
+  const user = useAuthStore(s => s.user)
+  const isInventoryStaff = user?.role === 'INVENTORY_STAFF'
+  const tabs = ALL_TABS.filter(t => !(t.managerOnly && isInventoryStaff))
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Tab bar */}
       <div className="flex-shrink-0 border-b border-zinc-800 bg-zinc-950 px-4 overflow-x-auto">
         <nav className="flex gap-1 min-w-max">
-          {TABS.map(tab => (
+          {tabs.map(tab => (
             <NavLink
               key={tab.to}
               to={tab.to}
@@ -35,7 +38,7 @@ export default function ProcurementLayout() {
       </div>
 
       {/* Page content */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         <Outlet />
       </div>
     </div>

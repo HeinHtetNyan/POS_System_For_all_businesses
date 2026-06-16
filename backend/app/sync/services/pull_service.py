@@ -2,7 +2,6 @@ from __future__ import annotations
 
 """
 Sync Pull Service — Delta Sync Engine
-======================================
 Returns only records that have changed since the device's last checkpoint
 (updated_at > last_synced_at).  Each entity bundle is paginated to keep
 payloads small on low-bandwidth connections.

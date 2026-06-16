@@ -4,16 +4,15 @@ import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useCartStore, useCartTotals } from '@/store/cartStore'
 import { useSessionStore } from '@/store/session.store'
-import { useTenantStore } from '@/store/tenant.store'
+import { useUIStore } from '@/store/ui.store'
 import { productsService } from '@/services/products/products.service'
 import { inventoryService } from '@/services/inventory/inventory.service'
 import { categoriesService } from '@/services/categories/categories.service'
-import { IconSearch, IconBarcode, IconCash } from '@/components/icons'
+import { IconSearch, IconBarcode, IconCash, IconExpand, IconCompress } from '@/components/icons'
 import { Kbd, Spinner } from '@/components/ui'
 import { cn } from '@/lib/utils'
-// ScannerInputCapture is lightweight (keyboard listener only — no camera library)
-import { ScannerInputCapture } from '@/components/hardware/ScannerInputCapture'
-import { lookupProductBySku } from '@/hooks/useProductScan'
+import { ScannerInputCapture } from '@/scanner'
+import { lookupProductBySku } from '@/scanner'
 import type { Product } from '@/types'
 import type { Product as SharedProduct } from '@/shared/types'
 import CategoryFilter from '@/features/pos/CategoryFilter'
@@ -21,10 +20,25 @@ import ProductGrid from '@/features/pos/ProductGrid'
 import CartPanel from '@/features/pos/CartPanel'
 import PaymentOverlay from '@/features/payment/PaymentOverlay'
 
-// Lazy-load camera scanner — quagga2 only loads when scanner modal is opened
 const HardwareScannerModal = lazy(() =>
-  import('@/components/hardware/HardwareScannerModal').then(m => ({ default: m.HardwareScannerModal }))
+  import('@/scanner/ProductScannerModal').then(m => ({ default: m.ProductScannerModal }))
 )
+
+// Check if a product's promotion is currently active
+function getActivePromo(p: import('@/shared/types').Product): { pct: number; label: string } {
+  if (!p.discount_type || !p.discount_value) return { pct: 0, label: '' }
+  const now = Date.now()
+  if (p.discount_start_at && now < new Date(p.discount_start_at).getTime()) return { pct: 0, label: '' }
+  if (p.discount_end_at   && now > new Date(p.discount_end_at).getTime())   return { pct: 0, label: '' }
+  const val = parseFloat(p.discount_value)
+  if (p.discount_type === 'PERCENTAGE') {
+    return { pct: Math.min(100, val), label: `${val}% off` }
+  }
+  const price = parseFloat(p.selling_price)
+  if (!price) return { pct: 0, label: '' }
+  const pct = Math.min(100, (val / price) * 100)
+  return { pct, label: `${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kyats off` }
+}
 
 // Map backend product + inventory qty to legacy Product shape
 function mapProduct(
@@ -32,18 +46,21 @@ function mapProduct(
   inventoryMap: Map<string, number>,
   categoryMap: Map<string, string>,
 ): Product {
+  const promo = getActivePromo(p)
   return {
-    id:       p.id,
-    sku:      p.sku,
-    name:     p.name,
-    category: categoryMap.get(p.category_id ?? '') ?? p.category_id ?? 'other',
-    price:    parseFloat(p.selling_price),
-    cost:     parseFloat(p.cost_price),
-    stock:    inventoryMap.get(p.id) ?? 0,
-    unit:     'item',
-    taxRate:  parseFloat(p.tax_rate),
-    barcode:  p.barcode ?? '',
-    color:    '#71717A',
+    id:               p.id,
+    sku:              p.sku,
+    name:             p.name,
+    category:         categoryMap.get(p.category_id ?? '') ?? p.category_id ?? 'other',
+    price:            parseFloat(p.selling_price),
+    cost:             parseFloat(p.cost_price),
+    stock:            inventoryMap.get(p.id) ?? 0,
+    unit:             'item',
+    taxRate:          parseFloat(p.tax_rate),
+    barcode:          p.barcode ?? '',
+    color:            '#71717A',
+    promoDiscountPct: promo.pct,
+    promoLabel:       promo.label,
   }
 }
 
@@ -56,8 +73,34 @@ export default function POSScreen() {
   const [mobileTab, setMobileTab] = useState<'products' | 'cart'>('products')
   const [scannerOpen, setScannerOpen] = useState(false)
 
+  const { posFocusMode, togglePosFocusMode, setPosFocusMode } = useUIStore()
+
+  // Desktop: hide sidebar + enter browser fullscreen together
+  function toggleDesktopFocusMode() {
+    togglePosFocusMode()
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {})
+    } else {
+      document.exitFullscreen().catch(() => {})
+    }
+  }
+
+  // If user exits browser fullscreen externally (Esc / F11), also exit sidebar focus mode
+  useEffect(() => {
+    function onFsChange() {
+      if (!document.fullscreenElement) setPosFocusMode(false)
+    }
+    document.addEventListener('fullscreenchange', onFsChange)
+    return () => document.removeEventListener('fullscreenchange', onFsChange)
+  }, [setPosFocusMode])
+
+  // Reset both on unmount (navigate away)
+  useEffect(() => () => {
+    setPosFocusMode(false)
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
+  }, [setPosFocusMode])
+
   const { activeSession }  = useSessionStore()
-  const { selectedBranch } = useTenantStore()
   const addItem            = useCartStore(s => s.addItem)
   const items              = useCartStore(s => s.items)
   const clearCart          = useCartStore(s => s.clearCart)
@@ -76,7 +119,7 @@ export default function POSScreen() {
     if (!activeSession) navigate('/app/session-open', { replace: true })
   }, [activeSession, navigate])
 
-  const branchId = activeSession?.branch_id ?? selectedBranch?.id ?? ''
+  const branchId = activeSession?.branch_id ?? ''
 
   // Fetch products
   const { data: productsData, isLoading: productsLoading } = useQuery({
@@ -88,7 +131,7 @@ export default function POSScreen() {
   // Fetch inventory for the session's branch
   const { data: inventoryData } = useQuery({
     queryKey: ['inventory', branchId],
-    queryFn: () => inventoryService.getBranchInventory(branchId, { page_size: 500 }),
+    queryFn: () => inventoryService.getBranchInventory(branchId, { page_size: 200 }),
     enabled: !!branchId,
   })
 
@@ -140,13 +183,12 @@ export default function POSScreen() {
 
   const handleAdd = useCallback((product: Product) => { addItem(product) }, [addItem])
 
-  // Handle a scan result — map SharedProduct → legacy Product then add to cart
+  // Handle a scan result — continuous mode: add to cart but keep scanner open
   const handleScanResult = useCallback((scanned: SharedProduct) => {
     const legacy = mapProduct(scanned, inventoryMap, categoryMap)
     addItem(legacy)
-    setScannerOpen(false)
-    setMobileTab('cart')
-    toast.success(`Added: ${scanned.name}`)
+    // No close/toast here — ProductScannerModal shows inline success feedback
+    // and stays open for the next scan. User closes manually when done.
   }, [inventoryMap, categoryMap, addItem])
 
   // Handle USB/Bluetooth keyboard-emulation scanner input
@@ -195,7 +237,7 @@ export default function POSScreen() {
         enabled={!scannerOpen && checkoutStep === 'cart'}
       />
 
-      {/* Camera scanner modal — lazy-loaded, quagga2 only downloads when opened */}
+      {/* Camera scanner modal — lazy-loaded; html5-qrcode only downloads when opened */}
       {scannerOpen && (
         <Suspense fallback={
           <div className="fixed inset-0 z-50 bg-black flex items-center justify-center">
@@ -205,7 +247,6 @@ export default function POSScreen() {
           <HardwareScannerModal
             title="Scan Product Barcode"
             onResult={handleScanResult}
-            onNotFound={code => { toast.error(`Product not found: ${code}`); setScannerOpen(false) }}
             onClose={() => setScannerOpen(false)}
           />
         </Suspense>
@@ -238,6 +279,14 @@ export default function POSScreen() {
               {totals.itemCount > 9 ? '9+' : totals.itemCount}
             </span>
           )}
+        </button>
+        <button
+          onClick={togglePosFocusMode}
+          className="w-12 flex items-center justify-center text-zinc-500 hover:text-zinc-200 transition-colors border-b-2 border-transparent"
+          aria-label={posFocusMode ? 'Exit fullscreen' : 'Enter fullscreen'}
+          title={posFocusMode ? 'Exit fullscreen' : 'Fullscreen'}
+        >
+          {posFocusMode ? <IconCompress width="16" height="16" /> : <IconExpand width="16" height="16" />}
         </button>
       </div>
 
@@ -278,6 +327,14 @@ export default function POSScreen() {
             >
               <IconBarcode width="17" height="17" />
             </button>
+            <button
+              onClick={toggleDesktopFocusMode}
+              className="hidden lg:flex w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 items-center justify-center text-zinc-500 hover:text-zinc-200 transition-colors"
+              aria-label={posFocusMode ? 'Exit fullscreen' : 'Enter fullscreen'}
+              title={posFocusMode ? 'Exit fullscreen' : 'Fullscreen'}
+            >
+              {posFocusMode ? <IconCompress width="16" height="16" /> : <IconExpand width="16" height="16" />}
+            </button>
           </div>
 
           {/* Category filter — dynamic from backend */}
@@ -290,7 +347,7 @@ export default function POSScreen() {
           </div>
 
           {/* Product grid */}
-          <div className="flex-1 overflow-y-auto min-h-0">
+          <div className="flex-1 min-h-0">
             {productsLoading ? (
               <div className="flex items-center justify-center h-40">
                 <Spinner size={32} />
@@ -299,7 +356,7 @@ export default function POSScreen() {
               <ProductGrid
                 products={filtered}
                 cartItems={items}
-                onAdd={p => { handleAdd(p); setMobileTab('cart') }}
+                onAdd={handleAdd}
               />
             )}
           </div>
@@ -328,7 +385,7 @@ export default function POSScreen() {
           'flex flex-col w-full lg:w-auto flex-shrink-0',
           mobileTab === 'products' ? 'hidden lg:flex' : 'flex',
         )}>
-          <CartPanel />
+          <CartPanel onBackToProducts={() => setMobileTab('products')} />
         </div>
       </div>
 

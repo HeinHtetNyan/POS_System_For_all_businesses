@@ -1,5 +1,5 @@
 import { fmt } from '@/lib/utils'
-import { ProductBarcodeCard } from '@/components/hardware/ProductBarcodeCard'
+import { ProductBarcodeCard } from '@/scanner'
 import type { Product } from '@/shared/types'
 
 interface Props {

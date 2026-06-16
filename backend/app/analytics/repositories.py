@@ -15,6 +15,7 @@ from typing import Any
 from sqlalchemy import and_, case, distinct, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.cashiers.models import CashierSession
 from app.core.constants import OrderStatus, PaymentStatus, StockMovementType
 from app.customers.models import Customer
 from app.models.branch import Branch
@@ -36,11 +37,16 @@ class AnalyticsRepository:
         start_dt: datetime | None = None,
         end_dt: datetime | None = None,
         branch_id: uuid.UUID | None = None,
+        cashier_user_id: uuid.UUID | None = None,
     ) -> list:
-        """Base filter list for completed orders scoped to tenant."""
+        """Base filter list for completed/refunded orders scoped to tenant."""
         f: list = [
             Order.tenant_id == tenant_id,
-            Order.order_status == OrderStatus.COMPLETED.value,
+            Order.order_status.in_([
+                OrderStatus.COMPLETED.value,
+                OrderStatus.PARTIALLY_REFUNDED.value,
+                OrderStatus.REFUNDED.value,
+            ]),
         ]
         if start_dt:
             f.append(Order.created_at >= start_dt)
@@ -48,6 +54,14 @@ class AnalyticsRepository:
             f.append(Order.created_at < end_dt)
         if branch_id:
             f.append(Order.branch_id == branch_id)
+        if cashier_user_id:
+            f.append(
+                Order.cashier_session_id.in_(
+                    select(CashierSession.id).where(
+                        CashierSession.cashier_user_id == cashier_user_id
+                    )
+                )
+            )
         return f
 
 
@@ -57,9 +71,10 @@ class AnalyticsRepository:
         start_dt: datetime,
         end_dt: datetime,
         branch_id: uuid.UUID | None = None,
+        cashier_user_id: uuid.UUID | None = None,
     ) -> dict[str, Any]:
         """COUNT and SUM of completed orders in [start_dt, end_dt)."""
-        filters = self._order_filters(tenant_id, start_dt, end_dt, branch_id)
+        filters = self._order_filters(tenant_id, start_dt, end_dt, branch_id, cashier_user_id)
         stmt = select(
             func.count().label("order_count"),
             func.coalesce(func.sum(Order.total_amount), 0).label("gross_sales"),
@@ -117,6 +132,24 @@ class AnalyticsRepository:
         result = await self.session.execute(stmt)
         row = result.mappings().first()
         return dict(row) if row else {"total_customers": 0, "new_customers_month": 0}
+
+    async def get_total_customer_outstanding(
+        self,
+        tenant_id: uuid.UUID,
+    ) -> Decimal:
+        """Sum of current_balance for all active customers with a positive balance (they owe money)."""
+        stmt = select(
+            func.coalesce(func.sum(Customer.current_balance), Decimal("0"))
+        ).where(
+            and_(
+                Customer.tenant_id == tenant_id,
+                Customer.is_active.is_(True),
+                Customer.deleted_at.is_(None),
+                Customer.current_balance > 0,
+            )
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one() or Decimal("0")
 
     async def get_low_stock_count(
         self,
@@ -360,15 +393,27 @@ class AnalyticsRepository:
         if branch_id:
             payment_filters.append(Order.branch_id == branch_id)
 
+        # Normalize legacy/variant payment method strings to canonical enum values
+        # so old test data and new transactions group together correctly.
+        normalized_method = case(
+            (Payment.payment_method == "KBZPAY",    "KPAY"),
+            (Payment.payment_method == "KBZ_PAY",   "KPAY"),
+            (Payment.payment_method == "WAVE_PAY",  "WAVEPAY"),
+            (Payment.payment_method == "WAVEMONEY", "WAVEPAY"),
+            (Payment.payment_method == "AYAPAY",    "AYA_PAY"),
+            (Payment.payment_method == "CBPAY",     "CB_PAY"),
+            else_=Payment.payment_method,
+        ).label("payment_method")
+
         stmt = (
             select(
-                Payment.payment_method,
+                normalized_method,
                 func.count().label("transaction_count"),
                 func.coalesce(func.sum(Payment.amount), 0).label("amount"),
             )
             .join(Order, Order.id == Payment.order_id)
             .where(and_(*payment_filters))
-            .group_by(Payment.payment_method)
+            .group_by(normalized_method)
             .order_by(func.sum(Payment.amount).desc())
         )
         result = await self.session.execute(stmt)

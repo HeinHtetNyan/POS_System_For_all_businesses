@@ -1,15 +1,14 @@
 import { NavLink, Outlet, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { cn, fmt } from '@/lib/utils'
-import { Spinner, Badge } from '@/components/ui'
-import { IconChevLeft, IconUser } from '@/components/icons'
+import { Spinner, Badge, Btn } from '@/components/ui'
+import { IconChevLeft, IconUser, IconPlus } from '@/components/icons'
 import { customersService } from '@/services/customers/customers.service'
 
 const TABS = [
-  { to: '',          end: true,  label: 'Overview'  },
-  { to: 'ledger',               label: 'Ledger'    },
-  { to: 'payments',             label: 'Payments'  },
-  { to: 'statements',           label: 'Statement' },
+  { to: '',           end: true,  label: 'Overview'       },
+  { to: 'payments',              label: 'Debt Payments'  },
+  { to: 'statements',            label: 'Statement'      },
 ]
 
 export default function CustomerLayout() {
@@ -43,9 +42,9 @@ export default function CustomerLayout() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Customer header */}
-      <div className="flex-shrink-0 border-b border-zinc-800 bg-zinc-950 px-4 sm:px-6 pt-4 pb-0">
+      <div className="flex-shrink-0 border-b border-zinc-800 bg-zinc-950 px-3 sm:px-6 pt-3 sm:pt-4 pb-0">
         {/* Back row + info */}
-        <div className="flex items-center gap-3 mb-3">
+        <div className="flex items-center gap-2 sm:gap-3 mb-3">
           <button
             onClick={() => navigate('/app/customers')}
             className="text-zinc-500 hover:text-zinc-200 p-1.5 rounded-lg hover:bg-zinc-800 transition-colors flex-shrink-0"
@@ -54,13 +53,13 @@ export default function CustomerLayout() {
             <IconChevLeft width="16" height="16" />
           </button>
 
-          <div className="w-9 h-9 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center flex-shrink-0">
+          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center flex-shrink-0">
             <IconUser width="16" height="16" className="text-zinc-400" />
           </div>
 
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-base font-semibold text-zinc-100 truncate">{customer.name}</h1>
+              <h1 className="text-sm sm:text-base font-semibold text-zinc-100 truncate">{customer.name}</h1>
               <Badge variant={customer.is_active ? 'success' : 'default'} size="xs" dot>
                 {customer.is_active ? 'Active' : 'Inactive'}
               </Badge>
@@ -70,9 +69,17 @@ export default function CustomerLayout() {
             </p>
           </div>
 
+          <Btn
+            size="xs"
+            onClick={() => navigate(`/app/customers/${id}/new-sale`)}
+            className="flex-shrink-0"
+          >
+            <IconPlus width="11" height="11" /> New Order
+          </Btn>
+
           <div className="flex-shrink-0 text-right">
             <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Balance</p>
-            <p className={cn('font-mono font-bold text-base leading-tight', balance > 0 ? 'text-amber-400' : 'text-zinc-500')}>
+            <p className={cn('font-mono font-bold text-sm sm:text-base leading-tight', balance > 0 ? 'text-amber-400' : 'text-zinc-500')}>
               {fmt(customer.balance)}
             </p>
           </div>

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { extractApiMsg } from '@/lib/utils'
@@ -16,10 +17,14 @@ function BrandModal({ brand, onClose }: { brand?: Brand; onClose: () => void }) 
   })
 
   const mutation = useMutation({
-    mutationFn: () =>
-      isEdit
-        ? brandsService.update(brand!.id, form)
-        : brandsService.create(form),
+    mutationFn: () => {
+      const payload = {
+        name: form.name.trim(),
+        description: form.description?.trim() || undefined,
+        website: form.website?.trim() || undefined,
+      }
+      return isEdit ? brandsService.update(brand!.id, payload) : brandsService.create(payload)
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['brands'] })
       toast.success(isEdit ? 'Brand updated' : 'Brand created')
@@ -45,12 +50,12 @@ function BrandModal({ brand, onClose }: { brand?: Brand; onClose: () => void }) 
             <input className={inp} value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} />
           </div>
           <div>
-            <label className="block text-xs text-zinc-400 mb-1">Description</label>
-            <input className={inp} value={form.description ?? ''} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} />
+            <label className="block text-xs text-zinc-400 mb-1">Description <span className="text-zinc-600 font-normal normal-case">(optional)</span></label>
+            <input className={inp} placeholder="Optional description" value={form.description ?? ''} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} />
           </div>
           <div>
-            <label className="block text-xs text-zinc-400 mb-1">Website</label>
-            <input className={inp} placeholder="https://..." value={form.website ?? ''} onChange={e => setForm(p => ({ ...p, website: e.target.value }))} />
+            <label className="block text-xs text-zinc-400 mb-1">Website <span className="text-zinc-600 font-normal normal-case">(optional)</span></label>
+            <input className={inp} placeholder="https://brand.com" value={form.website ?? ''} onChange={e => setForm(p => ({ ...p, website: e.target.value }))} />
           </div>
         </div>
         <div className="px-5 py-4 border-t border-zinc-800 flex gap-2 justify-end">
@@ -93,6 +98,13 @@ export default function BrandsPage() {
       {modal.open && <BrandModal brand={modal.brand} onClose={() => setModal({ open: false })} />}
 
       <div className="flex flex-col h-full overflow-hidden">
+        {/* Sub-navigation */}
+        <div className="flex-shrink-0 flex items-center gap-1 px-4 sm:px-6 pt-3 sm:pt-4 border-b border-zinc-800 pb-0">
+          <Link to="/app/products" className="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-zinc-100 border-b-2 border-transparent -mb-px transition-colors">Products</Link>
+          <Link to="/app/categories" className="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-zinc-100 border-b-2 border-transparent -mb-px transition-colors">Categories</Link>
+          <span className="px-3 py-1.5 text-xs font-semibold text-amber-400 border-b-2 border-amber-500 -mb-px">Brands</span>
+        </div>
+
         <div className="flex-shrink-0 flex items-center justify-between px-4 py-3.5 border-b border-zinc-800">
           <div>
             <h2 className="text-base font-semibold text-zinc-100">Brands</h2>
@@ -107,7 +119,7 @@ export default function BrandsPage() {
           ) : brands.length === 0 ? (
             <Empty title="No brands yet" subtitle="Add brands to organize your products" />
           ) : (
-            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-x-auto">
               <Table>
                 <thead>
                   <tr>

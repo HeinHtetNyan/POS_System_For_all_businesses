@@ -1,14 +1,19 @@
 import { fmt, fmtDateTime } from '@/lib/utils'
+import { getPaymentMethodLabel } from '@/lib/paymentMethod'
 import type { Receipt } from '@/shared/types'
 
 interface Props {
   receipt: Receipt
   footer?: string
+  logoUrl?: string | null
+  taxInclusive?: boolean
+  taxName?: string
+  showTaxOnReceipt?: boolean
 }
 
 // 58mm thermal receipt — suitable for most small desktop POS printers.
 // Width ~380px equivalent; use @page { size: 58mm auto }.
-export function ReceiptTemplate58mm({ receipt, footer = 'Thank you for your purchase!' }: Props) {
+export function ReceiptTemplate58mm({ receipt, footer = 'Thank you for your purchase!', logoUrl, taxInclusive = false, taxName = 'Tax', showTaxOnReceipt = true }: Props) {
   return (
     <div
       className="print-sheet"
@@ -25,6 +30,13 @@ export function ReceiptTemplate58mm({ receipt, footer = 'Thank you for your purc
     >
       {/* Header */}
       <div style={{ textAlign: 'center', marginBottom: '4px' }}>
+        {logoUrl && (
+          <img
+            src={logoUrl}
+            alt="logo"
+            style={{ maxHeight: '40px', maxWidth: '100%', objectFit: 'contain', display: 'block', margin: '0 auto 4px' }}
+          />
+        )}
         <div style={{ fontWeight: 'bold', fontSize: '13px' }}>{receipt.tenant_name}</div>
         <div>{receipt.branch_name}</div>
         <div style={{ fontSize: '9px', color: '#555' }}>{fmtDateTime(receipt.issued_at)}</div>
@@ -54,11 +66,16 @@ export function ReceiptTemplate58mm({ receipt, footer = 'Thank you for your purc
 
       {/* Totals */}
       <div>
-        <Row label="Subtotal" value={fmt(parseFloat(receipt.subtotal))} />
+        <Row
+          label="Subtotal"
+          value={fmt(parseFloat(taxInclusive ? receipt.total_amount : receipt.subtotal))}
+        />
         {parseFloat(receipt.discount_amount) > 0 && (
           <Row label="Discount" value={`-${fmt(parseFloat(receipt.discount_amount))}`} />
         )}
-        <Row label="Tax" value={fmt(parseFloat(receipt.tax_amount))} />
+        {showTaxOnReceipt && parseFloat(receipt.tax_amount) > 0 && (
+          <Row label={taxInclusive ? `${taxName} (incl.)` : taxName} value={fmt(parseFloat(receipt.tax_amount))} />
+        )}
         <div style={{ borderTop: '1px solid #000', margin: '3px 0' }} />
         <Row label="TOTAL" value={fmt(parseFloat(receipt.total_amount))} bold />
       </div>
@@ -69,7 +86,7 @@ export function ReceiptTemplate58mm({ receipt, footer = 'Thank you for your purc
       {receipt.payment_methods.map((pm, i) => (
         <Row
           key={i}
-          label={(pm.method ?? '').toLowerCase().replace('_', ' ')}
+          label={`${getPaymentMethodLabel(pm.method ?? '')}${pm.notes ? ` (${pm.notes})` : ''}`}
           value={fmt(parseFloat(pm.amount))}
         />
       ))}

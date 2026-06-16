@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useAuthStore } from '@/store/auth.store'
-import { ROLE_HOME } from '@/shared/constants/rbac'
-import { Btn, Input, Spinner } from '@/components/ui/index'
+import { ROLE_HOME, canAccess } from '@/shared/constants/rbac'
+import type { UserRole } from '@/shared/types'
+import { Btn, Input, PasswordInput, Spinner } from '@/components/ui/index'
 import { IconAlert } from '@/components/icons'
 import { fmtDate } from '@/lib/utils'
 
@@ -49,7 +50,31 @@ export default function LoginPage() {
       const from = (location.state as { from?: { pathname: string } })?.from?.pathname
       const user = useAuthStore.getState().user
       const home = user ? (ROLE_HOME[user.role] ?? '/app/pos') : '/app/pos'
-      navigate(from ?? home, { replace: true })
+      const ROLE_PREFIXES: Record<string, string[]> = {
+        SUPER_ADMIN:     ['/super-admin', '/app'],
+        RESELLER:        ['/reseller'],
+        BUSINESS_OWNER:  ['/app'],
+        MANAGER:         ['/app'],
+        CASHIER:         ['/app'],
+        INVENTORY_STAFF: ['/app'],
+      }
+      const allowed = user ? (ROLE_PREFIXES[user.role] ?? []) : []
+
+      // Also validate the specific section in the from path — prefix match alone isn't
+      // enough because e.g. a CASHIER can reach /app/* but not /app/settings.
+      function isSectionAllowed(path: string, role: UserRole): boolean {
+        const match = path.match(/^\/app\/([^/]+)/)
+        if (!match) return true
+        return canAccess(role, match[1])
+      }
+
+      const safeFrom =
+        from &&
+        allowed.some(p => from.startsWith(p)) &&
+        (!user || isSectionAllowed(from, user.role as UserRole))
+          ? from
+          : null
+      navigate(safeFrom ?? home, { replace: true })
     } catch {
       // error is already set in store
     }
@@ -106,15 +131,21 @@ export default function LoginPage() {
                 <p className="text-[11px] text-zinc-600 -mt-1">
                   Business owners, resellers, and admins sign in here.
                 </p>
-                <Input
-                  label="Password"
-                  type="password"
-                  value={password}
-                  onChange={e => { setPassword(e.target.value); clearError() }}
-                  placeholder="Enter password"
-                  autoComplete="current-password"
-                  required
-                />
+                <div>
+                  <PasswordInput
+                    label="Password"
+                    value={password}
+                    onChange={e => { setPassword(e.target.value); clearError() }}
+                    placeholder="Enter password"
+                    autoComplete="current-password"
+                    required
+                  />
+                  <div className="text-right mt-1">
+                    <Link to="/forgot-password" className="text-xs text-zinc-500 hover:text-amber-400 transition-colors">
+                      Forgot password?
+                    </Link>
+                  </div>
+                </div>
               </>
             ) : (
               <>
@@ -139,9 +170,8 @@ export default function LoginPage() {
                   autoComplete="username"
                   required
                 />
-                <Input
+                <PasswordInput
                   label="Password"
-                  type="password"
                   value={password}
                   onChange={e => { setPassword(e.target.value); clearError() }}
                   placeholder="Enter password"
@@ -152,9 +182,19 @@ export default function LoginPage() {
             )}
 
             {error && (
-              <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-red-950 border border-red-800 text-red-400 text-xs">
-                <IconAlert width="14" height="14" className="flex-shrink-0" />
-                <span>{error}</span>
+              <div className="flex gap-2.5 px-3 py-2.5 rounded-xl bg-red-950 border border-red-800 text-red-400 text-xs">
+                <IconAlert width="14" height="14" className="flex-shrink-0 mt-0.5" />
+                <div className="flex flex-col gap-1">
+                  <span>{error}</span>
+                  {mode === 'owner' && error.includes('incorrect') && (
+                    <span className="text-red-500/70">
+                      Don't have an account?{' '}
+                      <a href="/register" className="underline text-red-400 hover:text-red-300">
+                        Register here
+                      </a>
+                    </span>
+                  )}
+                </div>
               </div>
             )}
 

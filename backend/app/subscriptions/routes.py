@@ -19,12 +19,14 @@ from app.models.user import User
 from app.subscriptions.schemas import (
     ActivateSubscriptionRequest,
     ChangePlanRequest,
+    DowngradeScheduledResponse,
     EffectiveEntitlementResponse,
     PaginatedPaymentProofs,
     PaginatedPlans,
     PaginatedSubscriptionHistory,
     PaymentProofCreateRequest,
     PaymentProofResponse,
+    PlatformPaymentMethodsResponse,
     PlanCreateRequest,
     PlanResponse,
     PlanUpdateRequest,
@@ -34,7 +36,7 @@ from app.subscriptions.schemas import (
     TrialStatusResponse,
 )
 from app.subscriptions.entitlements import EntitlementService
-from app.subscriptions.services import PaymentProofService, PlanService, SubscriptionService, TrialStatusService
+from app.subscriptions.services import PaymentProofService, PlanService, PlatformSettingsService, SubscriptionService, TrialStatusService
 from app.schemas.common import PaginatedResponse
 
 router = APIRouter()
@@ -155,48 +157,24 @@ async def activate_subscription(
     return SubscriptionResponse.model_validate(sub)
 
 
-@router.post("/renew", response_model=SubscriptionResponse)
-async def renew_subscription(
-    db: DbSession,
-    current_user: Annotated[User, Depends(require_tenant_admin)],
-    tenant_id: EffectiveTenantId,
-    request_id: RequestId,
-) -> SubscriptionResponse:
-    svc = SubscriptionService(db)
-    sub = await svc.renew_subscription(
-        tenant_id=tenant_id, actor_id=current_user.id, request_id=request_id
-    )
-    return SubscriptionResponse.model_validate(sub)
 
-
-@router.post("/upgrade", response_model=SubscriptionResponse)
-async def upgrade_subscription(
-    db: DbSession,
-    current_user: Annotated[User, Depends(require_tenant_admin)],
-    tenant_id: EffectiveTenantId,
-    request_id: RequestId,
-    data: ChangePlanRequest,
-) -> SubscriptionResponse:
-    svc = SubscriptionService(db)
-    sub = await svc.upgrade_subscription(
-        tenant_id=tenant_id, data=data, actor_id=current_user.id, request_id=request_id
-    )
-    return SubscriptionResponse.model_validate(sub)
-
-
-@router.post("/downgrade", response_model=SubscriptionResponse)
+@router.post(
+    "/downgrade",
+    response_model=DowngradeScheduledResponse,
+    summary="Schedule a plan downgrade at end of current billing period",
+)
 async def downgrade_subscription(
     db: DbSession,
     current_user: Annotated[User, Depends(require_tenant_admin)],
     tenant_id: EffectiveTenantId,
     request_id: RequestId,
     data: ChangePlanRequest,
-) -> SubscriptionResponse:
+) -> DowngradeScheduledResponse:
     svc = SubscriptionService(db)
-    sub = await svc.downgrade_subscription(
+    result = await svc.downgrade_subscription(
         tenant_id=tenant_id, data=data, actor_id=current_user.id, request_id=request_id
     )
-    return SubscriptionResponse.model_validate(sub)
+    return DowngradeScheduledResponse(**result)
 
 
 @router.post("/cancel", response_model=SubscriptionResponse)
@@ -348,3 +326,13 @@ async def reject_payment_proof(
         request_id=request_id,
     )
     return PaymentProofResponse.model_validate(proof)
+
+
+@router.get("/platform/payment-methods", response_model=PlatformPaymentMethodsResponse)
+async def get_platform_payment_methods(
+    db: DbSession,
+    _: CurrentUser,
+) -> PlatformPaymentMethodsResponse:
+    svc = PlatformSettingsService(db)
+    methods = await svc.get_payment_methods()
+    return PlatformPaymentMethodsResponse(payment_methods=methods)

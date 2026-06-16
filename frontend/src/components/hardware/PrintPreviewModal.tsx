@@ -1,9 +1,13 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { ReceiptTemplate58mm } from '@/print/ReceiptTemplate58mm'
 import { ReceiptTemplate80mm } from '@/print/ReceiptTemplate80mm'
 import { Label40x30 } from '@/print/Label40x30'
 import { Label50x30 } from '@/print/Label50x30'
 import type { Receipt, Product } from '@/shared/types'
+import { useAuthStore } from '@/store/auth.store'
+import { tenantService } from '@/services/tenant/tenant.service'
+import apiClient from '@/app/lib/axios'
 
 type ReceiptSize = '58mm' | '80mm'
 type LabelSize = '40x30' | '50x30'
@@ -12,11 +16,41 @@ type LabelSize = '40x30' | '50x30'
 interface ReceiptPreviewProps {
   receipt: Receipt
   onClose: () => void
+  autoTrigger?: boolean
 }
 
-export function ReceiptPrintPreviewModal({ receipt, onClose }: ReceiptPreviewProps) {
+export function ReceiptPrintPreviewModal({ receipt, onClose, autoTrigger = false }: ReceiptPreviewProps) {
   const [size, setSize] = useState<ReceiptSize>('80mm')
   const printAreaRef = useRef<HTMLDivElement>(null)
+  const tenantId = useAuthStore(s => s.user?.tenant_id)
+  const { data: taxSettings } = useQuery({
+    queryKey: ['tenant-settings', tenantId],
+    queryFn: () => tenantService.getTenantSettings(tenantId!),
+    enabled: !!tenantId,
+    staleTime: 5 * 60 * 1000,
+  })
+  const taxInclusive = taxSettings?.tax_inclusive ?? false
+  const ex = taxSettings?.extra_settings as Record<string, unknown> | undefined
+  const taxName = (ex?.tax_name as string) || 'Tax'
+  const hasLogo = !!ex?.receipt_logo_url
+  const showTaxOnReceipt = (ex?.show_tax_on_receipt as boolean) ?? true
+
+  // Fetch logo as base64 data URL — embedded inline so it prints reliably in the popup window
+  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null)
+  useEffect(() => {
+    if (!hasLogo || !tenantId) { setLogoDataUrl(null); return }
+    let cancelled = false
+    apiClient
+      .get(`/tenants/${tenantId}/logo`, { responseType: 'blob' })
+      .then(r => {
+        if (cancelled) return
+        const reader = new FileReader()
+        reader.onload = () => { if (!cancelled) setLogoDataUrl(reader.result as string) }
+        reader.readAsDataURL(r.data)
+      })
+      .catch(() => { if (!cancelled) setLogoDataUrl(null) })
+    return () => { cancelled = true }
+  }, [hasLogo, tenantId])
 
   function handlePrint() {
     const area = printAreaRef.current
@@ -39,6 +73,15 @@ ${pageRule}
     win.document.close()
     setTimeout(() => { win.focus(); win.print(); win.close() }, 300)
   }
+
+  // Auto-trigger print when opened from auto-print setting
+  useEffect(() => {
+    if (autoTrigger) {
+      const t = setTimeout(() => handlePrint(), 350)
+      return () => clearTimeout(t)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoTrigger])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
@@ -71,8 +114,8 @@ ${pageRule}
         <div className="flex-1 overflow-auto p-5 flex justify-center bg-zinc-900/50">
           <div ref={printAreaRef} className="shadow-lg">
             {size === '58mm'
-              ? <ReceiptTemplate58mm receipt={receipt} />
-              : <ReceiptTemplate80mm receipt={receipt} />
+              ? <ReceiptTemplate58mm receipt={receipt} logoUrl={logoDataUrl} taxInclusive={taxInclusive} taxName={taxName} showTaxOnReceipt={showTaxOnReceipt} />
+              : <ReceiptTemplate80mm receipt={receipt} logoUrl={logoDataUrl} taxInclusive={taxInclusive} taxName={taxName} showTaxOnReceipt={showTaxOnReceipt} />
             }
           </div>
         </div>

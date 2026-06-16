@@ -78,7 +78,10 @@ class PurchaseOrderRepository(BaseRepository[PurchaseOrder]):
         stmt = (
             select(PurchaseOrder)
             .where(PurchaseOrder.id == po_id, PurchaseOrder.deleted_at.is_(None))
-            .options(selectinload(PurchaseOrder.items), selectinload(PurchaseOrder.payable))
+            .options(
+                selectinload(PurchaseOrder.items).selectinload(PurchaseOrderItem.product),
+                selectinload(PurchaseOrder.payable),
+            )
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
@@ -93,7 +96,10 @@ class PurchaseOrderRepository(BaseRepository[PurchaseOrder]):
                 PurchaseOrder.tenant_id == tenant_id,
                 PurchaseOrder.deleted_at.is_(None),
             )
-            .options(selectinload(PurchaseOrder.items), selectinload(PurchaseOrder.payable))
+            .options(
+                selectinload(PurchaseOrder.items).selectinload(PurchaseOrderItem.product),
+                selectinload(PurchaseOrder.payable),
+            )
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
@@ -129,7 +135,11 @@ class GoodsReceiptRepository(BaseRepository[GoodsReceipt]):
         stmt = (
             select(GoodsReceipt)
             .where(GoodsReceipt.id == receipt_id)
-            .options(selectinload(GoodsReceipt.items))
+            .options(
+                selectinload(GoodsReceipt.items)
+                .selectinload(GoodsReceiptItem.purchase_order_item)
+                .selectinload(PurchaseOrderItem.product),
+            )
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
@@ -143,7 +153,11 @@ class GoodsReceiptRepository(BaseRepository[GoodsReceipt]):
                 GoodsReceipt.id == receipt_id,
                 GoodsReceipt.tenant_id == tenant_id,
             )
-            .options(selectinload(GoodsReceipt.items))
+            .options(
+                selectinload(GoodsReceipt.items)
+                .selectinload(GoodsReceiptItem.purchase_order_item)
+                .selectinload(PurchaseOrderItem.product),
+            )
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()

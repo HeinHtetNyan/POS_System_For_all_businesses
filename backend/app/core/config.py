@@ -56,11 +56,22 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173"]
     CORS_ALLOW_CREDENTIALS: bool = True
     CORS_ALLOW_METHODS: list[str] = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-    CORS_ALLOW_HEADERS: list[str] = ["*"]
+    CORS_ALLOW_HEADERS: list[str] = [
+        "Authorization",
+        "Content-Type",
+        "Accept",
+        "Origin",
+        "X-Request-ID",
+        "Idempotency-Key",
+    ]
+
+    # Proxy trust — set True only when running behind a trusted reverse proxy (Nginx/LB)
+    # that correctly sets X-Forwarded-For. When False the real connection IP is always used.
+    TRUST_PROXY_HEADERS: bool = False
 
     # Rate Limiting
     RATE_LIMIT_ENABLED: bool = True
-    RATE_LIMIT_REQUESTS_PER_MINUTE: int = 60
+    RATE_LIMIT_REQUESTS_PER_MINUTE: int = 120
     RATE_LIMIT_BURST: int = 100
     REGISTRATION_MAX_PER_IP_PER_HOUR: int = 5
     REGISTRATION_ABUSE_MAX_PER_IP_PER_DAY: int = 10
@@ -78,6 +89,14 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"
     LOG_FILE: str = "logs/app.log"
+
+    # Email / Mailtrap
+    EMAIL_ENABLED: bool = True
+    MAILTRAP_API_TOKEN: str = ""
+    EMAIL_FROM: str = "noreply@demo.com"        # TODO: change to your real sender email
+    EMAIL_FROM_NAME: str = "POS System"         # TODO: change to your real sender name
+    FRONTEND_BASE_URL: str = "http://localhost:5173"
+    PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 15
 
     # Super Admin seed
     SUPER_ADMIN_EMAIL: str = "superadmin@pos-saas.com"

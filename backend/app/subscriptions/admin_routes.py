@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Response, UploadFile, File
 
 from app.api.deps import DbSession, RequestId, require_super_admin
 from app.models.user import User
@@ -13,13 +13,19 @@ from app.subscriptions.entitlements import (
     EntitlementService,
     TenantOverrideService,
 )
+from app.subscriptions.services import PlatformSettingsService
 from app.subscriptions.schemas import (
     AdminChangePlanRequest,
     EffectiveEntitlementResponse,
     ExtendSubscriptionRequest,
     PaginatedAdminSubscriptions,
     PaginatedPaymentProofs,
+    PaginatedSubscriptionHistory,
     PaymentProofResponse,
+    PaymentMethodIconResponse,
+    PlatformPaymentMethodsResponse,
+    PlatformPaymentMethodsUpdateRequest,
+    SubscriptionHistoryResponse,
     SubscriptionOverviewResponse,
     SubscriptionResponse,
     TenantEntitlementOverrideCreateRequest,
@@ -166,6 +172,39 @@ async def remove_override(
     return Response(status_code=204)
 
 
+@router.post("/tenants/{tenant_id}/cancel", response_model=SubscriptionResponse)
+async def admin_cancel_subscription(
+    tenant_id: uuid.UUID,
+    db: DbSession,
+    current_user: Annotated[User, Depends(require_super_admin)],
+    request_id: RequestId,
+) -> SubscriptionResponse:
+    from app.subscriptions.services import SubscriptionService
+    svc = SubscriptionService(db)
+    sub = await svc.cancel_subscription(
+        tenant_id=tenant_id, actor_id=current_user.id, request_id=request_id
+    )
+    return SubscriptionResponse.model_validate(sub)
+
+
+@router.post("/tenants/{tenant_id}/reactivate", response_model=SubscriptionResponse)
+async def admin_reactivate_subscription(
+    tenant_id: uuid.UUID,
+    db: DbSession,
+    current_user: Annotated[User, Depends(require_super_admin)],
+    request_id: RequestId,
+    extension_days: int = 30,
+) -> SubscriptionResponse:
+    svc = AdminSubscriptionService(db)
+    sub = await svc.reactivate_subscription(
+        tenant_id=tenant_id,
+        extension_days=extension_days,
+        actor_id=current_user.id,
+        request_id=request_id,
+    )
+    return SubscriptionResponse.model_validate(sub)
+
+
 @router.post("/tenants/{tenant_id}/suspend", response_model=SubscriptionResponse)
 async def admin_suspend_subscription(
     tenant_id: uuid.UUID,
@@ -241,13 +280,95 @@ async def admin_list_all_payment_proofs(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     status: str | None = Query(default=None),
+    tenant_id: str | None = Query(default=None),
 ) -> PaginatedPaymentProofs:
     from app.subscriptions.services import PaymentProofService
     svc = PaymentProofService(db)
-    items, total = await svc.list_all_proofs(status=status, page=page, page_size=page_size)
+    tenant_uuid = uuid.UUID(tenant_id) if tenant_id else None
+    items, total = await svc.list_all_proofs(
+        status=status, page=page, page_size=page_size, tenant_id=tenant_uuid
+    )
     return PaginatedResponse.create(
         items=[PaymentProofResponse.model_validate(p) for p in items],
         total=total,
         page=page,
         page_size=page_size,
     )
+
+
+@router.get("/tenants/{tenant_id}/history", response_model=PaginatedSubscriptionHistory)
+async def admin_get_tenant_subscription_history(
+    db: DbSession,
+    _: Annotated[User, Depends(require_super_admin)],
+    tenant_id: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+) -> PaginatedSubscriptionHistory:
+    from app.subscriptions.services import SubscriptionService
+    svc = SubscriptionService(db)
+    tenant_uuid = uuid.UUID(tenant_id)
+    items, total = await svc.get_history(tenant_id=tenant_uuid, page=page, page_size=page_size)
+    return PaginatedResponse.create(
+        items=[SubscriptionHistoryResponse.model_validate(h) for h in items],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.post("/repair-statuses")
+async def repair_subscription_statuses(
+    db: DbSession,
+    _: Annotated[User, Depends(require_super_admin)],
+) -> dict:
+    """One-time repair: promote TRIAL subscriptions on paid plans to ACTIVE and sync tenant fields."""
+    from sqlalchemy import select
+    from app.core.constants import TenantStatus, SubscriptionStatus
+    from app.models.tenant import Tenant
+    from app.subscriptions.models import SubscriptionPlan, TenantSubscription
+
+    result = await db.execute(
+        select(TenantSubscription).where(TenantSubscription.status == SubscriptionStatus.TRIAL)
+    )
+    subs = result.scalars().all()
+
+    fixed = 0
+    for sub in subs:
+        plan = await db.get(SubscriptionPlan, sub.plan_id)
+        if plan and plan.price > 0 and not plan.is_referral_plan:
+            sub.status = SubscriptionStatus.ACTIVE
+            sub.trial_ends_at = None
+            tenant = await db.get(Tenant, sub.tenant_id)
+            if tenant:
+                tenant.status = TenantStatus.ACTIVE
+                tenant.subscription_plan = plan.code
+            fixed += 1
+
+    await db.flush()
+    return {"fixed": fixed, "message": f"Repaired {fixed} subscription(s)"}
+
+
+@router.put("/platform/payment-methods", response_model=PlatformPaymentMethodsResponse)
+async def update_platform_payment_methods(
+    db: DbSession,
+    _: Annotated[User, Depends(require_super_admin)],
+    data: PlatformPaymentMethodsUpdateRequest,
+) -> PlatformPaymentMethodsResponse:
+    svc = PlatformSettingsService(db)
+    methods = await svc.set_payment_methods(data.payment_methods)
+    return PlatformPaymentMethodsResponse(payment_methods=methods)
+
+
+@router.post("/platform/payment-method-icon", response_model=PaymentMethodIconResponse)
+async def upload_payment_method_icon(
+    _: Annotated[User, Depends(require_super_admin)],
+    file: UploadFile = File(...),
+) -> PaymentMethodIconResponse:
+    from app.core.upload import save_payment_method_icon
+    from app.core.exceptions import ValidationError
+    try:
+        icon_url = await save_payment_method_icon(file)
+    except ValidationError as exc:
+        from fastapi import HTTPException, status
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    return PaymentMethodIconResponse(icon_url=icon_url)

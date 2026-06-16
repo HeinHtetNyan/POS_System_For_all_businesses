@@ -23,31 +23,52 @@ logger = get_logger(__name__)
 async def _check_low_stock_async() -> dict[str, Any]:
     from sqlalchemy import select
 
-    from app.core.constants import NotificationPriority, NotificationType
+    from app.core.constants import NotificationType
     from app.events.base import DomainEvent
     from app.events.publisher import event_publisher
     from app.events.types import EventType
     from app.models.inventory import BranchInventory
     from app.models.product import Product
+    from app.notifications.models import Notification
 
     notified = 0
     async with AsyncSessionLocal() as session:
         try:
-            stmt = (
-                select(Product, BranchInventory)
-                .join(
-                    BranchInventory,
-                    BranchInventory.product_id == Product.id,
+            # Collect product+branch combos already notified in the last 24 h
+            # to avoid flooding users with repeated alerts for the same item.
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+            recent_stmt = (
+                select(
+                    Notification.metadata_["product_id"].as_string(),
+                    Notification.metadata_["branch_id"].as_string(),
                 )
                 .where(
+                    Notification.type == NotificationType.INVENTORY,
+                    Notification.created_at >= cutoff,
+                    Notification.metadata_["product_id"].as_string().is_not(None),
+                )
+                .distinct()
+            )
+            recent_rows = await session.execute(recent_stmt)
+            recently_notified: set[tuple[str, str]] = {
+                (r[0], r[1]) for r in recent_rows
+            }
+
+            # Find all branch-inventory rows that are at or below their reorder point
+            stmt = (
+                select(Product, BranchInventory)
+                .join(BranchInventory, BranchInventory.product_id == Product.id)
+                .where(
                     Product.is_active.is_(True),
-                    Product.reorder_level.is_not(None),
-                    BranchInventory.quantity_on_hand <= Product.reorder_level,
+                    BranchInventory.reorder_point.is_not(None),
+                    BranchInventory.quantity_on_hand <= BranchInventory.reorder_point,
                 )
             )
             result = await session.execute(stmt)
-            rows = result.all()
-            for product, inventory in rows:
+            for product, inventory in result.all():
+                key = (str(product.id), str(inventory.branch_id))
+                if key in recently_notified:
+                    continue  # already alerted within the last 24 h
                 await event_publisher.publish(
                     DomainEvent(
                         event_type=EventType.LOW_STOCK,
@@ -55,9 +76,9 @@ async def _check_low_stock_async() -> dict[str, Any]:
                         payload={
                             "product_id": str(product.id),
                             "product_name": product.name,
-                            "sku": product.sku,
+                            "sku": product.sku or "",
                             "current_stock": float(inventory.quantity_on_hand),
-                            "reorder_level": float(product.reorder_level),
+                            "reorder_level": float(inventory.reorder_point),
                             "branch_id": str(inventory.branch_id),
                         },
                     )
@@ -317,8 +338,11 @@ def check_trial_expiring(self: Any) -> dict[str, Any]:
 def check_subscription_expiring(self: Any) -> dict[str, Any]:
     """Emit SUBSCRIPTION_EXPIRING events for subscriptions expiring in 14, 7, 3, 1 day(s)."""
     try:
-        loop = asyncio.get_event_loop()
-        return loop.run_until_complete(_check_subscription_expiring_async())
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(_check_subscription_expiring_async())
+        finally:
+            loop.close()
     except Exception as exc:
         logger.error("check_subscription_expiring_task_failed", error=str(exc))
         raise self.retry(exc=exc)

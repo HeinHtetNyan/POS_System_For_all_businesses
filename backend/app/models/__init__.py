@@ -1,6 +1,7 @@
 # Leaf models first (no cross-model dependencies at runtime)
 from app.models.audit import AuditLog
 from app.models.auth import RefreshToken
+from app.models.password_reset_token import PasswordResetToken
 from app.models.permission import Permission, RolePermission, UserPermission
 # Then models with relationships (resolved lazily by SQLAlchemy mapper registry)
 from app.models.tenant import Tenant, TenantSettings
@@ -63,6 +64,7 @@ from app.notifications.models import Notification, NotificationPreference, Notif
 __all__ = [
     "AuditLog",
     "RefreshToken",
+    "PasswordResetToken",
     "Permission",
     "RolePermission",
     "UserPermission",

@@ -25,13 +25,13 @@ const SECTION_ACCESS: Record<string, UserRole[]> = {
   products:      ['MANAGER', 'BUSINESS_OWNER', 'SUPER_ADMIN', 'INVENTORY_STAFF'],
   inventory:     ['MANAGER', 'BUSINESS_OWNER', 'SUPER_ADMIN', 'INVENTORY_STAFF'],
   sales:         ['CASHIER', 'MANAGER', 'BUSINESS_OWNER', 'SUPER_ADMIN'],
-  sync:          ['MANAGER', 'BUSINESS_OWNER', 'SUPER_ADMIN'],
   customers:     ['CASHIER', 'MANAGER', 'BUSINESS_OWNER', 'SUPER_ADMIN'],
-  procurement:   ['INVENTORY_STAFF', 'MANAGER', 'BUSINESS_OWNER', 'SUPER_ADMIN'],
+  procurement:              ['INVENTORY_STAFF', 'MANAGER', 'BUSINESS_OWNER', 'SUPER_ADMIN'],
+  'procurement-payments':   ['MANAGER', 'BUSINESS_OWNER', 'SUPER_ADMIN'],
   analytics:     ['MANAGER', 'BUSINESS_OWNER', 'SUPER_ADMIN'],
   notifications: ['CASHIER', 'MANAGER', 'BUSINESS_OWNER', 'SUPER_ADMIN', 'INVENTORY_STAFF'],
   settings:      ['MANAGER', 'BUSINESS_OWNER', 'SUPER_ADMIN'],
-  subscription:  ['MANAGER', 'BUSINESS_OWNER', 'SUPER_ADMIN'],
+  subscription:  ['BUSINESS_OWNER', 'SUPER_ADMIN'],
 }
 
 export function canAccess(role: UserRole, section: string): boolean {

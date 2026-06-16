@@ -8,12 +8,21 @@ import { StatCard, Table, Th, Td, Btn, Empty, Spinner } from '@/components/ui'
 import { IconInventory, IconSearch } from '@/components/icons'
 import StockBar from '@/features/inventory/StockBar'
 import AdjustmentModal from '@/features/inventory/AdjustmentModal'
+import StockHistoryModal from '@/features/inventory/StockHistoryModal'
 import type { InventoryItem } from '@/shared/types'
+
+const PAGE_SIZE = 30
 
 export default function InventoryScreen() {
   const { selectedBranch, availableBranches } = useTenantStore()
-  const [search, setSearch]           = useState('')
+  const [search, setSearch]               = useState('')
   const [adjustingItem, setAdjustingItem] = useState<InventoryItem | null>(null)
+  const [historyItem, setHistoryItem]     = useState<InventoryItem | null>(null)
+  const [stockSort, setStockSort]         = useState<'asc' | 'desc'>('asc')
+  const [page, setPage]                   = useState(1)
+
+  function handleSearch(q: string) { setSearch(q); setPage(1) }
+  function handleSort(s: 'asc' | 'desc') { setStockSort(s); setPage(1) }
 
   // Inventory is a management view — always follows the globally selected branch.
   // The POS cashier session is irrelevant here (that's operational, not reporting).
@@ -44,21 +53,29 @@ export default function InventoryScreen() {
 
   const items = data?.items ?? []
 
-  const filtered = items.filter(item => {
-    if (!search.trim()) return true
-    const q = search.toLowerCase()
-    const product = productMap.get(item.product_id)
-    return (
-      (product?.name ?? '').toLowerCase().includes(q) ||
-      (product?.sku ?? '').toLowerCase().includes(q) ||
-      item.product_id.toLowerCase().includes(q)
-    )
-  })
+  const filtered = items
+    .filter(item => {
+      if (!search.trim()) return true
+      const q = search.toLowerCase()
+      const product = productMap.get(item.product_id)
+      return (
+        (product?.name ?? '').toLowerCase().includes(q) ||
+        (product?.sku ?? '').toLowerCase().includes(q) ||
+        item.product_id.toLowerCase().includes(q)
+      )
+    })
+    .sort((a, b) => {
+      const diff = parseFloat(a.quantity_available) - parseFloat(b.quantity_available)
+      return stockSort === 'asc' ? diff : -diff
+    })
+
+  const totalPages  = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const paginated   = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   const outOfStock  = items.filter(i => parseFloat(i.quantity_on_hand) === 0).length
   const lowStock    = items.filter(i => {
     const qty = parseFloat(i.quantity_on_hand)
-    return qty > 0 && qty <= (i.reorder_point ?? 10)
+    return i.reorder_point != null && qty > 0 && qty <= i.reorder_point
   }).length
   const totalValue  = items.reduce((s, i) => s + parseFloat(i.quantity_on_hand), 0)
 
@@ -77,11 +94,11 @@ export default function InventoryScreen() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Page header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <h2 className="text-base font-semibold text-zinc-100">Inventory</h2>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 px-4 sm:px-6 py-3 sm:py-4 border-b border-zinc-800 flex-shrink-0">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <h2 className="text-base font-semibold text-zinc-100 flex-shrink-0">Inventory</h2>
           {branchName && (
-            <span className="flex items-center gap-1.5 text-xs text-zinc-400 bg-zinc-800 border border-zinc-700 rounded-lg px-2.5 py-1">
+            <span className="flex items-center gap-1.5 text-xs text-zinc-400 bg-zinc-800 border border-zinc-700 rounded-lg px-2.5 py-1 truncate">
               <span className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" />
               {branchName}
             </span>
@@ -92,7 +109,7 @@ export default function InventoryScreen() {
             onClick={() => refetch()}
             disabled={isFetching}
             title="Refresh inventory"
-            className="w-8 h-8 flex items-center justify-center rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors disabled:opacity-40"
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors disabled:opacity-40 flex-shrink-0"
           >
             <svg
               width="14" height="14" viewBox="0 0 16 16" fill="none"
@@ -102,24 +119,24 @@ export default function InventoryScreen() {
               <path d="M8 1v3.5L10.5 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </button>
-          <div className="relative">
+          <div className="relative flex-1 sm:flex-none">
             <IconSearch width="14" height="14" className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />
             <input
               type="text"
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={e => handleSearch(e.target.value)}
               placeholder="Search products…"
               className="bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-600 text-sm
                 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 transition-all
-                py-2 pl-8 pr-4 w-56"
+                py-2 pl-8 pr-4 w-full sm:w-56"
             />
           </div>
         </div>
       </div>
 
-      <div className="p-6 flex flex-col gap-5 overflow-auto h-full">
+      <div className="p-4 sm:p-6 flex flex-col gap-4 sm:gap-5 overflow-auto h-full">
         {/* Stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
           <StatCard label="Total Items"  value={items.length} />
           <StatCard label="Out of Stock" value={outOfStock} />
           <StatCard label="Low Stock"    value={lowStock} />
@@ -127,7 +144,7 @@ export default function InventoryScreen() {
         </div>
 
         {/* Table */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden flex flex-col flex-1 min-h-0">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-x-auto flex flex-col flex-1 min-h-0">
           {isLoading ? (
             <div className="flex items-center justify-center h-40"><Spinner size={32} /></div>
           ) : (
@@ -135,26 +152,37 @@ export default function InventoryScreen() {
               <thead>
                 <tr>
                   <Th>Product</Th>
-                  <Th right>On Hand</Th>
-                  <Th right>Reserved</Th>
+                  <Th right>Sold</Th>
                   <Th right>Available</Th>
-                  <Th>Stock Level</Th>
+                  <Th>
+                    <button
+                      onClick={() => handleSort(stockSort === 'asc' ? 'desc' : 'asc')}
+                      className="flex items-center gap-1 hover:text-amber-400 transition-colors group"
+                      title={stockSort === 'asc' ? 'Sorted: Low → High (click for High → Low)' : 'Sorted: High → Low (click for Low → High)'}
+                    >
+                      Stock Level
+                      <span className="text-zinc-500 group-hover:text-amber-400 transition-colors">
+                        {stockSort === 'asc' ? '↑' : '↓'}
+                      </span>
+                    </button>
+                  </Th>
                   <Th>Status</Th>
-                  <Th>Adjust</Th>
+                  <Th>Actions</Th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={7}>
+                    <td colSpan={6}>
                       <Empty icon={<IconInventory width="40" height="40" />} title="No inventory found" subtitle="Adjust your search or check the branch" />
                     </td>
                   </tr>
-                ) : filtered.map(item => {
-                  const qty = parseFloat(item.quantity_on_hand)
-                  const reorderPt = item.reorder_point ?? 10
-                  const isOut = qty === 0
-                  const isLow = qty > 0 && qty <= reorderPt
+                ) : paginated.map(item => {
+                  const available = parseFloat(item.quantity_available)
+                  const sold      = parseFloat(item.quantity_sold ?? '0')
+                  const reorderPt = item.reorder_point ?? 0
+                  const isOut = available === 0
+                  const isLow = reorderPt > 0 && available > 0 && available <= reorderPt
                   return (
                     <tr key={item.id} className="hover:bg-zinc-800/30 transition-colors">
                       <Td>
@@ -163,11 +191,10 @@ export default function InventoryScreen() {
                           <p className="text-xs text-zinc-500 font-mono">{productMap.get(item.product_id)?.sku ?? item.product_id.slice(0, 8) + '…'}</p>
                         </div>
                       </Td>
-                      <Td right mono>{Math.round(qty)}</Td>
-                      <Td right mono muted>{Math.round(parseFloat(item.quantity_reserved))}</Td>
-                      <Td right mono>{Math.round(parseFloat(item.quantity_available))}</Td>
+                      <Td right mono muted>{Math.round(sold)}</Td>
+                      <Td right mono>{Math.round(available)}</Td>
                       <Td className="min-w-[140px]">
-                        <StockBar stock={qty} />
+                        <StockBar available={available} sold={sold} reorderPoint={reorderPt} />
                       </Td>
                       <Td>
                         {isOut
@@ -178,9 +205,14 @@ export default function InventoryScreen() {
                         }
                       </Td>
                       <Td>
-                        <Btn variant="outline" size="xs" onClick={() => setAdjustingItem(item)}>
-                          Adjust
-                        </Btn>
+                        <div className="flex items-center gap-1.5">
+                          <Btn variant="outline" size="xs" onClick={() => setAdjustingItem(item)}>
+                            Adjust
+                          </Btn>
+                          <Btn variant="ghost" size="xs" onClick={() => setHistoryItem(item)}>
+                            History
+                          </Btn>
+                        </div>
                       </Td>
                     </tr>
                   )
@@ -188,21 +220,48 @@ export default function InventoryScreen() {
               </tbody>
             </Table>
           )}
-          <div className="px-4 py-2.5 border-t border-zinc-800 flex-shrink-0">
-            <p className="text-xs text-zinc-500">{filtered.length} of {items.length} items</p>
+          <div className="px-4 py-2.5 border-t border-zinc-800 flex-shrink-0 flex items-center justify-between gap-3">
+            <p className="text-xs text-zinc-500">
+              {filtered.length === 0 ? '0 items' : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, filtered.length)} of ${filtered.length}`}
+            </p>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >‹ Prev</button>
+              <span className="text-xs text-zinc-500 px-2">{page} / {totalPages}</span>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >Next ›</button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Adjustment modal */}
       {adjustingItem && (
         <AdjustmentModal
           item={adjustingItem}
           branchId={branchId}
+          productName={productMap.get(adjustingItem.product_id)?.name ?? ''}
+          productSku={productMap.get(adjustingItem.product_id)?.sku ?? ''}
           onClose={() => setAdjustingItem(null)}
           onSuccess={() => { setAdjustingItem(null); refetch() }}
         />
       )}
+
+      {historyItem && (
+        <StockHistoryModal
+          item={historyItem}
+          branchId={branchId}
+          productName={productMap.get(historyItem.product_id)?.name ?? historyItem.product_id}
+          productSku={productMap.get(historyItem.product_id)?.sku ?? ''}
+          onClose={() => setHistoryItem(null)}
+        />
+      )}
+
     </div>
   )
 }

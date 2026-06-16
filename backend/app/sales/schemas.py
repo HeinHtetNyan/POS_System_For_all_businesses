@@ -96,7 +96,7 @@ class CheckoutPaymentRequest(BaseModel):
 class CheckoutRequest(BaseModel):
     cashier_session_id: uuid.UUID
     items: list[CheckoutItemRequest] = Field(min_length=1)
-    payments: list[CheckoutPaymentRequest] = Field(min_length=1)
+    payments: list[CheckoutPaymentRequest] = Field(default_factory=list)
     customer_id: uuid.UUID | None = None
     discount_amount: Decimal = Field(default=Decimal("0"), ge=0)
     notes: str | None = None
@@ -108,12 +108,11 @@ class CheckoutRequest(BaseModel):
             raise ValueError("Order must contain at least one item")
         return v
 
-    @field_validator("payments")
-    @classmethod
-    def validate_payments(cls, v: list) -> list:
-        if not v:
-            raise ValueError("Order must have at least one payment")
-        return v
+    @model_validator(mode='after')
+    def validate_payments_or_customer(self) -> 'CheckoutRequest':
+        if not self.payments and not self.customer_id:
+            raise ValueError("Order must have at least one payment, or assign a customer for on-account sale")
+        return self
 
 
 class VoidOrderRequest(BaseModel):
@@ -140,6 +139,17 @@ class OrderItemResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PaymentResponse(BaseModel):
+    id: uuid.UUID
+    payment_method: str
+    amount: Decimal
+    reference_number: str | None
+    notes: str | None
+    paid_at: datetime | None
+
+    model_config = {"from_attributes": True}
+
+
 class OrderResponse(BaseModel):
     id: uuid.UUID
     tenant_id: uuid.UUID
@@ -158,7 +168,11 @@ class OrderResponse(BaseModel):
     completed_at: datetime | None
     voided_at: datetime | None
     created_by: uuid.UUID
+    cashier_name: str | None = None
+    customer_name: str | None = None
+    branch_name: str | None = None
     items: list[OrderItemResponse] = []
+    payments: list[PaymentResponse] = []
     created_at: datetime
     updated_at: datetime
 

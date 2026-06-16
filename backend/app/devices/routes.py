@@ -20,6 +20,7 @@ from app.devices.schemas import (
     DeviceUpdateRequest,
 )
 from app.devices.services import DeviceService
+from app.subscriptions.gates import validate_device_limit
 
 router = APIRouter()
 
@@ -47,6 +48,7 @@ _admin_access = require_roles(
     response_model=DeviceResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Register a POS device",
+    dependencies=[Depends(validate_device_limit)],
 )
 async def register_device(
     data: DeviceRegisterRequest,

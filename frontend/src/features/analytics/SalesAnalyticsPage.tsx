@@ -1,42 +1,48 @@
 import { useState } from 'react'
 import { useQueries } from '@tanstack/react-query'
-import {
-  ResponsiveContainer, AreaChart, Area,
-  BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, Tooltip, CartesianGrid, Legend,
-} from 'recharts'
 import { fmt } from '@/lib/utils'
 import { StatCard, Table, Th, Td } from '@/components/ui'
 import { analyticsService } from '@/services/analytics/analytics.service'
-import {
-  useAnalyticsFilters, AnalyticsFilters, ChartCard,
-  CHART_COLORS, PIE_COLORS, CHART_AXIS_TICK, CHART_TOOLTIP_STYLE, CHART_GRID_STROKE,
-} from './analyticsHelpers'
+import { useAnalyticsFilters, AnalyticsFilters, ChartCard } from './analyticsHelpers'
+import { getPaymentMethodLabel } from '@/lib/paymentMethod'
+import type { PaymentMethodStat } from '@/shared/types'
 
-type Granularity = 'daily' | 'weekly' | 'monthly'
+const PAGE_SIZE = 30
+
+function PaginationBar({ page, totalPages, total, setPage, noun }: {
+  page: number; totalPages: number; total: number; setPage: React.Dispatch<React.SetStateAction<number>>; noun: string
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <p className="text-xs text-zinc-500">
+        {total === 0 ? `0 ${noun}` : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, total)} of ${total}`}
+      </p>
+      <div className="flex items-center gap-1">
+        <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+          className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">‹ Prev</button>
+        <span className="text-xs text-zinc-500 px-2">{page} / {totalPages}</span>
+        <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
+          className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">Next ›</button>
+      </div>
+    </div>
+  )
+}
 
 export default function SalesAnalyticsPage() {
   const filters = useAnalyticsFilters()
   const { from, to, branch, apiParams } = filters
-  const [granularity, setGranularity] = useState<Granularity>('daily')
+  const [productsPage, setProductsPage] = useState(1)
+  const [cashiersPage, setCashiersPage] = useState(1)
 
-  const [summaryQ, trendQ, topProductsQ, byCategoryQ, byCashierQ, paymentMethodsQ] = useQueries({
+  const [summaryQ, topProductsQ, byCashierQ, paymentMethodsQ] = useQueries({
     queries: [
       {
         queryKey: ['sales-summary', from, to, branch],
         queryFn:  () => analyticsService.getSalesSummary(apiParams),
       },
       {
-        queryKey: ['sales-trend', from, to, branch, granularity],
-        queryFn:  () => analyticsService.getSalesTrend({ ...apiParams, granularity }),
-      },
-      {
         queryKey: ['sales-top-products', from, to, branch],
-        queryFn:  () => analyticsService.getTopProducts({ ...apiParams, limit: 10 }),
-      },
-      {
-        queryKey: ['sales-by-category', from, to, branch],
-        queryFn:  () => analyticsService.getSalesByCategory(apiParams),
+        queryFn:  () => analyticsService.getTopProducts({ ...apiParams, limit: 100 }),
       },
       {
         queryKey: ['sales-by-cashier', from, to, branch],
@@ -50,29 +56,14 @@ export default function SalesAnalyticsPage() {
   })
 
   const summary        = summaryQ.data
-  const trendItems     = trendQ.data?.items ?? []
   const topProducts    = topProductsQ.data ?? []
-  const categories     = byCategoryQ.data ?? []
   const cashiers       = byCashierQ.data ?? []
   const paymentMethods = paymentMethodsQ.data ?? []
 
-  const trendData = trendItems.map(t => ({
-    period:  t.period,
-    sales:   parseFloat(t.sales),
-    revenue: parseFloat(t.revenue),
-    orders:  t.orders,
-  }))
-
-  const pmData = paymentMethods.map(p => ({
-    name:  p.payment_method,
-    value: parseFloat(p.amount),
-    count: p.transaction_count,
-  }))
-
-  const categoryData = categories.slice(0, 8).map(c => ({
-    name:  c.category_name,
-    sales: parseFloat(c.sales),
-  }))
+  const productsTotalPages = Math.max(1, Math.ceil(topProducts.length / PAGE_SIZE))
+  const cashiersTotalPages = Math.max(1, Math.ceil(cashiers.length / PAGE_SIZE))
+  const paginatedProducts = topProducts.slice((productsPage - 1) * PAGE_SIZE, productsPage * PAGE_SIZE)
+  const paginatedCashiers = cashiers.slice((cashiersPage - 1) * PAGE_SIZE, cashiersPage * PAGE_SIZE)
 
   return (
     <div className="p-4 sm:p-6 space-y-5">
@@ -104,192 +95,116 @@ export default function SalesAnalyticsPage() {
         ) : null}
       </div>
 
-      {/* Sales Trend */}
-      <ChartCard
-        title="Sales Trend"
-        isLoading={trendQ.isLoading}
-        isEmpty={trendData.length === 0}
-        action={
-          <div className="flex gap-1">
-            {(['daily', 'weekly', 'monthly'] as Granularity[]).map(g => (
-              <button
-                key={g}
-                onClick={() => setGranularity(g)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all border ${
-                  granularity === g
-                    ? 'bg-amber-500/15 border-amber-500/30 text-amber-400'
-                    : 'bg-zinc-800 border-zinc-700 text-zinc-500 hover:text-zinc-200'
-                }`}
-              >
-                {g[0].toUpperCase() + g.slice(1)}
-              </button>
+      {/* Payment Method Breakdown */}
+      <div>
+        <h3 className="text-sm font-semibold text-zinc-300 mb-3">Revenue by Payment Method</h3>
+        {paymentMethodsQ.isLoading ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-24 rounded-2xl bg-zinc-900 border border-zinc-800 animate-pulse" />
             ))}
           </div>
-        }
-      >
-        <div className="p-4">
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={trendData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-              <defs>
-                <linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor={CHART_COLORS.amber} stopOpacity={0.3} />
-                  <stop offset="95%" stopColor={CHART_COLORS.amber} stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_STROKE} />
-              <XAxis dataKey="period" tick={CHART_AXIS_TICK} tickLine={false} axisLine={false} />
-              <YAxis tick={CHART_AXIS_TICK} tickLine={false} axisLine={false} tickFormatter={v => `MMK ${Number(v).toLocaleString()}`} />
-              <Tooltip
-                contentStyle={CHART_TOOLTIP_STYLE.contentStyle}
-                labelStyle={CHART_TOOLTIP_STYLE.labelStyle}
-                formatter={(v) => [fmt(Number(v ?? 0)), '']}
-              />
-              <Area
-                type="monotone"
-                dataKey="sales"
-                stroke={CHART_COLORS.amber}
-                strokeWidth={2}
-                fill="url(#salesGrad)"
-                dot={false}
-                name="Sales"
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </ChartCard>
-
-      {/* Payment Methods + By Category */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ChartCard
-          title="Payment Methods"
-          isLoading={paymentMethodsQ.isLoading}
-          isEmpty={pmData.length === 0}
-        >
-          <div className="p-4">
-            <ResponsiveContainer width="100%" height={200}>
-              <PieChart>
-                <Pie
-                  data={pmData}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={80}
-                  paddingAngle={3}
-                >
-                  {pmData.map((_, i) => (
-                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={CHART_TOOLTIP_STYLE.contentStyle}
-                  formatter={(v) => [fmt(Number(v ?? 0)), '']}
-                />
-                <Legend
-                  iconType="circle"
-                  iconSize={8}
-                  formatter={(v) => <span style={{ color: '#a1a1aa', fontSize: 11 }}>{v}</span>}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+        ) : paymentMethods.length === 0 ? (
+          <p className="text-sm text-zinc-600 py-2">No payment data for this period.</p>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {(paymentMethods as PaymentMethodStat[]).map(pm => (
+              <div
+                key={pm.payment_method}
+                className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex flex-col gap-1.5"
+              >
+                <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider truncate">
+                  {getPaymentMethodLabel(pm.payment_method)}
+                </p>
+                <p className="font-mono text-lg font-bold text-amber-400">{fmt(parseFloat(pm.amount))}</p>
+                <div className="flex items-center justify-between text-[10px] text-zinc-500">
+                  <span>{pm.transaction_count} txn{pm.transaction_count !== 1 ? 's' : ''}</span>
+                  <span className="font-semibold text-zinc-400">{parseFloat(pm.percentage).toFixed(1)}%</span>
+                </div>
+                {/* Mini progress bar */}
+                <div className="w-full h-1 bg-zinc-800 rounded-full overflow-hidden mt-0.5">
+                  <div
+                    className="h-full bg-amber-500 rounded-full"
+                    style={{ width: `${Math.min(100, parseFloat(pm.percentage))}%` }}
+                  />
+                </div>
+              </div>
+            ))}
           </div>
-        </ChartCard>
-
-        <ChartCard
-          title="Sales by Category"
-          isLoading={byCategoryQ.isLoading}
-          isEmpty={categoryData.length === 0}
-        >
-          <div className="p-4">
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={categoryData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_STROKE} vertical={false} />
-                <XAxis
-                  dataKey="name"
-                  tick={{ ...CHART_AXIS_TICK, fontSize: 10 }}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <YAxis
-                  tick={CHART_AXIS_TICK}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={v => `MMK ${Number(v).toLocaleString()}`}
-                />
-                <Tooltip
-                  contentStyle={CHART_TOOLTIP_STYLE.contentStyle}
-                  formatter={(v) => [fmt(Number(v ?? 0)), '']}
-                />
-                <Bar dataKey="sales" fill={CHART_COLORS.blue} radius={[4, 4, 0, 0]} name="Sales" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </ChartCard>
+        )}
       </div>
 
       {/* Top Products */}
-      <ChartCard
-        title="Top Products"
-        isLoading={topProductsQ.isLoading}
-        isEmpty={topProducts.length === 0}
-      >
-        <Table>
-          <thead>
-            <tr>
-              <Th>#</Th>
-              <Th>Product</Th>
-              <Th>SKU</Th>
-              <Th right>Qty Sold</Th>
-              <Th right>Revenue</Th>
-              <Th right>Profit Est.</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {topProducts.map((p, i) => (
-              <tr key={p.product_id} className="hover:bg-zinc-800/40 transition-colors">
-                <Td muted>{i + 1}</Td>
-                <Td>{p.product_name}</Td>
-                <Td muted mono>{p.sku ?? '—'}</Td>
-                <Td right><span className="font-mono">{p.quantity_sold}</span></Td>
-                <Td right><span className="font-mono text-amber-400">{fmt(p.revenue)}</span></Td>
-                <Td right><span className="font-mono text-green-400">{fmt(p.profit_estimate)}</span></Td>
+      <div className="space-y-2">
+        <ChartCard
+          title="Top Products"
+          isLoading={topProductsQ.isLoading}
+          isEmpty={topProducts.length === 0}
+        >
+          <Table>
+            <thead>
+              <tr>
+                <Th>#</Th>
+                <Th>Product</Th>
+                <Th>SKU</Th>
+                <Th right>Qty Sold</Th>
+                <Th right>Revenue</Th>
+                <Th right>Profit Est.</Th>
               </tr>
-            ))}
-          </tbody>
-        </Table>
-      </ChartCard>
+            </thead>
+            <tbody>
+              {paginatedProducts.map((p, i) => (
+                <tr key={p.product_id} className="hover:bg-zinc-800/40 transition-colors">
+                  <Td muted>{(productsPage - 1) * PAGE_SIZE + i + 1}</Td>
+                  <Td>{p.product_name}</Td>
+                  <Td muted mono>{p.sku ?? '—'}</Td>
+                  <Td right><span className="font-mono">{p.quantity_sold}</span></Td>
+                  <Td right><span className="font-mono text-amber-400">{fmt(p.revenue)}</span></Td>
+                  <Td right><span className="font-mono text-green-400">{fmt(p.profit_estimate)}</span></Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </ChartCard>
+        {!topProductsQ.isLoading && topProducts.length > 0 && (
+          <PaginationBar page={productsPage} totalPages={productsTotalPages} total={topProducts.length} setPage={setProductsPage} noun="products" />
+        )}
+      </div>
 
       {/* By Cashier */}
-      <ChartCard
-        title="Sales by Cashier"
-        isLoading={byCashierQ.isLoading}
-        isEmpty={cashiers.length === 0}
-      >
-        <Table>
-          <thead>
-            <tr>
-              <Th>Cashier</Th>
-              <Th right>Orders</Th>
-              <Th right>Sales</Th>
-              <Th right>Refunds</Th>
-              <Th right>Avg Ticket</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {cashiers.map(c => (
-              <tr key={c.cashier_id} className="hover:bg-zinc-800/40 transition-colors">
-                <Td>{c.cashier_name}</Td>
-                <Td right><span className="font-mono">{c.orders}</span></Td>
-                <Td right><span className="font-mono text-amber-400">{fmt(c.sales)}</span></Td>
-                <Td right><span className="font-mono text-red-400">{fmt(c.refunds)}</span></Td>
-                <Td right><span className="font-mono text-zinc-400">{fmt(c.average_ticket)}</span></Td>
+      <div className="space-y-2">
+        <ChartCard
+          title="Sales by Cashier"
+          isLoading={byCashierQ.isLoading}
+          isEmpty={cashiers.length === 0}
+        >
+          <Table>
+            <thead>
+              <tr>
+                <Th>Cashier</Th>
+                <Th right>Orders</Th>
+                <Th right>Sales</Th>
+                <Th right>Refunds</Th>
+                <Th right>Avg Ticket</Th>
               </tr>
-            ))}
-          </tbody>
-        </Table>
-      </ChartCard>
-
+            </thead>
+            <tbody>
+              {paginatedCashiers.map(c => (
+                <tr key={c.cashier_id} className="hover:bg-zinc-800/40 transition-colors">
+                  <Td>{c.cashier_name}</Td>
+                  <Td right><span className="font-mono">{c.orders}</span></Td>
+                  <Td right><span className="font-mono text-amber-400">{fmt(c.sales)}</span></Td>
+                  <Td right><span className="font-mono text-red-400">{fmt(c.refunds)}</span></Td>
+                  <Td right><span className="font-mono text-zinc-400">{fmt(c.average_ticket)}</span></Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </ChartCard>
+        {!byCashierQ.isLoading && cashiers.length > 0 && (
+          <PaginationBar page={cashiersPage} totalPages={cashiersTotalPages} total={cashiers.length} setPage={setCashiersPage} noun="cashiers" />
+        )}
+      </div>
     </div>
   )
 }

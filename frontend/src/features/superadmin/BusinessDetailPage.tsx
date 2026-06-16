@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { fmtDate, extractApiMsg } from '@/lib/utils'
@@ -9,6 +9,17 @@ import { tenantService } from '@/services/tenant/tenant.service'
 import { usersService } from '@/services/users/users.service'
 import { subscriptionsService } from '@/services/subscriptions/subscriptions.service'
 import type { TenantEntitlementOverride } from '@/shared/types'
+
+// Normalize legacy feature codes from DB (before migration) to canonical codes.
+const LEGACY_CODE_MAP: Record<string, string> = {
+  max_products:  'products',
+  max_branches:  'branches',
+  max_users:     'users',
+  max_customers: 'customers',
+}
+function normalizeFeatureCode(code: string): string {
+  return LEGACY_CODE_MAP[code] ?? code
+}
 
 const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'danger' | 'info' | 'default'> = {
   ACTIVE:    'success',
@@ -28,7 +39,7 @@ const ROLE_LABELS: Record<string, string> = {
   INVENTORY_STAFF: 'Inventory', RESELLER: 'Reseller',
 }
 
-type Tab = 'overview' | 'users' | 'branches' | 'subscription'
+type Tab = 'overview' | 'users' | 'branches' | 'subscription' | 'billing'
 
 // Modals
 
@@ -272,6 +283,18 @@ function SubscriptionTab({ tenantId }: { tenantId: string }) {
     enabled: !!subQuery.data,
   })
 
+  const cancelMutation = useMutation({
+    mutationFn: () => subscriptionsService.adminCancel(tenantId),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin', 'sub', tenantId] }); toast.success('Subscription deactivated') },
+    onError: err => toast.error(extractApiMsg(err) ?? 'Failed'),
+  })
+
+  const reactivateMutation = useMutation({
+    mutationFn: () => subscriptionsService.adminReactivate(tenantId),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin', 'sub', tenantId] }); toast.success('Subscription activated') },
+    onError: err => toast.error(extractApiMsg(err) ?? 'Failed'),
+  })
+
   const suspendMutation = useMutation({
     mutationFn: () => subscriptionsService.adminSuspend(tenantId),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin', 'sub', tenantId] }); toast.success('Subscription suspended') },
@@ -344,7 +367,7 @@ function SubscriptionTab({ tenantId }: { tenantId: string }) {
             { label: 'Plan', value: sub.plan.name },
             { label: 'Price', value: `${sub.plan.currency} ${Number(sub.plan.price).toFixed(2)}/${sub.plan.billing_cycle.toLowerCase()}` },
             { label: 'Started', value: fmtDate(sub.started_at) },
-            { label: 'Expires', value: fmtDate(sub.expires_at) },
+            { label: 'Expires', value: sub.expires_at ? fmtDate(sub.expires_at) : 'Never' },
             { label: 'Auto-Renew', value: sub.auto_renew ? 'Yes' : 'No' },
             ...(sub.trial_ends_at ? [{ label: 'Trial Ends', value: fmtDate(sub.trial_ends_at) }] : []),
           ].map(item => (
@@ -359,6 +382,23 @@ function SubscriptionTab({ tenantId }: { tenantId: string }) {
         <div className="mt-4 pt-4 border-t border-zinc-800 flex flex-wrap gap-2">
           <Btn size="sm" onClick={() => setModal('extend')}>Extend</Btn>
           <Btn variant="secondary" size="sm" onClick={() => setModal('change-plan')}>Change Plan</Btn>
+          {(sub.status === 'CANCELLED' || sub.status === 'EXPIRED') ? (
+            <Btn
+              variant="success" size="sm"
+              disabled={reactivateMutation.isPending}
+              onClick={() => confirm('Reactivate this subscription? Will set to ACTIVE and extend 30 days.') && reactivateMutation.mutate()}
+            >
+              {reactivateMutation.isPending ? 'Activating…' : 'Activate'}
+            </Btn>
+          ) : (
+            <Btn
+              variant="danger" size="sm"
+              disabled={cancelMutation.isPending}
+              onClick={() => confirm('Deactivate (cancel) this subscription?') && cancelMutation.mutate()}
+            >
+              {cancelMutation.isPending ? 'Deactivating…' : 'Deactivate'}
+            </Btn>
+          )}
           {sub.status !== 'SUSPENDED' && sub.status !== 'EXPIRED' && sub.status !== 'CANCELLED' && (
             <Btn
               variant="danger" size="sm"
@@ -422,7 +462,7 @@ function SubscriptionTab({ tenantId }: { tenantId: string }) {
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className={cn('text-sm capitalize', e.enabled ? 'text-zinc-200' : 'text-zinc-500')}>
-                          {e.feature_code.replace(/_/g, ' ')}
+                          {normalizeFeatureCode(e.feature_code).replace(/_/g, ' ')}
                         </span>
                         {hasOverride && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-900/60 border border-amber-700/50 text-amber-400 font-medium">
@@ -493,13 +533,270 @@ function SubscriptionTab({ tenantId }: { tenantId: string }) {
   )
 }
 
+// Billing Tab
+const PROOF_VARIANT: Record<string, 'success' | 'warning' | 'danger' | 'default'> = {
+  APPROVED: 'success', PENDING: 'warning', REJECTED: 'danger',
+}
+const HISTORY_VARIANT: Record<string, 'success' | 'warning' | 'danger' | 'info' | 'default'> = {
+  ACTIVATED: 'success', RENEWED: 'success', UPGRADED: 'success',
+  TRIAL_STARTED: 'info', DOWNGRADED: 'warning', DOWNGRADE_REQUESTED: 'warning',
+  UPGRADE_REQUESTED: 'info', RENEWAL_REQUESTED: 'info',
+  CANCELLED: 'danger', EXPIRED: 'danger', SUSPENDED: 'danger',
+}
+
+async function openProofFile(url: string) {
+  const token = localStorage.getItem('nexuspos_access_token') ?? ''
+  try {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const blob = await res.blob()
+    const blobUrl = URL.createObjectURL(blob)
+    window.open(blobUrl, '_blank', 'noopener,noreferrer')
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
+  } catch (e) {
+    toast.error('Could not open proof file. Check your connection.')
+  }
+}
+
+type ReviewAction = { proofId: string; action: 'approve' | 'reject'; planName?: string }
+
+function ReviewModal({ review, onClose, onConfirm, isPending }: {
+  review: ReviewAction
+  onClose: () => void
+  onConfirm: (notes: string) => void
+  isPending: boolean
+}) {
+  const [notes, setNotes] = useState('')
+  const isApprove = review.action === 'approve'
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-sm shadow-2xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+          <h3 className="text-base font-semibold text-zinc-100">
+            {isApprove ? 'Approve Payment Proof' : 'Reject Payment Proof'}
+          </h3>
+          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-800">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div className="p-5 space-y-3">
+          {isApprove ? (
+            <p className="text-sm text-zinc-300">
+              Approving will <span className="text-green-400 font-semibold">activate the subscription</span>
+              {review.planName ? <> on the <span className="text-amber-400 font-semibold">{review.planName}</span> plan</> : ''}.
+              The user will immediately gain access.
+            </p>
+          ) : (
+            <p className="text-sm text-zinc-300">
+              Rejecting will <span className="text-red-400 font-semibold">deny access</span> to the requested plan.
+              The user will need to resubmit a new payment proof.
+            </p>
+          )}
+          <textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            placeholder={isApprove ? 'Notes for approval (optional)' : 'Reason for rejection (optional, shown to user)'}
+            rows={3}
+            className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-amber-500 resize-none"
+          />
+        </div>
+        <div className="px-5 py-4 border-t border-zinc-800 flex gap-2 justify-end">
+          <Btn variant="secondary" size="sm" onClick={onClose} disabled={isPending}>Cancel</Btn>
+          <Btn variant={isApprove ? 'success' : 'danger'} size="sm" onClick={() => onConfirm(notes)} disabled={isPending}>
+            {isPending ? 'Processing…' : isApprove ? 'Approve & Activate' : 'Reject'}
+          </Btn>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function BillingTab({ tenantId }: { tenantId: string }) {
+  const [subtab, setSubtab] = useState<'proofs' | 'history'>('proofs')
+  const [reviewModal, setReviewModal] = useState<ReviewAction | null>(null)
+  const qc = useQueryClient()
+
+  const proofsQuery = useQuery({
+    queryKey: ['admin', 'billing-proofs', tenantId],
+    queryFn: () => subscriptionsService.adminListProofs({ tenant_id: tenantId, page_size: 50 }),
+  })
+
+  const historyQuery = useQuery({
+    queryKey: ['admin', 'billing-history', tenantId],
+    queryFn: () => subscriptionsService.adminGetSubscriptionHistory(tenantId),
+    enabled: subtab === 'history',
+  })
+
+  const approveMutation = useMutation({
+    mutationFn: ({ proofId, notes }: { proofId: string; notes: string }) =>
+      subscriptionsService.adminApproveProof(proofId, notes || undefined),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'billing-proofs', tenantId] })
+      qc.invalidateQueries({ queryKey: ['admin', 'sub', tenantId] })
+      qc.invalidateQueries({ queryKey: ['tenant', tenantId] })
+      setReviewModal(null)
+      toast.success('Proof approved — subscription activated.')
+    },
+    onError: err => toast.error(extractApiMsg(err) ?? 'Failed to approve'),
+  })
+
+  const rejectMutation = useMutation({
+    mutationFn: ({ proofId, notes }: { proofId: string; notes: string }) =>
+      subscriptionsService.adminRejectProof(proofId, notes || undefined),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'billing-proofs', tenantId] })
+      setReviewModal(null)
+      toast.success('Proof rejected. User must resubmit.')
+    },
+    onError: err => toast.error(extractApiMsg(err) ?? 'Failed to reject'),
+  })
+
+  const isPending = approveMutation.isPending || rejectMutation.isPending
+
+  const proofs = proofsQuery.data?.items ?? []
+  const history = (historyQuery.data as any)?.items ?? (Array.isArray(historyQuery.data) ? historyQuery.data : [])
+
+  return (
+    <div className="space-y-4">
+      {reviewModal && (
+        <ReviewModal
+          review={reviewModal}
+          onClose={() => !isPending && setReviewModal(null)}
+          isPending={isPending}
+          onConfirm={(notes) => {
+            if (reviewModal.action === 'approve') {
+              approveMutation.mutate({ proofId: reviewModal.proofId, notes })
+            } else {
+              rejectMutation.mutate({ proofId: reviewModal.proofId, notes })
+            }
+          }}
+        />
+      )}
+
+      {/* Sub-tabs */}
+      <div className="flex gap-1 border-b border-zinc-800 pb-2">
+        {(['proofs', 'history'] as const).map(s => (
+          <button key={s} onClick={() => setSubtab(s)}
+            className={cn('px-3 py-1.5 text-sm rounded-lg font-medium transition-colors',
+              subtab === s ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-200')}>
+            {s === 'proofs' ? 'Payment Proofs' : 'Plan History'}
+          </button>
+        ))}
+      </div>
+
+      {/* Payment Proofs */}
+      {subtab === 'proofs' && (
+        <div className="space-y-3">
+          {proofsQuery.isLoading ? (
+            <div className="flex justify-center py-10"><Spinner size={24} /></div>
+          ) : proofs.length === 0 ? (
+            <Empty title="No payment proofs" subtitle="This tenant has not submitted any payment proofs yet." />
+          ) : proofs.map((proof: any) => (
+            <div key={proof.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div className="flex-1 min-w-0 space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant={PROOF_VARIANT[proof.status] ?? 'default'} size="xs">{proof.status}</Badge>
+                    <Badge variant={proof.action_type === 'UPGRADE' ? 'warning' : proof.action_type === 'RENEWAL' ? 'info' : 'default'} size="xs">
+                      {proof.action_type === 'INITIAL_ACTIVATION' ? 'New Activation'
+                        : proof.action_type === 'RENEWAL' ? 'Renewal' : 'Plan Upgrade'}
+                    </Badge>
+                  </div>
+                  {proof.target_plan_name && (
+                    <p className="text-sm font-semibold text-green-400">→ Plan: {proof.target_plan_name}</p>
+                  )}
+                  <p className="text-sm text-zinc-300 font-medium">
+                    {proof.currency} {Number(proof.amount).toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                    <span className="text-zinc-500 font-normal"> · {fmtDate(proof.created_at)}</span>
+                  </p>
+                  {proof.reference_number && (
+                    <p className="text-xs text-amber-300/80">Ref: {proof.reference_number}</p>
+                  )}
+                  {proof.review_notes && (
+                    <p className="text-xs text-zinc-500 italic">Note: {proof.review_notes}</p>
+                  )}
+                  {proof.reviewed_at && (
+                    <p className="text-xs text-zinc-600">Reviewed {fmtDate(proof.reviewed_at)}</p>
+                  )}
+                </div>
+
+                <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                  {proof.proof_file_url && (
+                    <button
+                      onClick={() => openProofFile(proof.proof_file_url)}
+                      className="flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 font-medium transition-colors border border-amber-500/30 hover:border-amber-400/60 rounded-lg px-2.5 py-1.5"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                      </svg>
+                      View proof
+                    </button>
+                  )}
+                  {proof.status === 'PENDING' && (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setReviewModal({ proofId: proof.id, action: 'approve', planName: proof.target_plan_name })}
+                        className="text-xs text-green-400 hover:text-green-300 font-semibold transition-colors border border-green-500/30 hover:border-green-400/60 rounded-lg px-2.5 py-1.5"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        onClick={() => setReviewModal({ proofId: proof.id, action: 'reject' })}
+                        className="text-xs text-red-400 hover:text-red-300 transition-colors border border-red-500/30 hover:border-red-400/60 rounded-lg px-2.5 py-1.5"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Plan History */}
+      {subtab === 'history' && (
+        <div className="space-y-2">
+          {historyQuery.isLoading ? (
+            <div className="flex justify-center py-10"><Spinner size={24} /></div>
+          ) : history.length === 0 ? (
+            <Empty title="No history" subtitle="No subscription changes recorded yet." />
+          ) : history.map((h: any) => (
+            <div key={h.id} className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant={HISTORY_VARIANT[h.change_type] ?? 'default'} size="xs">
+                      {(h.change_type ?? '').replace(/_/g, ' ')}
+                    </Badge>
+                    {h.new_plan_name && (
+                      <span className="text-xs text-zinc-300 font-medium">→ {h.new_plan_name}</span>
+                    )}
+                  </div>
+                  {h.note && <p className="text-xs text-zinc-500 italic">{h.note}</p>}
+                </div>
+                <span className="text-xs text-zinc-600 flex-shrink-0">{fmtDate(h.created_at)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Main Page
 
 export default function BusinessDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const qc = useQueryClient()
-  const [tab, setTab] = useState<Tab>('overview')
+  const tab = (searchParams.get('tab') as Tab | null) ?? 'overview'
+  function setTab(t: Tab) {
+    setSearchParams(prev => { prev.set('tab', t); return prev }, { replace: true })
+  }
 
   const tenantQuery = useQuery({
     queryKey: ['tenant', id],
@@ -535,6 +832,7 @@ export default function BusinessDetailPage() {
     { key: 'users',        label: 'Users'        },
     { key: 'branches',     label: 'Branches'     },
     { key: 'subscription', label: 'Subscription' },
+    { key: 'billing',      label: 'Billing'      },
   ]
 
   return (
@@ -685,6 +983,9 @@ export default function BusinessDetailPage() {
 
         {/* Subscription */}
         {tab === 'subscription' && id && <SubscriptionTab tenantId={id} />}
+
+        {/* Billing */}
+        {tab === 'billing' && id && <BillingTab tenantId={id} />}
       </div>
     </div>
   )

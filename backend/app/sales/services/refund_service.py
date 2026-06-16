@@ -2,13 +2,13 @@ from __future__ import annotations
 
 """
 Refund Engine
-=============
 Refund flow:
   validate order is COMPLETED (or PARTIALLY_REFUNDED)
   → validate refund items against original order items
   → create Refund header
   → create RefundItems
-  → create REFUND StockMovements (inventory engine — THE ONLY way to restore stock)
+  → REPLACEMENT only: create OUTBOUND StockMovement (new unit given to customer)
+  → CASH only: no stock movement (product is scrapped/out-of-date)
   → update order.refunded_amount
   → recalculate order.order_status (PARTIALLY_REFUNDED vs REFUNDED)
   → recalculate order.payment_status
@@ -60,7 +60,7 @@ class RefundItemInput:
 
 
 class RefundInput:
-    __slots__ = ("order_id", "reason", "items", "notes")
+    __slots__ = ("order_id", "reason", "items", "notes", "refund_method")
 
     def __init__(
         self,
@@ -68,11 +68,13 @@ class RefundInput:
         reason: str,
         items: list[RefundItemInput],
         notes: str | None = None,
+        refund_method: str = "CASH",
     ) -> None:
         self.order_id = order_id
         self.reason = reason
         self.items = items
         self.notes = notes
+        self.refund_method = refund_method
 
 
 def _derive_order_status_after_refund(
@@ -171,10 +173,8 @@ class RefundService:
         branch_code = str(order.branch_id).replace("-", "")[:8].upper()
         refund_number = f"REF-{branch_code}-{str(data.order_id).replace('-','')[:8].upper()}-{int(now.timestamp())}"
 
-        # 3. Determine refund type
-        from app.core.constants import RefundType
-        is_full = new_refunded_total >= order.total_amount
-        refund_type = RefundType.FULL if is_full else RefundType.PARTIAL
+        # 3. Determine refund type from method (CASH or REPLACEMENT)
+        refund_type = data.refund_method  # "CASH" or "REPLACEMENT"
 
         # 4. Create Refund header
         refund = Refund(
@@ -192,25 +192,33 @@ class RefundService:
         await self.session.flush()
         await self.session.refresh(refund)
 
-        # 5. Create RefundItems + REFUND StockMovements
+        # 5. Create RefundItems + stock movements only for REPLACEMENT
+        #    CASH refund: product is discarded/out-of-date — no inventory change.
+        #    REPLACEMENT: new unit given to customer — outbound movement reduces stock.
         for entry in validated:
             ri: RefundItemInput = entry["input"]
             oi: OrderItem = entry["order_item"]
 
-            # REFUND stock movement restores inventory — THE ONLY WAY
-            movement, _ = await self.inventory_svc.create_stock_movement(
-                tenant_id=tenant_id,
-                branch_id=order.branch_id,
-                product_id=oi.product_id,
-                variant_id=oi.variant_id,
-                movement_type=StockMovementType.REFUND,
-                quantity=ri.quantity,
-                actor_user_id=actor_user_id,
-                reference_type="refund",
-                reference_id=str(refund.id),
-                unit_cost=oi.unit_cost_snapshot,
-                reason=f"Refund: {refund_number} — {data.reason}",
-            )
+            movement_id: uuid.UUID | None = None
+
+            if data.refund_method == "REPLACEMENT":
+                mvt_reason = f"Replacement: {refund_number} — {data.reason}"
+                movement, _ = await self.inventory_svc.create_stock_movement(
+                    tenant_id=tenant_id,
+                    branch_id=order.branch_id,
+                    product_id=oi.product_id,
+                    variant_id=oi.variant_id,
+                    movement_type=StockMovementType.REPLACEMENT,
+                    quantity=ri.quantity,
+                    actor_user_id=actor_user_id,
+                    reference_type="refund",
+                    reference_id=str(refund.id),
+                    unit_cost=oi.unit_cost_snapshot,
+                    reason=mvt_reason,
+                    notes=data.notes,
+                )
+                movement_id = movement.id
+            # CASH: no stock movement — product is scrapped, not returned to shelf
 
             refund_item = RefundItem(
                 refund_id=refund.id,
@@ -219,7 +227,7 @@ class RefundService:
                 variant_id=oi.variant_id,
                 quantity=ri.quantity,
                 amount=ri.amount,
-                stock_movement_id=movement.id,
+                stock_movement_id=movement_id,
             )
             self.session.add(refund_item)
 
@@ -301,6 +309,7 @@ class RefundService:
         page: int = 1,
         page_size: int = 20,
         order_id: uuid.UUID | None = None,
+        cashier_user_id: uuid.UUID | None = None,
     ) -> tuple[list[Refund], int]:
         offset = (page - 1) * page_size
         return await self.refund_repo.get_by_tenant(
@@ -308,4 +317,5 @@ class RefundService:
             offset=offset,
             limit=page_size,
             order_id=order_id,
+            cashier_user_id=cashier_user_id,
         )

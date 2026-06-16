@@ -13,11 +13,11 @@ export const authService = {
   login: (payload: LoginRequest) =>
     apiClient.post<TokenResponse>('/auth/login', payload).then(r => r.data),
 
-  refresh: (refresh_token: string) =>
-    apiClient.post<TokenResponse>('/auth/refresh', { refresh_token }).then(r => r.data),
+  refresh: () =>
+    apiClient.post<TokenResponse>('/auth/refresh', {}).then(r => r.data),
 
-  logout: (payload: LogoutRequest) =>
-    apiClient.post<SuccessResponse>('/auth/logout', payload).then(r => r.data),
+  logout: (payload?: LogoutRequest) =>
+    apiClient.post<SuccessResponse>('/auth/logout', payload ?? {}).then(r => r.data),
 
   me: () =>
     apiClient.get<User>('/auth/me').then(r => r.data),
@@ -27,4 +27,10 @@ export const authService = {
 
   register: (payload: RegisterRequest) =>
     apiClient.post<RegistrationResponse>('/auth/register', payload).then(r => r.data),
+
+  forgotPassword: (email: string) =>
+    apiClient.post<SuccessResponse>('/auth/forgot-password', { email }).then(r => r.data),
+
+  resetPassword: (token: string, new_password: string) =>
+    apiClient.post<SuccessResponse>('/auth/reset-password', { token, new_password }).then(r => r.data),
 }

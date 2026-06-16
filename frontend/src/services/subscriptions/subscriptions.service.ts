@@ -9,6 +9,7 @@ import type {
   PaginatedResponse,
   PublicPlan,
   TrialStatus,
+  SubscriptionPaymentMethod,
 } from '@/shared/types'
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api/v1'
@@ -32,14 +33,8 @@ export const subscriptionsService = {
   getHistory: (params?: { page?: number; page_size?: number }) =>
     apiClient.get<PaginatedResponse<SubscriptionHistory>>('/subscriptions/history', { params }).then(r => r.data),
 
-  renew: () =>
-    apiClient.post<Subscription>('/subscriptions/renew').then(r => r.data),
-
-  upgrade: (plan_id: string) =>
-    apiClient.post<Subscription>('/subscriptions/upgrade', { plan_id }).then(r => r.data),
-
   downgrade: (plan_id: string) =>
-    apiClient.post<Subscription>('/subscriptions/downgrade', { plan_id }).then(r => r.data),
+    apiClient.post<{ message: string }>('/subscriptions/downgrade', { plan_id }).then(r => r.data),
 
   cancel: () =>
     apiClient.post<Subscription>('/subscriptions/cancel').then(r => r.data),
@@ -79,20 +74,32 @@ export const subscriptionsService = {
   adminChangePlan: (tenantId: string, plan_id: string, reason?: string) =>
     apiClient.post<Subscription>(`/subscriptions/admin/tenants/${tenantId}/change-plan`, { plan_id, reason }).then(r => r.data),
 
+  adminCancel: (tenantId: string) =>
+    apiClient.post<Subscription>(`/subscriptions/admin/tenants/${tenantId}/cancel`).then(r => r.data),
+
+  adminReactivate: (tenantId: string, extension_days = 30) =>
+    apiClient.post<Subscription>(`/subscriptions/admin/tenants/${tenantId}/reactivate`, null, { params: { extension_days } }).then(r => r.data),
+
   adminSuspend: (tenantId: string) =>
     apiClient.post<Subscription>(`/subscriptions/admin/tenants/${tenantId}/suspend`).then(r => r.data),
 
   adminExpire: (tenantId: string) =>
     apiClient.post<Subscription>(`/subscriptions/admin/tenants/${tenantId}/expire`).then(r => r.data),
 
-  adminListProofs: (params?: { page?: number; page_size?: number; status?: string }) =>
+  adminListProofs: (params?: { page?: number; page_size?: number; status?: string; tenant_id?: string }) =>
     apiClient.get<PaginatedResponse<PaymentProof>>('/subscriptions/admin/payment-proofs', { params }).then(r => r.data),
+
+  adminRepairStatuses: () =>
+    apiClient.post<{ fixed: number; message: string }>('/subscriptions/admin/repair-statuses').then(r => r.data),
 
   adminApproveProof: (proofId: string, review_notes?: string) =>
     apiClient.post<PaymentProof>(`/subscriptions/payment-proofs/${proofId}/approve`, { review_notes }).then(r => r.data),
 
   adminRejectProof: (proofId: string, review_notes?: string) =>
     apiClient.post<PaymentProof>(`/subscriptions/payment-proofs/${proofId}/reject`, { review_notes }).then(r => r.data),
+
+  adminGetSubscriptionHistory: (tenantId: string, params?: { page?: number; page_size?: number }) =>
+    apiClient.get<PaginatedResponse<SubscriptionHistory>>(`/subscriptions/admin/tenants/${tenantId}/history`, { params }).then(r => r.data),
 
   adminGetEntitlements: (tenantId: string) =>
     apiClient.get<EffectiveEntitlement[]>(`/subscriptions/admin/tenants/${tenantId}/entitlements`).then(r => r.data),
@@ -122,4 +129,18 @@ export const subscriptionsService = {
 
   getMyEntitlements: () =>
     apiClient.get<EffectiveEntitlement[]>('/subscriptions/entitlements').then(r => r.data),
+
+  getPlatformPaymentMethods: () =>
+    apiClient.get<{ payment_methods: SubscriptionPaymentMethod[] }>('/subscriptions/platform/payment-methods').then(r => r.data.payment_methods),
+
+  adminSetPlatformPaymentMethods: (methods: SubscriptionPaymentMethod[]) =>
+    apiClient.put<{ payment_methods: SubscriptionPaymentMethod[] }>('/subscriptions/admin/platform/payment-methods', { payment_methods: methods }).then(r => r.data.payment_methods),
+
+  adminUploadPaymentMethodIcon: (file: File) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return apiClient.post<{ icon_url: string }>('/subscriptions/admin/platform/payment-method-icon', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(r => r.data.icon_url)
+  },
 }

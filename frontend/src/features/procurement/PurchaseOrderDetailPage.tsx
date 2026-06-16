@@ -23,6 +23,9 @@ function ReceiveGoodsModal({
   const [quantities, setQuantities] = useState<Record<string, string>>(
     Object.fromEntries(items.map(i => [i.id, i.ordered_quantity]))
   )
+  const [unitCosts, setUnitCosts] = useState<Record<string, string>>(
+    Object.fromEntries(items.map(i => [i.id, i.unit_cost]))
+  )
 
   const mutation = useMutation({
     mutationFn: () => procurementService.createReceipt({
@@ -35,15 +38,16 @@ function ReceiveGoodsModal({
         .map(i => ({
           purchase_order_item_id: i.id,
           received_quantity:      quantities[i.id],
-          unit_cost:              i.unit_cost,
+          unit_cost:              unitCosts[i.id] ?? i.unit_cost,
         })),
     }),
     onSuccess: (receipt) => {
-      toast.success(`Receipt ${receipt.receipt_number} created — inventory updated`)
+      toast.success(`Receipt ${receipt.receipt_number} created — inventory & cost prices updated`)
       qc.invalidateQueries({ queryKey: ['purchase-order', poId] })
       qc.invalidateQueries({ queryKey: ['purchase-orders'] })
       qc.invalidateQueries({ queryKey: ['goods-receipts'] })
       qc.invalidateQueries({ queryKey: ['inventory'] })
+      qc.invalidateQueries({ queryKey: ['products'] })
       onClose()
     },
     onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to create receipt'),
@@ -84,19 +88,31 @@ function ReceiveGoodsModal({
           </div>
 
           <div className="space-y-2">
-            <div className="grid grid-cols-[1fr_100px_100px] gap-2 px-1">
+            <div className="grid grid-cols-[1fr_80px_110px_90px] gap-2 px-1">
               <span className="text-xs text-zinc-500 uppercase">Item</span>
               <span className="text-xs text-zinc-500 uppercase text-right">Ordered</span>
+              <span className="text-xs text-zinc-500 uppercase text-right">Unit Cost</span>
               <span className="text-xs text-zinc-500 uppercase text-right">Receiving</span>
             </div>
             {items.map(item => (
-              <div key={item.id} className="grid grid-cols-[1fr_100px_100px] gap-2 items-center bg-zinc-800/40 rounded-xl p-2">
+              <div key={item.id} className="grid grid-cols-[1fr_80px_110px_90px] gap-2 items-center bg-zinc-800/40 rounded-xl p-2">
                 <div className="min-w-0">
-                  <p className="text-xs text-zinc-400 font-mono truncate">{item.product_id.slice(0, 8)}…</p>
+                  {item.product_name
+                    ? <p className="text-xs text-zinc-200 truncate">{item.product_name}</p>
+                    : <p className="text-xs text-zinc-400 font-mono truncate">{item.product_id.slice(0, 8)}…</p>
+                  }
                 </div>
                 <div className="text-right">
                   <span className="text-sm font-mono text-zinc-400">{item.ordered_quantity}</span>
                 </div>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={unitCosts[item.id] ?? ''}
+                  onChange={e => setUnitCosts(prev => ({ ...prev, [item.id]: e.target.value }))}
+                  className={`${inputCls(false)} text-right`}
+                />
                 <input
                   type="number"
                   min="0"
@@ -248,6 +264,16 @@ export default function PurchaseOrderDetailPage() {
                     <dd className="text-zinc-200">{fmtDateTime(po.approved_at)}</dd>
                   </div>
                 )}
+                <div className="flex justify-between">
+                  <dt className="text-zinc-500">Created By</dt>
+                  <dd className="text-zinc-200">{po.created_by_name ?? '—'}</dd>
+                </div>
+                {po.approved_by_name && (
+                  <div className="flex justify-between">
+                    <dt className="text-zinc-500">Approved By</dt>
+                    <dd className="text-zinc-200">{po.approved_by_name}</dd>
+                  </div>
+                )}
                 {po.notes && (
                   <div className="pt-2 border-t border-zinc-800">
                     <dt className="text-zinc-500 mb-1">Notes</dt>
@@ -339,7 +365,7 @@ export default function PurchaseOrderDetailPage() {
             <Table>
               <thead>
                 <tr>
-                  <Th>Product ID</Th>
+                  <Th>Product</Th>
                   <Th right>Ordered</Th>
                   <Th right>Received</Th>
                   <Th right>Unit Cost</Th>
@@ -354,7 +380,12 @@ export default function PurchaseOrderDetailPage() {
                   const pct      = ordered > 0 ? Math.min(100, Math.round((received / ordered) * 100)) : 0
                   return (
                     <tr key={item.id} className="hover:bg-zinc-800/40 transition-colors">
-                      <Td muted mono>{item.product_id.slice(0, 8)}…</Td>
+                      <Td>
+                        {item.product_name
+                          ? <span className="text-sm text-zinc-200">{item.product_name}</span>
+                          : <span className="text-xs font-mono text-zinc-500">{item.product_id.slice(0, 8)}…</span>
+                        }
+                      </Td>
                       <Td right><span className="font-mono">{item.ordered_quantity}</span></Td>
                       <Td right>
                         <span className={`font-mono ${received >= ordered ? 'text-green-400' : received > 0 ? 'text-amber-400' : 'text-zinc-500'}`}>

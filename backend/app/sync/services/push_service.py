@@ -2,7 +2,6 @@ from __future__ import annotations
 
 """
 Sync Push Service — Idempotent Offline Operation Replay
-=========================================================
 Accepts a batch of offline operations from a device and replays them
 against the live business services.
 

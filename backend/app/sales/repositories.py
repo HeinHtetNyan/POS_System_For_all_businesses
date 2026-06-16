@@ -4,11 +4,12 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import and_, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.cashiers.models import CashierSession
 from app.repositories.base import BaseRepository
 from app.sales.models import BranchCounter, Cart, CartItem, Order, OrderItem
 
@@ -104,6 +105,7 @@ class OrderRepository(BaseRepository[Order]):
         limit: int = 20,
         branch_id: uuid.UUID | None = None,
         cashier_session_id: uuid.UUID | None = None,
+        cashier_user_id: uuid.UUID | None = None,
         order_status: str | None = None,
         payment_status: str | None = None,
         date_from: datetime | None = None,
@@ -114,6 +116,14 @@ class OrderRepository(BaseRepository[Order]):
             filters.append(Order.branch_id == branch_id)
         if cashier_session_id:
             filters.append(Order.cashier_session_id == cashier_session_id)
+        if cashier_user_id:
+            filters.append(
+                Order.cashier_session_id.in_(
+                    select(CashierSession.id).where(
+                        CashierSession.cashier_user_id == cashier_user_id
+                    )
+                )
+            )
         if order_status:
             filters.append(Order.order_status == order_status)
         if payment_status:
@@ -122,12 +132,23 @@ class OrderRepository(BaseRepository[Order]):
             filters.append(Order.created_at >= date_from)
         if date_to:
             filters.append(Order.created_at <= date_to)
-        return await self.get_all(
-            offset=offset,
-            limit=limit,
-            filters=filters,
-            order_by=Order.created_at.desc(),
+
+        where_clause = and_(*filters)
+        count_stmt = select(func.count()).select_from(Order).where(where_clause)
+        count_result = await self.session.execute(count_stmt)
+        total = count_result.scalar_one()
+
+        stmt = (
+            select(Order)
+            .options(selectinload(Order.payments))
+            .where(where_clause)
+            .order_by(Order.created_at.desc())
+            .offset(offset)
+            .limit(limit)
         )
+        result = await self.session.execute(stmt)
+        items = list(result.scalars().all())
+        return items, total
 
     async def get_by_id_and_tenant(
         self,

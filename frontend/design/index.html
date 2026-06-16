@@ -108,7 +108,7 @@
   <script type="text/babel">
     const { useApp: rootUseApp } = window;
 
-    // ─── POS Shell (authenticated screens with sidebar) ────────
+    // POS Shell (authenticated screens with sidebar)
     function POSShell() {
       const { state } = rootUseApp();
       const { screen } = state;
@@ -183,7 +183,7 @@
       );
     }
 
-    // ─── Tweaks ────────────────────────────────────────────────
+    // Tweaks
     const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
       "accentColor": "#8B5CF6",
       "cartWidth": "320",
@@ -235,7 +235,7 @@
       );
     }
 
-    // ─── Root App ──────────────────────────────────────────────
+    // Root App
     function App() {
       const { state } = rootUseApp();
       const { screen } = state;

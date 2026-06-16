@@ -68,4 +68,10 @@ export const analyticsService = {
 
   getProfitReport: (params?: AnalyticsParams & { by?: 'product' | 'category' | 'branch' }) =>
     apiClient.get<ProfitReport>('/analytics/financial/profit', { params }).then(r => r.data),
+
+  exportSalesRefunds: (params?: AnalyticsParams) =>
+    apiClient.get<Blob>('/analytics/export/sales-refunds', { params, responseType: 'blob' }).then(r => r.data),
+
+  exportOrders: (params?: AnalyticsParams) =>
+    apiClient.get<Blob>('/analytics/export/orders', { params, responseType: 'blob' }).then(r => r.data),
 }

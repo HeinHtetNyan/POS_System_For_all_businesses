@@ -64,6 +64,10 @@ export default function GoodsReceiptDetailPage() {
                 <dd className="text-zinc-200">{fmtDate(receipt.receipt_date)}</dd>
               </div>
               <div className="flex justify-between">
+                <dt className="text-zinc-500">Received By</dt>
+                <dd className="text-zinc-200">{receipt.received_by_name ?? '—'}</dd>
+              </div>
+              <div className="flex justify-between">
                 <dt className="text-zinc-500">Created</dt>
                 <dd className="text-zinc-400">{fmtDateTime(receipt.created_at)}</dd>
               </div>
@@ -119,7 +123,7 @@ export default function GoodsReceiptDetailPage() {
           <Table>
             <thead>
               <tr>
-                <Th>PO Item ID</Th>
+                <Th>Product</Th>
                 <Th right>Quantity</Th>
                 <Th right>Unit Cost</Th>
                 <Th right>Line Total</Th>
@@ -128,7 +132,12 @@ export default function GoodsReceiptDetailPage() {
             <tbody>
               {receipt.items.map(item => (
                 <tr key={item.id} className="hover:bg-zinc-800/40 transition-colors">
-                  <Td muted mono>{item.purchase_order_item_id.slice(0, 8)}…</Td>
+                  <Td>
+                    {item.product_name
+                      ? <span className="text-sm text-zinc-200">{item.product_name}</span>
+                      : <span className="text-xs font-mono text-zinc-500">{item.purchase_order_item_id.slice(0, 8)}…</span>
+                    }
+                  </Td>
                   <Td right><span className="font-mono text-green-400">{item.received_quantity}</span></Td>
                   <Td right><span className="font-mono">{fmt(item.unit_cost)}</span></Td>
                   <Td right><span className="font-mono text-amber-400">{fmt(item.line_total)}</span></Td>

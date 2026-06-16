@@ -23,6 +23,7 @@ class DashboardResponse(BaseSchema):
     new_customers_month: int
     low_stock_products: int
     inventory_value: Decimal
+    total_customer_outstanding: Decimal
     generated_at: datetime
 
 

@@ -30,9 +30,19 @@ from app.schemas.inventory import (
     TransferApproveRequest,
     TransferCancelRequest,
 )
+from app.models.user import User
 from app.services.inventory_service import InventoryService
 
 router = APIRouter()
+
+
+async def _user_names(db: DbSession, ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
+    if not ids:
+        return {}
+    from sqlalchemy import select
+    stmt = select(User.id, User.first_name, User.last_name).where(User.id.in_(ids))
+    rows = await db.execute(stmt)
+    return {r.id: f"{r.first_name} {r.last_name}".strip() for r in rows}
 
 
 # Branch Inventory
@@ -63,10 +73,34 @@ async def get_branch_inventory(
         page_size=page_size,
     )
 
+    # Fetch sold quantities for each product in one query
+    from decimal import Decimal as _Decimal
+    from sqlalchemy import func, select
+    from app.models.inventory import StockMovement
+
+    product_ids = [inv.product_id for inv in items]
+    sold_map: dict[uuid.UUID, _Decimal] = {}
+    if product_ids:
+        result = await db.execute(
+            select(
+                StockMovement.product_id,
+                func.coalesce(func.sum(StockMovement.quantity), 0).label("qty_sold"),
+            )
+            .where(
+                StockMovement.branch_id == branch_id,
+                StockMovement.movement_type == StockMovementType.SALE,
+                StockMovement.product_id.in_(product_ids),
+            )
+            .group_by(StockMovement.product_id)
+        )
+        for row in result.all():
+            sold_map[row.product_id] = _Decimal(str(row.qty_sold))
+
     response_items = []
     for inv in items:
         data = inv.to_dict()
         data["quantity_available"] = inv.quantity_available
+        data["quantity_sold"] = sold_map.get(inv.product_id, _Decimal("0"))
         response_items.append(BranchInventoryResponse.model_validate(data))
 
     return PaginatedResponse.create(
@@ -141,8 +175,14 @@ async def list_stock_movements(
         product_id=product_id,
         movement_type=movement_type.value if movement_type else None,
     )
+    names = await _user_names(db, {m.actor_user_id for m in movements if m.actor_user_id})
     return PaginatedResponse.create(
-        items=[StockMovementResponse.model_validate(m) for m in movements],
+        items=[
+            StockMovementResponse.model_validate(m).model_copy(
+                update={"actor_name": names.get(m.actor_user_id)}
+            )
+            for m in movements
+        ],
         total=total,
         page=page,
         page_size=page_size,

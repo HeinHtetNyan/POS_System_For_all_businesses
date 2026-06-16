@@ -308,6 +308,10 @@ class ProductService:
             cost_price=data.cost_price,
             selling_price=data.selling_price,
             tax_rate=data.tax_rate,
+            discount_type=data.discount_type,
+            discount_value=data.discount_value,
+            discount_start_at=data.discount_start_at,
+            discount_end_at=data.discount_end_at,
         )
 
         await self._record_initial_prices(product, actor_id, tenant_id)
@@ -401,6 +405,14 @@ class ProductService:
             raise NotFoundError("Product", product_id)
 
         update_data = data.model_dump(exclude_none=True)
+        update_data.pop("clear_discount", None)
+
+        # When the caller explicitly clears the promotion, null out all discount fields
+        if data.clear_discount:
+            update_data["discount_type"] = None
+            update_data["discount_value"] = None
+            update_data["discount_start_at"] = None
+            update_data["discount_end_at"] = None
 
         if "sku" in update_data and await self.product_repo.sku_exists(
             tenant_id, update_data["sku"], exclude_id=product_id
@@ -498,6 +510,7 @@ class ProductService:
             after_state=update_data,
             request_id=request_id,
         )
+        await self.session.refresh(product)
         return product
 
     async def delete_product(

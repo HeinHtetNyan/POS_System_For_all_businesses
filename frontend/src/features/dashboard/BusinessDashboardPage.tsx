@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { fmt, fmtDate, timeAgo } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth.store'
 import { useTenantStore } from '@/store/tenant.store'
+import { useLocaleStore } from '@/i18n/localeStore'
 import { canAccess } from '@/shared/constants/rbac'
 import { analyticsService } from '@/services/analytics/analytics.service'
 import { notificationsService } from '@/services/notifications/notifications.service'
@@ -19,23 +20,23 @@ import { RecentlyViewed } from './widgets/RecentlyViewed'
 import { Favorites } from './widgets/Favorites'
 
 const OWNER_ACTIONS: QuickAction[] = [
-  { label: 'New Sale',       icon: '💰', path: '/app/pos',                       description: 'Open checkout' },
-  { label: 'Products',       icon: '📦', path: '/app/products',                  description: 'Manage catalog'  },
-  { label: 'Customers',      icon: '👥', path: '/app/customers',                 description: 'View accounts' },
-  { label: 'Procurement',    icon: '🛒', path: '/app/procurement',               description: 'Purchase orders' },
-  { label: 'Inventory',      icon: '🏭', path: '/app/inventory',                 description: 'Stock levels' },
-  { label: 'Analytics',      icon: '📊', path: '/app/analytics',                 description: 'Revenue & trends' },
-  { label: 'Notifications',  icon: '🔔', path: '/app/notifications',             description: 'Inbox' },
-  { label: 'Subscription',   icon: '💳', path: '/app/subscription',              description: 'Plan & billing' },
+  { labelKey: 'qa.new_sale',      descKey: 'qa.new_sale_desc',      icon: '💰', path: '/app/pos' },
+  { labelKey: 'qa.products',      descKey: 'qa.products_desc',      icon: '📦', path: '/app/products' },
+  { labelKey: 'qa.customers',     descKey: 'qa.customers_desc',     icon: '👥', path: '/app/customers' },
+  { labelKey: 'qa.procurement',   descKey: 'qa.procurement_desc',   icon: '🛒', path: '/app/procurement' },
+  { labelKey: 'qa.inventory',     descKey: 'qa.inventory_desc',     icon: '🏭', path: '/app/inventory' },
+  { labelKey: 'qa.analytics',     descKey: 'qa.analytics_desc',     icon: '📊', path: '/app/analytics' },
+  { labelKey: 'qa.notifications', descKey: 'qa.notifications_desc', icon: '🔔', path: '/app/notifications' },
+  { labelKey: 'qa.subscription',  descKey: 'qa.subscription_desc',  icon: '💳', path: '/app/subscription' },
 ]
 
 const MANAGER_ACTIONS: QuickAction[] = [
-  { label: 'New Sale',       icon: '💰', path: '/app/pos',                       description: 'Open checkout' },
-  { label: 'Inventory',      icon: '🏭', path: '/app/inventory',                 description: 'Stock levels' },
-  { label: 'Procurement',    icon: '🛒', path: '/app/procurement',               description: 'Purchase orders' },
-  { label: 'Customers',      icon: '👥', path: '/app/customers',                 description: 'View accounts' },
-  { label: 'Analytics',      icon: '📊', path: '/app/analytics',                 description: 'Revenue & trends' },
-  { label: 'Notifications',  icon: '🔔', path: '/app/notifications',             description: 'Inbox' },
+  { labelKey: 'qa.new_sale',      descKey: 'qa.new_sale_desc',      icon: '💰', path: '/app/pos' },
+  { labelKey: 'qa.inventory',     descKey: 'qa.inventory_desc',     icon: '🏭', path: '/app/inventory' },
+  { labelKey: 'qa.procurement',   descKey: 'qa.procurement_desc',   icon: '🛒', path: '/app/procurement' },
+  { labelKey: 'qa.customers',     descKey: 'qa.customers_desc',     icon: '👥', path: '/app/customers' },
+  { labelKey: 'qa.analytics',     descKey: 'qa.analytics_desc',     icon: '📊', path: '/app/analytics' },
+  { labelKey: 'qa.notifications', descKey: 'qa.notifications_desc', icon: '🔔', path: '/app/notifications' },
 ]
 
 const OVERALL = '__overall__'
@@ -44,6 +45,7 @@ export default function BusinessDashboardPage() {
   const navigate = useNavigate()
   const user = useAuthStore(s => s.user)
   const { selectedBranch, setSelectedBranch } = useTenantStore()
+  const t = useLocaleStore(s => s.t)
   const role = user?.role ?? 'MANAGER'
   const tenantId = user?.tenant_id
   const isOwner = role === 'BUSINESS_OWNER'
@@ -74,7 +76,7 @@ export default function BusinessDashboardPage() {
     ? 'All Branches'
     : availableBranches.find(b => b.id === dashBranchId)?.name ?? selectedBranch?.name
 
-  const [kpiQuery, notifsQuery, ordersQuery, lowStockQuery, procQuery] = useQueries({
+  const [kpiQuery, notifsQuery, ordersQuery, lowStockQuery, procApprovedQuery, procPartialQuery] = useQueries({
     queries: [
       {
         queryKey: ['analytics', 'dashboard', effectiveBranchId],
@@ -93,12 +95,24 @@ export default function BusinessDashboardPage() {
         queryFn: () => analyticsService.getLowStock({ branch_id: effectiveBranchId }),
       },
       {
-        queryKey: ['procurement', 'orders', { status: 'PENDING' }],
-        queryFn: () => procurementService.listOrders({ status: 'PENDING', page: 1, page_size: 5 }),
+        queryKey: ['procurement', 'orders', { status: 'APPROVED' }],
+        queryFn: () => procurementService.listOrders({ status: 'APPROVED', page: 1, page_size: 5 }),
+        enabled: canProcure,
+      },
+      {
+        queryKey: ['procurement', 'orders', { status: 'PARTIALLY_RECEIVED' }],
+        queryFn: () => procurementService.listOrders({ status: 'PARTIALLY_RECEIVED', page: 1, page_size: 5 }),
         enabled: canProcure,
       },
     ],
   })
+
+  const pendingPOsTotal   = (procApprovedQuery.data?.total ?? 0) + (procPartialQuery.data?.total ?? 0)
+  const pendingPOsLoading = procApprovedQuery.isLoading || procPartialQuery.isLoading
+  const pendingPOsItems   = [
+    ...(procApprovedQuery.data?.items ?? []),
+    ...(procPartialQuery.data?.items ?? []),
+  ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 5)
 
   const kpi = kpiQuery.data
   const kpiLoading = kpiQuery.isLoading
@@ -121,7 +135,7 @@ export default function BusinessDashboardPage() {
     onClick: () => navigate(`/app/notifications/${n.id}`),
   }))
 
-  const pendingPOs: ActivityItem[] = (procQuery.data?.items ?? []).map(po => ({
+  const pendingPOs: ActivityItem[] = pendingPOsItems.map(po => ({
     id: po.id,
     label: `PO ${po.po_number}`,
     sub: `${po.supplier_id.slice(-8)} · ${fmt(po.total_amount)}`,
@@ -237,17 +251,23 @@ export default function BusinessDashboardPage() {
           {canProcure && (
             <KpiCard
               label="Pending POs"
-              value={procQuery.data?.total ?? 0}
-              sub="purchase orders"
+              value={pendingPOsTotal}
+              sub={
+                <span className="flex gap-3 mt-0.5">
+                  <span>Ordered <strong className="text-zinc-300">{procApprovedQuery.data?.total ?? 0}</strong></span>
+                  <span>·</span>
+                  <span>Partial <strong className="text-zinc-300">{procPartialQuery.data?.total ?? 0}</strong></span>
+                </span>
+              }
               icon="🛒"
-              isLoading={procQuery.isLoading}
+              isLoading={pendingPOsLoading}
             />
           )}
           <KpiCard
-            label="Sales This Week"
-            value={fmt(kpi?.sales_this_week)}
-            sub={`yesterday: ${fmt(kpi?.sales_yesterday)}`}
-            icon="📅"
+            label="Customer Debts"
+            value={fmt(kpi?.total_customer_outstanding)}
+            sub="total outstanding balance"
+            icon="💳"
             isLoading={kpiLoading}
           />
         </div>
@@ -260,7 +280,7 @@ export default function BusinessDashboardPage() {
         <RecentlyViewed />
 
         {/* Quick Actions */}
-        <DashboardSection title="Quick Actions">
+        <DashboardSection title={t('dash.quick_actions')}>
           <QuickActionGrid actions={isOwner ? OWNER_ACTIONS : MANAGER_ACTIONS} />
         </DashboardSection>
 
@@ -269,8 +289,8 @@ export default function BusinessDashboardPage() {
 
           {/* Recent Sales */}
           <DashboardSection
-            title="Recent Sales"
-            action={{ label: 'View all', onClick: () => navigate('/app/sales') }}
+            title={t('dash.recent_sales')}
+            action={{ label: t('dash.view_all'), onClick: () => navigate('/app/sales') }}
           >
             <ActivityFeed
               items={recentOrders}
@@ -339,14 +359,14 @@ export default function BusinessDashboardPage() {
         )}
 
         {/* Pending Procurement Activity */}
-        {canProcure && (pendingPOs.length > 0 || procQuery.isLoading) && (
+        {canProcure && (pendingPOs.length > 0 || pendingPOsLoading) && (
           <DashboardSection
             title="Pending Purchase Orders"
             action={{ label: 'View all', onClick: () => navigate('/app/procurement/purchase-orders') }}
           >
             <ActivityFeed
               items={pendingPOs}
-              isLoading={procQuery.isLoading}
+              isLoading={pendingPOsLoading}
               emptyText="No pending purchase orders"
             />
           </DashboardSection>

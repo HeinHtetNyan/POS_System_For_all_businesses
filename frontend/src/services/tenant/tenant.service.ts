@@ -64,4 +64,17 @@ export const tenantService = {
 
   updateTenantSettings: (tenantId: string, payload: TenantSettingsUpdateRequest) =>
     apiClient.patch<TenantSettings>(`/tenants/${tenantId}/settings`, payload).then(r => r.data),
+
+  uploadLogo: (tenantId: string, file: File) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return apiClient
+      .post<TenantSettings>(`/tenants/${tenantId}/logo`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then(r => r.data)
+  },
+
+  deleteLogo: (tenantId: string) =>
+    apiClient.delete<SuccessResponse>(`/tenants/${tenantId}/logo`).then(r => r.data),
 }

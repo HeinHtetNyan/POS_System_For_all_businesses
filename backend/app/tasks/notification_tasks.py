@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.core.logging import get_logger
@@ -28,7 +28,7 @@ def process_expired_subscriptions(self: Any) -> dict:
     """Daily: expire all TRIAL/ACTIVE subscriptions past their expires_at."""
     async def _run_async() -> dict:
         from app.db.session import AsyncSessionLocal
-        from app.subscriptions.repositories import TenantSubscriptionRepository
+        from app.subscriptions.repositories import SubscriptionPlanRepository, TenantSubscriptionRepository
         from app.subscriptions.models import SubscriptionHistory
         from app.core.constants import (
             AuditAction,
@@ -37,32 +37,171 @@ def process_expired_subscriptions(self: Any) -> dict:
             NotificationType,
             SubscriptionChangeType,
             SubscriptionStatus,
+            TenantStatus,
         )
         from app.services.audit_service import AuditService
         from app.notifications.services import NotificationService
+        from app.models.tenant import Tenant
         from sqlalchemy import select
         from app.models.user import User
 
         now = datetime.now(timezone.utc)
+        downgraded_count = 0
         expired_count = 0
 
         async with AsyncSessionLocal() as session:
             sub_repo = TenantSubscriptionRepository(session)
+            plan_repo = SubscriptionPlanRepository(session)
             audit = AuditService(session)
             notif_svc = NotificationService(session)
+
             expired_subs = await sub_repo.get_expired(now)
 
             for sub in expired_subs:
                 old_status = sub.status
+                old_plan_id = sub.plan_id
+                old_plan_name = sub.plan.name if sub.plan else "your plan"
+                old_plan_code = sub.plan.code if sub.plan else ""
+
+                # Check if tenant has a pending scheduled downgrade
+                pending_downgrade_plan_id = getattr(sub, "pending_downgrade_plan_id", None)
+
+                if pending_downgrade_plan_id:
+                    # Apply the scheduled downgrade to the requested plan
+                    target_plan = await plan_repo.get_by_id(pending_downgrade_plan_id)
+                    if target_plan and target_plan.is_active:
+                        from app.subscriptions.models import PaymentProof
+                        from app.core.constants import (
+                            BillingCycle,
+                            PaymentProofStatus,
+                            ProofActionType,
+                        )
+
+                        # Check if the user already paid for the downgrade plan
+                        proof_stmt = select(PaymentProof).where(
+                            PaymentProof.subscription_id == sub.id,
+                            PaymentProof.action_type == ProofActionType.DOWNGRADE,
+                            PaymentProof.target_plan_id == pending_downgrade_plan_id,
+                            PaymentProof.status == PaymentProofStatus.APPROVED,
+                        )
+                        approved_proof = (await session.execute(proof_stmt)).scalars().first()
+                        already_paid = approved_proof is not None
+
+                        sub.plan_id = target_plan.id
+                        sub.trial_ends_at = None
+                        sub.pending_downgrade_plan_id = None
+                        sub.pending_downgrade_requested_at = None
+
+                        if target_plan.price == 0 or already_paid:
+                            # Free plan or pre-paid downgrade → activate immediately
+                            billing_days = 365 if target_plan.billing_cycle == BillingCycle.YEARLY else 30
+                            sub.status = SubscriptionStatus.ACTIVE
+                            sub.expires_at = now + timedelta(days=billing_days)
+
+                            tenant = await session.get(Tenant, sub.tenant_id)
+                            if tenant:
+                                tenant.status = TenantStatus.ACTIVE
+                                tenant.subscription_plan = target_plan.code
+                                tenant.subscription_expires_at = sub.expires_at
+
+                            notif_title = f"Switched to {target_plan.name}"
+                            notif_message = (
+                                f"Your {old_plan_name} subscription has expired. "
+                                f"Your account has automatically switched to {target_plan.name} "
+                                f"{'(free plan)' if target_plan.price == 0 else '— your pre-paid plan is now active'}. "
+                                f"Next renewal: {sub.expires_at.strftime('%d %b %Y')}."
+                            )
+                        else:
+                            # Downgrade scheduled but not yet paid → expire on new plan
+                            sub.status = SubscriptionStatus.EXPIRED
+                            sub.expires_at = None
+
+                            tenant = await session.get(Tenant, sub.tenant_id)
+                            if tenant:
+                                tenant.subscription_plan = target_plan.code
+                                tenant.subscription_expires_at = None
+
+                            notif_title = f"{old_plan_name} Expired — Payment Required for {target_plan.name}"
+                            notif_message = (
+                                f"Your {old_plan_name} subscription has expired and your account "
+                                f"has been moved to {target_plan.name} as scheduled. "
+                                "Submit payment proof to activate your new plan."
+                            )
+
+                        history = SubscriptionHistory(
+                            tenant_id=sub.tenant_id,
+                            subscription_id=sub.id,
+                            change_type=SubscriptionChangeType.DOWNGRADED,
+                            old_plan_id=old_plan_id,
+                            new_plan_id=target_plan.id,
+                            old_status=old_status,
+                            new_status=sub.status,
+                            note=(
+                                f"Scheduled downgrade applied: '{old_plan_name}' → '{target_plan.name}' "
+                                f"at end of billing period. "
+                                f"{'Pre-paid — activated.' if already_paid else 'Payment required.'}"
+                            ),
+                        )
+                        session.add(history)
+
+                        await audit.log(
+                            action=AuditAction.SUBSCRIPTION_DOWNGRADED,
+                            tenant_id=sub.tenant_id,
+                            entity_type=EntityType.TENANT_SUBSCRIPTION,
+                            entity_id=sub.id,
+                            after_state={
+                                "from_plan": old_plan_code,
+                                "to_plan": target_plan.code,
+                                "new_status": sub.status,
+                                "pre_paid": already_paid,
+                                "source": "scheduled_downgrade_on_expiry",
+                            },
+                        )
+
+                        try:
+                            stmt = select(User).where(
+                                User.tenant_id == sub.tenant_id,
+                                User.is_deleted.is_(False),
+                            )
+                            result = await session.execute(stmt)
+                            recipient_ids = [u.id for u in result.scalars().all()]
+                            if recipient_ids:
+                                await notif_svc.create_notification(
+                                    tenant_id=sub.tenant_id,
+                                    type=NotificationType.SUBSCRIPTION,
+                                    priority=NotificationPriority.HIGH,
+                                    title=notif_title,
+                                    message=notif_message,
+                                    recipient_ids=recipient_ids,
+                                    metadata={
+                                        "from_plan_code": old_plan_code,
+                                        "to_plan_code": target_plan.code,
+                                        "pre_paid": already_paid,
+                                        "expired_at": now.isoformat(),
+                                        "event": "scheduled_downgrade_applied",
+                                    },
+                                )
+                        except Exception as notif_exc:
+                            logger.warning(
+                                "scheduled_downgrade_notification_failed",
+                                tenant_id=str(sub.tenant_id),
+                                error=str(notif_exc),
+                            )
+
+                        downgraded_count += 1
+                        continue  # skip the EXPIRED fallback below
+
+                # Always mark EXPIRED — no free plan fallback; users must upgrade
                 sub.status = SubscriptionStatus.EXPIRED
 
                 history = SubscriptionHistory(
                     tenant_id=sub.tenant_id,
                     subscription_id=sub.id,
                     change_type=SubscriptionChangeType.EXPIRED,
+                    old_plan_id=old_plan_id,
                     old_status=old_status,
                     new_status=SubscriptionStatus.EXPIRED,
-                    note="Auto-expired by daily scheduler",
+                    note=f"Subscription '{old_plan_name}' expired. Upgrade required to continue.",
                 )
                 session.add(history)
 
@@ -71,7 +210,11 @@ def process_expired_subscriptions(self: Any) -> dict:
                     tenant_id=sub.tenant_id,
                     entity_type=EntityType.TENANT_SUBSCRIPTION,
                     entity_id=sub.id,
-                    after_state={"previous_status": old_status, "source": "scheduler"},
+                    after_state={
+                        "previous_status": old_status,
+                        "plan": old_plan_code,
+                        "source": "scheduler",
+                    },
                 )
 
                 # Notify all active users in the tenant
@@ -81,24 +224,21 @@ def process_expired_subscriptions(self: Any) -> dict:
                         User.is_deleted.is_(False),
                     )
                     result = await session.execute(stmt)
-                    users = list(result.scalars().all())
-                    recipient_ids = [u.id for u in users]
-
+                    recipient_ids = [u.id for u in result.scalars().all()]
                     if recipient_ids:
-                        plan_name = sub.plan.name if sub.plan else "your plan"
                         await notif_svc.create_notification(
                             tenant_id=sub.tenant_id,
                             type=NotificationType.SUBSCRIPTION,
-                            priority=NotificationPriority.CRITICAL,
-                            title="Subscription Expired — Action Required",
+                            priority=NotificationPriority.HIGH,
+                            title=f"{old_plan_name} Subscription Expired",
                             message=(
-                                f"Your {plan_name} subscription has expired. "
-                                "Access to business features is now restricted. "
-                                "Submit a payment proof to reactivate your account."
+                                f"Your {old_plan_name} subscription has expired. "
+                                "You can still view your data, but all actions are locked. "
+                                "Upgrade your plan to restore full access."
                             ),
                             recipient_ids=recipient_ids,
                             metadata={
-                                "plan_code": sub.plan.code if sub.plan else "",
+                                "plan_code": old_plan_code,
                                 "expired_at": now.isoformat(),
                                 "event": "subscription_expired",
                             },
@@ -114,8 +254,12 @@ def process_expired_subscriptions(self: Any) -> dict:
 
             await session.commit()
 
-        logger.info("subscriptions_expired_batch", count=expired_count)
-        return {"expired": expired_count}
+        logger.info(
+            "subscriptions_expired",
+            scheduled_downgrades=downgraded_count,
+            expired=expired_count,
+        )
+        return {"scheduled_downgrades": downgraded_count, "expired": expired_count}
 
     try:
         return _run(_run_async())

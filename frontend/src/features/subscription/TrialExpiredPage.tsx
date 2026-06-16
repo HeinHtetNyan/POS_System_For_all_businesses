@@ -23,15 +23,21 @@ export default function TrialExpiredPage() {
   // Super admin never sees this page
   if (user?.role === 'SUPER_ADMIN') return <Navigate to="/admin/dashboard" replace />
 
-  // If subscription is actually active/trial, redirect to app
-  if (!subLoading && sub && sub.status !== 'EXPIRED' && sub.status !== 'SUSPENDED' && sub.status !== 'CANCELLED') {
+  // If subscription is active/trial, or cancelled but still within paid period — redirect to app
+  const cancelledButActive =
+    sub?.status === 'CANCELLED' &&
+    sub.expires_at != null &&
+    new Date(sub.expires_at) > new Date()
+
+  if (!subLoading && sub && sub.status !== 'EXPIRED' && sub.status !== 'SUSPENDED' && (sub.status !== 'CANCELLED' || cancelledButActive)) {
     return <Navigate to="/app/dashboard" replace />
   }
 
   const isLoading = subLoading || plansLoading
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
+    <div className="h-full overflow-y-auto bg-zinc-950">
+      <div className="min-h-full flex items-center justify-center p-4 py-8">
       <div className="w-full max-w-2xl">
         {/* Header */}
         <div className="text-center mb-8">
@@ -67,7 +73,7 @@ export default function TrialExpiredPage() {
               </div>
               <div>
                 <p className="text-zinc-500 text-xs">Expired</p>
-                <p className="text-red-400 font-medium">{fmtDate(sub.expires_at)}</p>
+                <p className="text-red-400 font-medium">{sub.expires_at ? fmtDate(sub.expires_at) : '—'}</p>
               </div>
             </div>
           </div>
@@ -141,6 +147,7 @@ export default function TrialExpiredPage() {
           </a>
         </div>
       </div>
+    </div>
     </div>
   )
 }

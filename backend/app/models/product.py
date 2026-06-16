@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -145,6 +147,12 @@ class Product(Base):
 
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    # Promotion / time-limited discount
+    discount_type: Mapped[str | None] = mapped_column(String(20), nullable=True)   # 'PERCENTAGE' | 'AMOUNT'
+    discount_value: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
+    discount_start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    discount_end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Optimistic locking token for offline sync preparation
     sync_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

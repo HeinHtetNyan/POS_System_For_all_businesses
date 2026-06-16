@@ -4,7 +4,7 @@ import { useAuthStore } from '@/store/auth.store'
 import { authService } from '@/services/auth/auth.service'
 import { tokenStorage } from '@/app/lib/axios'
 import { ROLE_HOME } from '@/shared/constants/rbac'
-import { Btn, Input, Spinner, Divider } from '@/components/ui/index'
+import { Btn, Input, PasswordInput, Spinner, Divider } from '@/components/ui/index'
 import { IconAlert } from '@/components/icons'
 
 interface FormState {
@@ -77,7 +77,7 @@ export default function RegisterPage() {
         password: form.password,
         referral_code: form.referral_code.trim().toUpperCase() || undefined,
       })
-      tokenStorage.setTokens(result.access_token, result.refresh_token)
+      tokenStorage.setAccess(result.access_token)
       const me = await authService.me()
       setUser(me)
       localStorage.setItem('nexuspos_onboarding_pending', '1')
@@ -124,7 +124,7 @@ export default function RegisterPage() {
               required
             />
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 xs:grid-cols-2 gap-3">
               <Input
                 label="First Name"
                 value={form.first_name}
@@ -175,9 +175,8 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <Input
+              <PasswordInput
                 label="Password"
-                type="password"
                 value={form.password}
                 onChange={set('password')}
                 placeholder="Min 8 chars, uppercase, number"
@@ -200,9 +199,8 @@ export default function RegisterPage() {
               )}
             </div>
 
-            <Input
+            <PasswordInput
               label="Confirm Password"
-              type="password"
               value={form.confirm_password}
               onChange={set('confirm_password')}
               placeholder="Repeat password"

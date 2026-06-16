@@ -18,17 +18,12 @@ export interface LoginRequest {
 
 export interface TokenResponse {
   access_token: string
-  refresh_token: string
   token_type: string
   expires_in: number
 }
 
-export interface RefreshTokenRequest {
-  refresh_token: string
-}
-
 export interface LogoutRequest {
-  refresh_token: string | null
+  refresh_token?: string | null
 }
 
 
@@ -109,6 +104,10 @@ export interface Product {
   is_active: boolean
   image_url: string | null
   variants: ProductVariant[]
+  discount_type: string | null
+  discount_value: string | null
+  discount_start_at: string | null
+  discount_end_at: string | null
   created_at: string
   updated_at: string
 }
@@ -142,8 +141,30 @@ export interface InventoryItem {
   quantity_on_hand: string
   quantity_reserved: string
   quantity_available: string
+  quantity_sold?: string
   reorder_point: number | null
   last_counted_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface StockMovement {
+  id: string
+  tenant_id: string
+  branch_id: string
+  product_id: string
+  variant_id: string | null
+  movement_type: string
+  quantity: string
+  previous_quantity: string
+  new_quantity: string
+  reference_type: string | null
+  reference_id: string | null
+  unit_cost: string | null
+  reason: string | null
+  notes: string | null
+  actor_user_id: string
+  actor_name?: string | null
   created_at: string
   updated_at: string
 }
@@ -268,6 +289,31 @@ export interface CheckoutRequest {
 }
 
 
+export interface OrderItem {
+  id: string
+  order_id: string
+  product_id: string
+  variant_id: string | null
+  product_name: string
+  variant_name: string | null
+  sku: string | null
+  quantity: string
+  unit_price: string
+  discount_amount: string
+  tax_rate: string
+  subtotal: string
+  total: string
+}
+
+export interface OrderPayment {
+  id: string
+  payment_method: string
+  amount: string
+  reference_number: string | null
+  notes: string | null
+  paid_at: string | null
+}
+
 export interface Order {
   id: string
   tenant_id: string
@@ -281,16 +327,65 @@ export interface Order {
   discount_amount: string
   tax_amount: string
   total_amount: string
+  refunded_amount?: string
   notes: string | null
   voided_at: string | null
   voided_by: string | null
   void_reason: string | null
+  cashier_name?: string | null
+  customer_name?: string | null
+  branch_name?: string | null
   created_at: string
   updated_at: string
+  items?: OrderItem[]
+  payments?: OrderPayment[]
 }
 
 export interface VoidOrderRequest {
   reason: string
+}
+
+export interface RefundItemRequest {
+  order_item_id: string
+  quantity: string
+  amount: string
+}
+
+export interface RefundRequest {
+  order_id: string
+  reason: string
+  items: RefundItemRequest[]
+  notes?: string
+  refund_method?: string
+}
+
+export interface RefundItemRecord {
+  id: string
+  refund_id: string
+  order_item_id: string
+  product_id: string
+  variant_id: string | null
+  product_name: string | null
+  variant_name: string | null
+  quantity: string
+  amount: string
+}
+
+export interface RefundRecord {
+  id: string
+  order_id: string
+  tenant_id: string
+  refund_number: string
+  reason: string
+  refund_type: string
+  amount: string
+  notes: string | null
+  processed_by: string
+  processed_by_name?: string | null
+  processed_at: string
+  items: RefundItemRecord[]
+  created_at: string
+  updated_at: string
 }
 
 
@@ -324,14 +419,14 @@ export type LedgerEntryType = 'SALE' | 'PAYMENT' | 'ADJUSTMENT' | 'CREDIT_NOTE' 
 
 export interface LedgerEntry {
   id: string
-  date: string
+  date?: string
   type: LedgerEntryType
-  reference: string | null
-  description: string
-  debit: string
-  credit: string
+  reference?: string | null
+  description?: string
+  debit?: string
+  credit?: string
   balance: string
-  created_at: string
+  created_at?: string
 }
 
 export interface CustomerStatement {
@@ -406,6 +501,7 @@ export interface Notification {
   priority: string
   title: string
   message: string
+  metadata: Record<string, unknown> | null
   expires_at: string | null
   is_read: boolean
   read_at: string | null
@@ -426,14 +522,45 @@ export interface NotificationPreference {
 }
 
 
+// Canonical entitlement feature codes enforced by the backend.
+// Limit codes (products/branches/users/customers/devices) use limit_value.
+// Toggle codes (analytics/procurement/pos/inventory/advanced_reports) are simply on/off.
+export type CanonicalFeatureCode =
+  | 'products'
+  | 'branches'
+  | 'users'
+  | 'customers'
+  | 'devices'
+  | 'analytics'
+  | 'procurement'
+  | 'pos'
+  | 'inventory'
+  | 'advanced_reports'
+
 export interface PlanEntitlement {
   id: string
   plan_id: string
-  feature_code: string
+  feature_code: string   // string (not narrowed) to gracefully handle legacy max_* codes from DB
   enabled: boolean
   limit_value: number | null
   created_at: string
   updated_at: string
+}
+
+export interface ContactLinks {
+  viber?: string | null
+  telegram?: string | null
+  facebook?: string | null
+  tiktok?: string | null
+  custom?: { label: string; url: string }[]
+}
+
+export interface SubscriptionPaymentMethod {
+  type: string
+  label: string
+  account_number: string
+  account_name: string
+  icon_url?: string | null
 }
 
 export interface Plan {
@@ -447,6 +574,9 @@ export interface Plan {
   trial_days: number
   is_active: boolean
   is_referral_plan: boolean
+  is_custom: boolean
+  contact_links: ContactLinks | null
+  payment_info: SubscriptionPaymentMethod[] | null
   sort_order: number
   entitlements: PlanEntitlement[]
   created_at: string
@@ -459,11 +589,13 @@ export interface Subscription {
   plan_id: string
   status: string
   started_at: string
-  expires_at: string
+  expires_at: string | null
   cancelled_at: string | null
   trial_ends_at: string | null
   auto_renew: boolean
   plan: Plan
+  pending_downgrade_plan_id?: string | null
+  pending_downgrade_requested_at?: string | null
   created_at: string
   updated_at: string
 }
@@ -483,6 +615,13 @@ export interface SubscriptionHistory {
   updated_at: string
 }
 
+export enum ProofActionType {
+  INITIAL_ACTIVATION = 'INITIAL_ACTIVATION',
+  RENEWAL = 'RENEWAL',
+  UPGRADE = 'UPGRADE',
+  DOWNGRADE = 'DOWNGRADE',
+}
+
 export interface PaymentProof {
   id: string
   tenant_id: string
@@ -492,6 +631,11 @@ export interface PaymentProof {
   reference_number: string | null
   proof_file_url: string
   status: string
+  action_type?: ProofActionType
+  target_plan_id?: string | null
+  target_plan_name?: string | null
+  tenant_name?: string | null
+  tenant_email?: string | null
   reviewed_by: string | null
   reviewed_at: string | null
   review_notes: string | null
@@ -513,7 +657,7 @@ export interface TenantEntitlementOverride {
 }
 
 export interface EffectiveEntitlement {
-  feature_code: string
+  feature_code: string  // CanonicalFeatureCode (or legacy max_* before DB migration)
   enabled: boolean
   limit_value: number | null
   source: string
@@ -541,6 +685,9 @@ export interface PlanCreateRequest {
   trial_days?: number
   is_active?: boolean
   is_referral_plan?: boolean
+  is_custom?: boolean
+  contact_links?: ContactLinks | null
+  payment_info?: SubscriptionPaymentMethod[] | null
   sort_order?: number
   entitlements?: { feature_code: string; enabled: boolean; limit_value?: number | null }[]
 }
@@ -554,6 +701,9 @@ export interface PlanUpdateRequest {
   trial_days?: number
   is_active?: boolean
   is_referral_plan?: boolean
+  is_custom?: boolean
+  contact_links?: ContactLinks | null
+  payment_info?: SubscriptionPaymentMethod[] | null
   sort_order?: number
   entitlements?: { feature_code: string; enabled: boolean; limit_value?: number | null }[]
 }
@@ -563,6 +713,8 @@ export interface PaymentProofCreateRequest {
   currency?: string
   reference_number?: string
   proof_file_url: string
+  action_type?: ProofActionType
+  target_plan_id?: string
 }
 
 
@@ -637,6 +789,7 @@ export interface UserCreateRequest {
   last_name: string
   phone?: string
   role: UserRole
+  primary_branch_id?: string
 }
 
 export interface UserUpdateRequest {
@@ -796,6 +949,7 @@ export interface ReceiptPayment {
   method: string
   amount: string
   reference_number: string | null
+  notes?: string | null
 }
 
 export interface Receipt {
@@ -856,6 +1010,7 @@ export interface DashboardKPIs {
   new_customers_month: number
   low_stock_products: number
   inventory_value: string
+  total_customer_outstanding: string
   generated_at: string
 }
 
@@ -1036,7 +1191,7 @@ export interface SupplierSummary {
 
 export interface SupplierCreateRequest {
   name: string
-  code: string
+  code?: string
   email?: string
   phone?: string
   address?: string
@@ -1062,6 +1217,7 @@ export interface PurchaseOrderItem {
   id: string
   purchase_order_id: string
   product_id: string
+  product_name?: string | null
   variant_id: string | null
   ordered_quantity: string
   received_quantity: string
@@ -1087,6 +1243,9 @@ export interface PurchaseOrderSummary {
   approved_by: string | null
   approved_at: string | null
   created_by: string
+  created_by_name?: string | null
+  approved_by_name?: string | null
+  supplier_name?: string | null
   created_at: string
   updated_at: string
 }
@@ -1123,6 +1282,7 @@ export interface GoodsReceiptItem {
   id: string
   goods_receipt_id: string
   purchase_order_item_id: string
+  product_name?: string | null
   received_quantity: string
   unit_cost: string
   line_total: string
@@ -1139,6 +1299,7 @@ export interface GoodsReceiptSummary {
   receipt_date: string
   status: string
   received_by: string
+  received_by_name?: string | null
   created_at: string
   updated_at: string
 }
@@ -1172,6 +1333,7 @@ export interface SupplierPayment {
   status: string
   notes: string | null
   recorded_by: string
+  recorded_by_name?: string | null
   created_at: string
   updated_at: string
 }
@@ -1185,6 +1347,7 @@ export interface SupplierPayableSummary {
   paid_amount: string
   remaining_amount: string
   status: string
+  supplier_name?: string | null
   created_at: string
   updated_at: string
 }
@@ -1299,7 +1462,6 @@ export interface RegisterRequest {
 
 export interface RegistrationResponse {
   access_token: string
-  refresh_token: string
   token_type: string
   expires_in: number
   user_id: string

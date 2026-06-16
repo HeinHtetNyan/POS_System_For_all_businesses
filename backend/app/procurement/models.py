@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
@@ -128,6 +129,9 @@ class PurchaseOrderItem(Base):
 
     purchase_order: Mapped[PurchaseOrder] = relationship(
         "PurchaseOrder", back_populates="items"
+    )
+    product: Mapped[Any] = relationship(
+        "Product", foreign_keys=[product_id], lazy="raise"
     )
     receipt_items: Mapped[list[GoodsReceiptItem]] = relationship(
         "GoodsReceiptItem", back_populates="purchase_order_item"

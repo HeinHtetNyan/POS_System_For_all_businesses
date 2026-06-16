@@ -7,10 +7,13 @@ import { useAnalyticsFilters, AnalyticsFilters, ChartCard } from './analyticsHel
 
 type ProfitBy = 'product' | 'category' | 'branch'
 
+const PAGE_SIZE = 30
+
 export default function FinancialAnalyticsPage() {
   const filters = useAnalyticsFilters()
   const { from, to, branch, apiParams } = filters
   const [profitBy, setProfitBy] = useState<ProfitBy>('product')
+  const [profitPage, setProfitPage] = useState(1)
 
   const [summaryQ, profitQ] = useQueries({
     queries: [
@@ -27,6 +30,9 @@ export default function FinancialAnalyticsPage() {
 
   const summary     = summaryQ.data
   const profitItems = profitQ.data?.items ?? []
+
+  const profitTotalPages = Math.max(1, Math.ceil(profitItems.length / PAGE_SIZE))
+  const paginatedProfit = profitItems.slice((profitPage - 1) * PAGE_SIZE, profitPage * PAGE_SIZE)
 
   return (
     <div className="p-4 sm:p-6 space-y-5">
@@ -46,7 +52,7 @@ export default function FinancialAnalyticsPage() {
           <>
             <StatCard label="Gross Revenue" value={fmt(summary.gross_revenue)} accent />
             <StatCard label="Net Revenue"   value={fmt(summary.net_revenue)} />
-            <StatCard label="COGS"          value={fmt(summary.cost_of_goods_sold)} />
+            <StatCard label="COGS (Cost of Goods Sold)" value={fmt(summary.cost_of_goods_sold)} />
             <StatCard label="Gross Profit"  value={fmt(summary.gross_profit)} accent />
             <StatCard
               label="Margin %"
@@ -72,7 +78,7 @@ export default function FinancialAnalyticsPage() {
             {(['product', 'category', 'branch'] as ProfitBy[]).map(b => (
               <button
                 key={b}
-                onClick={() => setProfitBy(b)}
+                onClick={() => { setProfitBy(b); setProfitPage(1) }}
                 className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all border ${
                   profitBy === b
                     ? 'bg-amber-500/15 border-amber-500/30 text-amber-400'
@@ -90,13 +96,13 @@ export default function FinancialAnalyticsPage() {
             <tr>
               <Th>{profitBy[0].toUpperCase() + profitBy.slice(1)}</Th>
               <Th right>Revenue</Th>
-              <Th right>COGS</Th>
+              <Th right>COGS (Cost of Goods Sold)</Th>
               <Th right>Profit</Th>
               <Th right>Margin</Th>
             </tr>
           </thead>
           <tbody>
-            {profitItems.map((item, i) => {
+            {paginatedProfit.map((item, i) => {
               const margin = parseFloat(item.margin_pct)
               return (
                 <tr key={item.dimension_id ?? i} className="hover:bg-zinc-800/40 transition-colors">
@@ -116,6 +122,18 @@ export default function FinancialAnalyticsPage() {
             })}
           </tbody>
         </Table>
+        <div className="px-4 py-2.5 border-t border-zinc-800 flex items-center justify-between gap-3">
+          <p className="text-xs text-zinc-500">
+            {profitItems.length === 0 ? '0 items' : `${(profitPage - 1) * PAGE_SIZE + 1}–${Math.min(profitPage * PAGE_SIZE, profitItems.length)} of ${profitItems.length}`}
+          </p>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setProfitPage(p => Math.max(1, p - 1))} disabled={profitPage === 1}
+              className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">‹ Prev</button>
+            <span className="text-xs text-zinc-500 px-2">{profitPage} / {profitTotalPages}</span>
+            <button onClick={() => setProfitPage(p => Math.min(profitTotalPages, p + 1))} disabled={profitPage >= profitTotalPages}
+              className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">Next ›</button>
+          </div>
+        </div>
       </ChartCard>
 
     </div>

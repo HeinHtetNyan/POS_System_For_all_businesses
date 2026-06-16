@@ -40,7 +40,11 @@ class SubscriptionPlanRepository:
         stmt = (
             select(SubscriptionPlan)
             .options(selectinload(SubscriptionPlan.entitlements))
-            .where(SubscriptionPlan.is_trial.is_(True), SubscriptionPlan.is_active.is_(True))
+            .where(
+                SubscriptionPlan.is_trial.is_(True),
+                SubscriptionPlan.is_active.is_(True),
+                SubscriptionPlan.is_referral_plan.is_(False),
+            )
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
@@ -70,7 +74,9 @@ class SubscriptionPlanRepository:
 
     async def count_trial_plans(self) -> int:
         stmt = select(func.count()).select_from(SubscriptionPlan).where(
-            SubscriptionPlan.is_trial.is_(True), SubscriptionPlan.is_active.is_(True)
+            SubscriptionPlan.is_trial.is_(True),
+            SubscriptionPlan.is_active.is_(True),
+            SubscriptionPlan.is_referral_plan.is_(False),
         )
         result = await self.session.execute(stmt)
         return result.scalar_one()
@@ -127,6 +133,7 @@ class TenantSubscriptionRepository:
         window_end = now + timedelta(days=days)
         stmt = select(TenantSubscription).where(
             TenantSubscription.status == SubscriptionStatus.TRIAL,
+            TenantSubscription.expires_at.is_not(None),
             TenantSubscription.expires_at >= window_start,
             TenantSubscription.expires_at < window_end,
         )
@@ -136,12 +143,15 @@ class TenantSubscriptionRepository:
     async def get_expired(self, now: datetime) -> list[TenantSubscription]:
         from app.core.constants import SubscriptionStatus
 
-        stmt = select(TenantSubscription).where(
-            TenantSubscription.status.in_([
-                SubscriptionStatus.ACTIVE,
-                SubscriptionStatus.TRIAL,
-            ]),
-            TenantSubscription.expires_at < now,
+        stmt = self._with_plan(
+            select(TenantSubscription).where(
+                TenantSubscription.status.in_([
+                    SubscriptionStatus.ACTIVE,
+                    SubscriptionStatus.TRIAL,
+                ]),
+                TenantSubscription.expires_at.is_not(None),
+                TenantSubscription.expires_at < now,
+            )
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
@@ -176,8 +186,19 @@ class PaymentProofRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    def _proof_options(self):
+        from app.models.tenant import Tenant
+        return [
+            selectinload(PaymentProof.target_plan),
+            selectinload(PaymentProof.tenant),
+        ]
+
     async def get_by_id(self, proof_id: uuid.UUID) -> PaymentProof | None:
-        stmt = select(PaymentProof).where(PaymentProof.id == proof_id)
+        stmt = (
+            select(PaymentProof)
+            .where(PaymentProof.id == proof_id)
+            .options(*self._proof_options())
+        )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -192,6 +213,7 @@ class PaymentProofRepository:
         stmt = (
             select(PaymentProof)
             .where(PaymentProof.tenant_id == tenant_id)
+            .options(*self._proof_options())
             .order_by(PaymentProof.created_at.desc())
             .offset(offset)
             .limit(limit)
@@ -202,13 +224,25 @@ class PaymentProofRepository:
         return list(result.scalars().all()), total
 
     async def get_all(
-        self, status: str | None = None, offset: int = 0, limit: int = 20
+        self,
+        status: str | None = None,
+        offset: int = 0,
+        limit: int = 20,
+        tenant_id: "uuid.UUID | None" = None,
     ) -> tuple[list[PaymentProof], int]:
         filters = []
         if status:
             filters.append(PaymentProof.status == status)
+        if tenant_id:
+            filters.append(PaymentProof.tenant_id == tenant_id)
         count_stmt = select(func.count()).select_from(PaymentProof)
-        stmt = select(PaymentProof).order_by(PaymentProof.created_at.desc()).offset(offset).limit(limit)
+        stmt = (
+            select(PaymentProof)
+            .options(*self._proof_options())
+            .order_by(PaymentProof.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
         if filters:
             count_stmt = count_stmt.where(*filters)
             stmt = stmt.where(*filters)

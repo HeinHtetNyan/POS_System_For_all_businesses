@@ -38,6 +38,13 @@ function ProductCard({ product, cartQty, onAdd }: ProductCardProps) {
         </span>
       )}
 
+      {/* Promo badge */}
+      {!inCart && product.promoLabel && (
+        <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-md bg-green-500/90 text-black text-[9px] font-bold z-10 leading-tight">
+          {product.promoLabel}
+        </span>
+      )}
+
       <div className="p-2.5 flex flex-col gap-1 flex-1">
         {/* Product name */}
         <p
@@ -54,9 +61,16 @@ function ProductCard({ product, cartQty, onAdd }: ProductCardProps) {
 
         {/* Price row */}
         <div className="flex items-center justify-between mt-auto pt-1">
-          <span className="font-mono text-xs font-bold text-amber-400">
-            {fmt(product.price)}
-          </span>
+          <div className="flex flex-col">
+            <span className={`font-mono text-xs font-bold ${product.promoLabel ? 'text-green-400' : 'text-amber-400'}`}>
+              {fmt(product.price)}
+            </span>
+            {product.promoLabel && (
+              <span className="font-mono text-[9px] text-zinc-500 line-through leading-tight">
+                orig.
+              </span>
+            )}
+          </div>
           {isOutOfStock ? (
             <span className="text-[10px] font-semibold text-red-500">Out</span>
           ) : isLowStock ? (

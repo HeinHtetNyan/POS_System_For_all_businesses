@@ -25,6 +25,7 @@ class PurchaseOrderItemCreate(BaseSchema):
 class PurchaseOrderItemResponse(TimestampedSchema):
     purchase_order_id: uuid.UUID
     product_id: uuid.UUID
+    product_name: str | None = None
     variant_id: uuid.UUID | None
     ordered_quantity: Decimal
     received_quantity: Decimal
@@ -73,6 +74,9 @@ class PurchaseOrderSummary(TimestampedSchema):
     approved_by: uuid.UUID | None
     approved_at: datetime | None
     created_by: uuid.UUID
+    created_by_name: str | None = None
+    approved_by_name: str | None = None
+    supplier_name: str | None = None
 
 
 class PurchaseOrderDetail(PurchaseOrderSummary):
@@ -99,6 +103,7 @@ class GoodsReceiptItemCreate(BaseSchema):
 class GoodsReceiptItemResponse(TimestampedSchema):
     goods_receipt_id: uuid.UUID
     purchase_order_item_id: uuid.UUID
+    product_name: str | None = None
     received_quantity: Decimal
     unit_cost: Decimal
     line_total: Decimal
@@ -121,6 +126,7 @@ class GoodsReceiptSummary(TimestampedSchema):
     receipt_date: datetime
     status: str
     received_by: uuid.UUID
+    received_by_name: str | None = None
 
 
 class GoodsReceiptDetail(GoodsReceiptSummary):
@@ -156,6 +162,7 @@ class SupplierPaymentResponse(TimestampedSchema):
     status: str
     notes: str | None
     recorded_by: uuid.UUID
+    recorded_by_name: str | None = None
 
 
 
@@ -167,6 +174,7 @@ class SupplierPayableSummary(TimestampedSchema):
     paid_amount: Decimal
     remaining_amount: Decimal
     status: str
+    supplier_name: str | None = None
 
 
 class SupplierPayableDetail(SupplierPayableSummary):

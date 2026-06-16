@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { fmtDate, extractApiMsg } from '@/lib/utils'
-import { Badge, Btn, Spinner, Empty } from '@/components/ui'
+import { Badge, Btn, Spinner, Empty, Modal, PasswordInput } from '@/components/ui'
 import { cn } from '@/shared/utils'
 import { usersService } from '@/services/users/users.service'
 import { resellerFinanceAdminService } from '@/services/reseller_finance/reseller_finance.service'
@@ -24,6 +24,9 @@ export default function ResellerDetailPage() {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [tab, setTab] = useState<Tab>('overview')
+  const [resetPwdOpen, setResetPwdOpen] = useState(false)
+  const [newPwd, setNewPwd] = useState('')
+  const [confirmPwd, setConfirmPwd] = useState('')
 
   const userQuery = useQuery({
     queryKey: ['admin', 'user', id],
@@ -59,6 +62,24 @@ export default function ResellerDetailPage() {
     onError: err => toast.error(extractApiMsg(err) ?? 'Failed'),
   })
 
+  const resetPwdMutation = useMutation({
+    mutationFn: () => usersService.resetPassword(id!, newPwd),
+    onSuccess: () => {
+      toast.success('Password reset successfully')
+      setResetPwdOpen(false)
+      setNewPwd('')
+      setConfirmPwd('')
+    },
+    onError: err => toast.error(extractApiMsg(err) ?? 'Failed to reset password'),
+  })
+
+  function handleResetPassword(e: React.FormEvent) {
+    e.preventDefault()
+    if (newPwd.length < 8) { toast.error('Password must be at least 8 characters'); return }
+    if (newPwd !== confirmPwd) { toast.error('Passwords do not match'); return }
+    resetPwdMutation.mutate()
+  }
+
   const user = userQuery.data
   const referrals = referralsQuery.data?.items ?? []
 
@@ -92,6 +113,12 @@ export default function ResellerDetailPage() {
         </div>
         {user && (
           <div className="flex gap-2 flex-shrink-0">
+            <Btn
+              variant="secondary" size="sm"
+              onClick={() => { setNewPwd(''); setConfirmPwd(''); setResetPwdOpen(true) }}
+            >
+              Reset Password
+            </Btn>
             {user.status !== 'SUSPENDED' ? (
               <Btn
                 variant="secondary" size="sm"
@@ -132,7 +159,7 @@ export default function ResellerDetailPage() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
 
-        {/* ── Overview ─────────────────────────────────────────────── */}
+        {/* Overview */}
         {tab === 'overview' && (
           <div className="max-w-xl">
             {userQuery.isLoading ? (
@@ -167,7 +194,7 @@ export default function ResellerDetailPage() {
                   </div>
                   <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 text-center">
                     <p className="text-2xl font-bold text-green-400">
-                      {walletQuery.isLoading ? '…' : `MMK ${Number(walletQuery.data?.available_balance ?? 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`}
+                      {walletQuery.isLoading ? '…' : `${Number(walletQuery.data?.available_balance ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kyats`}
                     </p>
                     <p className="text-xs text-zinc-500 mt-1">Available Balance</p>
                   </div>
@@ -181,7 +208,7 @@ export default function ResellerDetailPage() {
           </div>
         )}
 
-        {/* ── Referrals ────────────────────────────────────────────── */}
+        {/* Referrals */}
         {tab === 'referrals' && (
           <div className="max-w-2xl">
             {referralsQuery.isLoading ? (
@@ -233,7 +260,7 @@ export default function ResellerDetailPage() {
           </div>
         )}
 
-        {/* ── Finance ──────────────────────────────────────────────── */}
+        {/* Finance */}
         {tab === 'finance' && (
           <div className="max-w-xl space-y-4">
             {walletQuery.isLoading ? (
@@ -248,11 +275,11 @@ export default function ResellerDetailPage() {
                   <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-4">Wallet</h3>
                   <div className="grid grid-cols-2 gap-4">
                     {[
-                      { label: 'Available Balance', value: `MMK ${Number(walletQuery.data.available_balance).toLocaleString('en-US', { maximumFractionDigits: 0 })}`, amber: true },
-                      { label: 'Locked Balance',    value: `MMK ${Number(walletQuery.data.locked_balance).toLocaleString('en-US', { maximumFractionDigits: 0 })}` },
-                      { label: 'Total Paid Out',    value: `MMK ${Number(walletQuery.data.total_paid_out).toLocaleString('en-US', { maximumFractionDigits: 0 })}` },
+                      { label: 'Available Balance', value: `${Number(walletQuery.data.available_balance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kyats`, amber: true },
+                      { label: 'Locked Balance',    value: `${Number(walletQuery.data.locked_balance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kyats` },
+                      { label: 'Total Paid Out',    value: `${Number(walletQuery.data.total_paid_out).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kyats` },
                       { label: 'Commission Rate',   value: `${Number(walletQuery.data.commission_rate_pct).toFixed(2)}%` },
-                      { label: 'Min Payout',        value: `MMK ${Number(walletQuery.data.min_payout_amount).toLocaleString('en-US', { maximumFractionDigits: 0 })}` },
+                      { label: 'Min Payout',        value: `${Number(walletQuery.data.min_payout_amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kyats` },
                     ].map(item => (
                       <div key={item.label}>
                         <p className="text-xs text-zinc-500 mb-0.5">{item.label}</p>
@@ -286,7 +313,7 @@ export default function ResellerDetailPage() {
                               {tx.note && <p className="text-xs text-zinc-600 mt-0.5 italic">{tx.note}</p>}
                             </div>
                             <p className={cn('text-sm font-medium flex-shrink-0', isCredit ? 'text-green-400' : 'text-red-400')}>
-                              {isCredit ? '+' : '-'}{tx.currency_code} {Number(tx.amount).toLocaleString()}
+                              {isCredit ? '+' : '-'}{Number(tx.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {tx.currency_code === 'MMK' ? 'Kyats' : tx.currency_code}
                             </p>
                           </div>
                         )
@@ -300,6 +327,56 @@ export default function ResellerDetailPage() {
         )}
 
       </div>
+
+      {/* Reset Password Modal */}
+      <Modal
+        open={resetPwdOpen}
+        onClose={() => setResetPwdOpen(false)}
+        title={`Reset Password — ${user?.full_name ?? ''}`}
+        size="sm"
+      >
+        <form onSubmit={handleResetPassword} className="flex flex-col gap-4">
+          <PasswordInput
+            label="New Password"
+            name="new_password"
+            value={newPwd}
+            onChange={e => setNewPwd(e.target.value)}
+            placeholder="Min 8 characters"
+            autoComplete="new-password"
+          />
+          <PasswordInput
+            label="Confirm Password"
+            name="confirm_password"
+            value={confirmPwd}
+            onChange={e => setConfirmPwd(e.target.value)}
+            placeholder="Repeat new password"
+            autoComplete="new-password"
+          />
+          {confirmPwd && newPwd !== confirmPwd && (
+            <p className="text-xs text-red-400 -mt-2">Passwords do not match</p>
+          )}
+          <div className="flex gap-2 pt-1">
+            <Btn
+              type="submit"
+              variant="danger"
+              fullWidth
+              loading={resetPwdMutation.isPending}
+              disabled={!newPwd || !confirmPwd || newPwd !== confirmPwd}
+            >
+              Reset Password
+            </Btn>
+            <Btn
+              type="button"
+              variant="secondary"
+              fullWidth
+              onClick={() => setResetPwdOpen(false)}
+              disabled={resetPwdMutation.isPending}
+            >
+              Cancel
+            </Btn>
+          </div>
+        </form>
+      </Modal>
     </div>
   )
 }

@@ -4,7 +4,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, Query
 
-from app.api.deps import CurrentUser, DbSession, EffectiveTenantId, RequestId, require_manager_or_above, require_tenant_admin
+from app.api.deps import CurrentUser, DbSession, EffectiveTenantId, RequestId, require_inventory_access, require_manager_or_above, require_tenant_admin
 from app.schemas.common import PaginatedResponse, SuccessResponse
 from app.schemas.product import BrandCreateRequest, BrandResponse, BrandUpdateRequest
 from app.services.product_service import BrandService
@@ -40,7 +40,7 @@ async def create_brand(
     "",
     response_model=PaginatedResponse[BrandResponse],
     summary="List brands",
-    dependencies=[Depends(require_manager_or_above)],
+    dependencies=[Depends(require_inventory_access)],
 )
 async def list_brands(
     db: DbSession,
@@ -67,7 +67,7 @@ async def list_brands(
     "/{brand_id}",
     response_model=BrandResponse,
     summary="Get brand",
-    dependencies=[Depends(require_manager_or_above)],
+    dependencies=[Depends(require_inventory_access)],
 )
 async def get_brand(
     brand_id: uuid.UUID,

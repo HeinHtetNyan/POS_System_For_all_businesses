@@ -8,6 +8,8 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy import select as _sa_select
+
 from app.api.deps import (
     ClientIp,
     CurrentUser,
@@ -19,6 +21,9 @@ from app.api.deps import (
     get_request_id,
     require_roles,
 )
+from app.cashiers.models import CashierSession
+from app.customers.models import Customer
+from app.models.branch import Branch
 from app.core.constants import UserRole
 from app.sales.schemas import (
     CartCreateRequest,
@@ -280,6 +285,8 @@ async def list_orders(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=500),
 ) -> OrderListResponse:
+    # Cashiers only see their own orders regardless of any other filter.
+    cashier_user_id = current_user.id if current_user.role == UserRole.CASHIER.value else None
     svc = OrderService(db)
     items, total = await svc.list_orders(
         tenant_id=tenant_id,
@@ -287,17 +294,90 @@ async def list_orders(
         page_size=page_size,
         branch_id=branch_id,
         cashier_session_id=cashier_session_id,
+        cashier_user_id=cashier_user_id,
         order_status=order_status,
         payment_status=payment_status,
         date_from=date_from,
         date_to=date_to,
     )
+
+    # Batch-load cashier names: one query for all sessions in this page.
+    session_ids = list({o.cashier_session_id for o in items if o.cashier_session_id})
+    name_map: dict[uuid.UUID, str] = {}
+    if session_ids:
+        rows = await db.execute(
+            _sa_select(
+                CashierSession.id,
+                (User.first_name + " " + User.last_name).label("full_name"),
+            )
+            .join(User, CashierSession.cashier_user_id == User.id)
+            .where(CashierSession.id.in_(session_ids))
+        )
+        for row in rows.all():
+            name_map[row[0]] = row[1]
+
+    # Batch-load customer names for orders that have a customer.
+    customer_ids = list({o.customer_id for o in items if o.customer_id})
+    customer_name_map: dict[uuid.UUID, str] = {}
+    if customer_ids:
+        crows = await db.execute(
+            _sa_select(Customer.id, Customer.name).where(Customer.id.in_(customer_ids))
+        )
+        for row in crows.all():
+            customer_name_map[row[0]] = row[1]
+
+    # Batch-load branch names.
+    branch_ids = list({o.branch_id for o in items if o.branch_id})
+    branch_name_map: dict[uuid.UUID, str] = {}
+    if branch_ids:
+        brows = await db.execute(
+            _sa_select(Branch.id, Branch.name).where(Branch.id.in_(branch_ids))
+        )
+        for row in brows.all():
+            branch_name_map[row[0]] = row[1]
+
+    order_responses = [
+        OrderResponse.model_validate(o).model_copy(
+            update={
+                "cashier_name": name_map.get(o.cashier_session_id),
+                "customer_name": customer_name_map.get(o.customer_id) if o.customer_id else None,
+                "branch_name": branch_name_map.get(o.branch_id),
+            }
+        )
+        for o in items
+    ]
     return OrderListResponse(
-        items=[OrderResponse.model_validate(o) for o in items],
+        items=order_responses,
         total=total,
         page=page,
         page_size=page_size,
     )
+
+
+@router.get(
+    "/orders/by-number/{order_number}",
+    response_model=OrderResponse,
+    summary="Get order by order number",
+)
+async def get_order_by_number(
+    order_number: str,
+    db: DbSession,
+    current_user: User = _view_access,
+    tenant_id: uuid.UUID = Depends(get_effective_tenant_id),
+) -> OrderResponse:
+    svc = OrderService(db)
+    order = await svc.get_order_by_number(order_number, tenant_id)
+    resp = OrderResponse.model_validate(order)
+    updates: dict = {}
+    if order.customer_id:
+        row = await db.execute(_sa_select(Customer.name).where(Customer.id == order.customer_id))
+        updates["customer_name"] = row.scalar_one_or_none()
+    if order.branch_id:
+        brow = await db.execute(_sa_select(Branch.name).where(Branch.id == order.branch_id))
+        updates["branch_name"] = brow.scalar_one_or_none()
+    if updates:
+        resp = resp.model_copy(update=updates)
+    return resp
 
 
 @router.get(
@@ -313,7 +393,17 @@ async def get_order(
 ) -> OrderResponse:
     svc = OrderService(db)
     order = await svc.get_order(order_id, tenant_id)
-    return OrderResponse.model_validate(order)
+    resp = OrderResponse.model_validate(order)
+    updates: dict = {}
+    if order.customer_id:
+        row = await db.execute(_sa_select(Customer.name).where(Customer.id == order.customer_id))
+        updates["customer_name"] = row.scalar_one_or_none()
+    if order.branch_id:
+        brow = await db.execute(_sa_select(Branch.name).where(Branch.id == order.branch_id))
+        updates["branch_name"] = brow.scalar_one_or_none()
+    if updates:
+        resp = resp.model_copy(update=updates)
+    return resp
 
 
 @router.post(

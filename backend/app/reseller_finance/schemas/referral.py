@@ -42,11 +42,14 @@ class ReferralCodeResponse(TimestampedSchema):
 class TenantReferralResponse(TimestampedSchema):
     tenant_id: uuid.UUID
     reseller_id: uuid.UUID
+    referral_code_id: uuid.UUID | None = None
     referral_code_snapshot: str
     referred_at: datetime
     locked_at: datetime | None
     first_paid_subscription_at: datetime | None
     tenant_name: str | None = None
+    subscription_status: str | None = None
+    subscription_expires_at: datetime | None = None
 
 
 class ReferralStatsResponse(BaseSchema):

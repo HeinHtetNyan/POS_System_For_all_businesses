@@ -67,7 +67,7 @@ export default function ProcurementDashboardPage() {
               accent={openPayables > 0}
             />
             <StatCard
-              label="Partial Payments"
+              label="Awaiting Payment"
               value={outstandingCount.toLocaleString()}
               accent={outstandingCount > 0}
             />
@@ -123,7 +123,7 @@ export default function ProcurementDashboardPage() {
         <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
           <h3 className="text-sm font-semibold text-zinc-100">Recent Goods Receipts</h3>
           <button
-            onClick={() => navigate('/app/procurement/receipts')}
+            onClick={() => navigate('/app/procurement/purchase-orders')}
             className="text-xs text-amber-400 hover:text-amber-300 transition-colors"
           >
             View all
@@ -174,7 +174,7 @@ export default function ProcurementDashboardPage() {
         <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
           <h3 className="text-sm font-semibold text-zinc-100">Outstanding Payables</h3>
           <button
-            onClick={() => navigate('/app/procurement/payables')}
+            onClick={() => navigate('/app/procurement/payments')}
             className="text-xs text-amber-400 hover:text-amber-300 transition-colors"
           >
             View all
@@ -198,7 +198,7 @@ export default function ProcurementDashboardPage() {
               {recentPayables.map(p => (
                 <tr
                   key={p.id}
-                  onClick={() => navigate('/app/procurement/payables')}
+                  onClick={() => navigate('/app/procurement/payments')}
                   className="cursor-pointer hover:bg-zinc-800/60 transition-colors"
                 >
                   <Td><PayableStatusBadge status={p.status} /></Td>

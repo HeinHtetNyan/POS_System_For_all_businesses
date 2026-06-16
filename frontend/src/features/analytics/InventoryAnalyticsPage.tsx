@@ -12,10 +12,16 @@ import {
   CHART_COLORS, CHART_AXIS_TICK, CHART_TOOLTIP_STYLE, CHART_GRID_STROKE,
 } from './analyticsHelpers'
 
+const PAGE_SIZE = 30
+
 export default function InventoryAnalyticsPage() {
   const filters = useAnalyticsFilters()
   const { from, to, branch, apiParams } = filters
   const [deadDays, setDeadDays] = useState(90)
+  const [lowStockPage, setLowStockPage]     = useState(1)
+  const [fastMovingPage, setFastMovingPage] = useState(1)
+  const [deadStockPage, setDeadStockPage]   = useState(1)
+  const [valuationPage, setValuationPage]   = useState(1)
 
   const branchParam = branch ? { branch_id: branch } : {}
 
@@ -31,7 +37,7 @@ export default function InventoryAnalyticsPage() {
       },
       {
         queryKey: ['inv-fast-moving', from, to, branch],
-        queryFn:  () => analyticsService.getFastMoving({ ...apiParams, limit: 10 }),
+        queryFn:  () => analyticsService.getFastMoving({ ...apiParams, limit: 100 }),
       },
       {
         queryKey: ['inv-dead-stock', branch, deadDays],
@@ -49,6 +55,17 @@ export default function InventoryAnalyticsPage() {
   const fastMoving = fastMovingQ.data ?? []
   const deadStock  = deadStockQ.data  ?? []
   const movements  = movementsQ.data  ?? []
+  const valuationItems = valuation?.items ?? []
+
+  const lowStockTotalPages  = Math.max(1, Math.ceil(lowStock.length / PAGE_SIZE))
+  const fastMovingTotalPages = Math.max(1, Math.ceil(fastMoving.length / PAGE_SIZE))
+  const deadStockTotalPages = Math.max(1, Math.ceil(deadStock.length / PAGE_SIZE))
+  const valuationTotalPages = Math.max(1, Math.ceil(valuationItems.length / PAGE_SIZE))
+
+  const paginatedLowStock  = lowStock.slice((lowStockPage - 1) * PAGE_SIZE, lowStockPage * PAGE_SIZE)
+  const paginatedFastMoving = fastMoving.slice((fastMovingPage - 1) * PAGE_SIZE, fastMovingPage * PAGE_SIZE)
+  const paginatedDeadStock = deadStock.slice((deadStockPage - 1) * PAGE_SIZE, deadStockPage * PAGE_SIZE)
+  const paginatedValuation = valuationItems.slice((valuationPage - 1) * PAGE_SIZE, valuationPage * PAGE_SIZE)
 
   const movementsData = movements.map(m => ({
     type:  m.movement_type,
@@ -132,7 +149,7 @@ export default function InventoryAnalyticsPage() {
               </tr>
             </thead>
             <tbody>
-              {lowStock.slice(0, 10).map(p => (
+              {paginatedLowStock.map(p => (
                 <tr key={`${p.product_id}-${p.branch_id}`} className="hover:bg-zinc-800/40 transition-colors">
                   <Td>{p.product_name}</Td>
                   <Td muted>{p.branch_name}</Td>
@@ -142,6 +159,14 @@ export default function InventoryAnalyticsPage() {
               ))}
             </tbody>
           </Table>
+          <div className="px-4 py-2.5 border-t border-zinc-800 flex items-center justify-between gap-3">
+            <p className="text-xs text-zinc-500">{lowStock.length === 0 ? '0 items' : `${(lowStockPage-1)*PAGE_SIZE+1}–${Math.min(lowStockPage*PAGE_SIZE, lowStock.length)} of ${lowStock.length}`}</p>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setLowStockPage(p => Math.max(1, p-1))} disabled={lowStockPage===1} className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">‹ Prev</button>
+              <span className="text-xs text-zinc-500 px-2">{lowStockPage} / {lowStockTotalPages}</span>
+              <button onClick={() => setLowStockPage(p => Math.min(lowStockTotalPages, p+1))} disabled={lowStockPage>=lowStockTotalPages} className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">Next ›</button>
+            </div>
+          </div>
         </ChartCard>
 
         <ChartCard
@@ -159,7 +184,7 @@ export default function InventoryAnalyticsPage() {
               </tr>
             </thead>
             <tbody>
-              {fastMoving.map(p => (
+              {paginatedFastMoving.map(p => (
                 <tr key={p.product_id} className="hover:bg-zinc-800/40 transition-colors">
                   <Td muted>{p.rank}</Td>
                   <Td>{p.product_name}</Td>
@@ -169,6 +194,14 @@ export default function InventoryAnalyticsPage() {
               ))}
             </tbody>
           </Table>
+          <div className="px-4 py-2.5 border-t border-zinc-800 flex items-center justify-between gap-3">
+            <p className="text-xs text-zinc-500">{fastMoving.length === 0 ? '0 items' : `${(fastMovingPage-1)*PAGE_SIZE+1}–${Math.min(fastMovingPage*PAGE_SIZE, fastMoving.length)} of ${fastMoving.length}`}</p>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setFastMovingPage(p => Math.max(1, p-1))} disabled={fastMovingPage===1} className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">‹ Prev</button>
+              <span className="text-xs text-zinc-500 px-2">{fastMovingPage} / {fastMovingTotalPages}</span>
+              <button onClick={() => setFastMovingPage(p => Math.min(fastMovingTotalPages, p+1))} disabled={fastMovingPage>=fastMovingTotalPages} className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">Next ›</button>
+            </div>
+          </div>
         </ChartCard>
       </div>
 
@@ -181,7 +214,7 @@ export default function InventoryAnalyticsPage() {
         action={
           <select
             value={deadDays}
-            onChange={e => setDeadDays(Number(e.target.value))}
+            onChange={e => { setDeadDays(Number(e.target.value)); setDeadStockPage(1) }}
             className="bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-400 text-xs px-2 py-1 focus:outline-none"
           >
             {[30, 60, 90, 180].map(d => (
@@ -201,7 +234,7 @@ export default function InventoryAnalyticsPage() {
             </tr>
           </thead>
           <tbody>
-            {deadStock.slice(0, 20).map(p => (
+            {paginatedDeadStock.map(p => (
               <tr key={p.product_id} className="hover:bg-zinc-800/40 transition-colors">
                 <Td>{p.product_name}</Td>
                 <Td muted mono>{p.sku ?? '—'}</Td>
@@ -216,13 +249,21 @@ export default function InventoryAnalyticsPage() {
             ))}
           </tbody>
         </Table>
+        <div className="px-4 py-2.5 border-t border-zinc-800 flex items-center justify-between gap-3">
+          <p className="text-xs text-zinc-500">{deadStock.length === 0 ? '0 items' : `${(deadStockPage-1)*PAGE_SIZE+1}–${Math.min(deadStockPage*PAGE_SIZE, deadStock.length)} of ${deadStock.length}`}</p>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setDeadStockPage(p => Math.max(1, p-1))} disabled={deadStockPage===1} className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">‹ Prev</button>
+            <span className="text-xs text-zinc-500 px-2">{deadStockPage} / {deadStockTotalPages}</span>
+            <button onClick={() => setDeadStockPage(p => Math.min(deadStockTotalPages, p+1))} disabled={deadStockPage>=deadStockTotalPages} className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">Next ›</button>
+          </div>
+        </div>
       </ChartCard>
 
       {/* Valuation Table */}
       <ChartCard
         title="Inventory Valuation"
         isLoading={valuationQ.isLoading}
-        isEmpty={!valuation || valuation.items.length === 0}
+        isEmpty={valuationItems.length === 0}
       >
         <Table>
           <thead>
@@ -235,7 +276,7 @@ export default function InventoryAnalyticsPage() {
             </tr>
           </thead>
           <tbody>
-            {(valuation?.items ?? []).slice(0, 20).map(p => (
+            {paginatedValuation.map(p => (
               <tr key={p.product_id} className="hover:bg-zinc-800/40 transition-colors">
                 <Td>{p.product_name}</Td>
                 <Td muted mono>{p.sku ?? '—'}</Td>
@@ -246,6 +287,14 @@ export default function InventoryAnalyticsPage() {
             ))}
           </tbody>
         </Table>
+        <div className="px-4 py-2.5 border-t border-zinc-800 flex items-center justify-between gap-3">
+          <p className="text-xs text-zinc-500">{valuationItems.length === 0 ? '0 items' : `${(valuationPage-1)*PAGE_SIZE+1}–${Math.min(valuationPage*PAGE_SIZE, valuationItems.length)} of ${valuationItems.length}`}</p>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setValuationPage(p => Math.max(1, p-1))} disabled={valuationPage===1} className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">‹ Prev</button>
+            <span className="text-xs text-zinc-500 px-2">{valuationPage} / {valuationTotalPages}</span>
+            <button onClick={() => setValuationPage(p => Math.min(valuationTotalPages, p+1))} disabled={valuationPage>=valuationTotalPages} className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">Next ›</button>
+          </div>
+        </div>
       </ChartCard>
 
     </div>

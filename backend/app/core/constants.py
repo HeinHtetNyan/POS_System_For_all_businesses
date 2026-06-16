@@ -16,6 +16,7 @@ class StockMovementType(str, Enum):
     PURCHASE_RECEIPT = "PURCHASE_RECEIPT"
     SALE = "SALE"
     REFUND = "REFUND"
+    REPLACEMENT = "REPLACEMENT"
     TRANSFER_IN = "TRANSFER_IN"
     TRANSFER_OUT = "TRANSFER_OUT"
     DAMAGE = "DAMAGE"
@@ -38,6 +39,7 @@ STOCK_INBOUND_TYPES: frozenset[str] = frozenset({
 # Movement types that DECREASE stock quantity
 STOCK_OUTBOUND_TYPES: frozenset[str] = frozenset({
     StockMovementType.SALE,
+    StockMovementType.REPLACEMENT,
     StockMovementType.TRANSFER_OUT,
     StockMovementType.DAMAGE,
     StockMovementType.ADJUSTMENT_DECREASE,
@@ -147,12 +149,22 @@ class SubscriptionChangeType(str, Enum):
     CANCELLED = "CANCELLED"
     EXTENDED = "EXTENDED"
     PLAN_CHANGED = "PLAN_CHANGED"
+    RENEWAL_REQUESTED = "RENEWAL_REQUESTED"
+    UPGRADE_REQUESTED = "UPGRADE_REQUESTED"
+    DOWNGRADE_REQUESTED = "DOWNGRADE_REQUESTED"
 
 
 class PaymentProofStatus(str, Enum):
     PENDING = "PENDING"
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
+
+
+class ProofActionType(str, Enum):
+    INITIAL_ACTIVATION = "INITIAL_ACTIVATION"
+    RENEWAL = "RENEWAL"
+    UPGRADE = "UPGRADE"
+    DOWNGRADE = "DOWNGRADE"
 
 
 class CustomerGender(str, Enum):
@@ -235,6 +247,10 @@ class PaymentStatus(str, Enum):
 class PaymentMethod(str, Enum):
     CASH = "CASH"
     CARD = "CARD"
+    KPAY = "KPAY"
+    WAVEPAY = "WAVEPAY"
+    AYA_PAY = "AYA_PAY"
+    CB_PAY = "CB_PAY"
     BANK_TRANSFER = "BANK_TRANSFER"
     MOBILE_PAYMENT = "MOBILE_PAYMENT"
     STORE_CREDIT = "STORE_CREDIT"
@@ -258,6 +274,8 @@ class RefundReason(str, Enum):
 class RefundType(str, Enum):
     FULL = "FULL"
     PARTIAL = "PARTIAL"
+    CASH = "CASH"
+    REPLACEMENT = "REPLACEMENT"
 
 
 class DiscountType(str, Enum):
@@ -307,6 +325,7 @@ class AuditAction(str, Enum):
     TOKEN_REFRESHED = "TOKEN_REFRESHED"
     PASSWORD_CHANGED = "PASSWORD_CHANGED"
     PASSWORD_RESET_REQUESTED = "PASSWORD_RESET_REQUESTED"
+    PASSWORD_RESET_COMPLETED = "PASSWORD_RESET_COMPLETED"
 
     # User management
     USER_CREATED = "USER_CREATED"

@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 interface KpiCardProps {
   label: string
   value: ReactNode
-  sub?: string
+  sub?: ReactNode
   icon?: string
   accent?: boolean
   isLoading?: boolean

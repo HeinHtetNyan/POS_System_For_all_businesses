@@ -10,9 +10,12 @@ import { apiClient } from '@/app/lib/axios'
 import type { PaymentProofCreateRequest } from '@/shared/types'
 
 async function openProofFile(url: string) {
+  const token = localStorage.getItem('nexuspos_access_token') ?? ''
   try {
-    const res = await apiClient.get(url, { responseType: 'blob', baseURL: '/' })
-    const blobUrl = URL.createObjectURL(res.data)
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const blob = await res.blob()
+    const blobUrl = URL.createObjectURL(blob)
     window.open(blobUrl, '_blank', 'noopener,noreferrer')
     setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
   } catch {
@@ -126,7 +129,7 @@ function SubmitProofModal({ onClose }: { onClose: () => void }) {
             </div>
             <div>
               <label className="block text-xs text-zinc-400 mb-1">Currency</label>
-              <input type="text" value={currency} onChange={e => setCurrency(e.target.value)} placeholder="MMK"
+              <input type="text" value={currency} onChange={e => setCurrency(e.target.value)} placeholder="Kyats"
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-amber-500" />
             </div>
           </div>
@@ -240,34 +243,55 @@ export default function BillingHistoryPage() {
                 ) : (
                   <div className="space-y-3">
                     {proofsQuery.data.items.map(proof => (
-                      <div key={proof.id} className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
+                      <div key={proof.id} className={`bg-zinc-900 border rounded-2xl p-4 ${
+                        proof.status === 'REJECTED' ? 'border-red-900/50' :
+                        proof.status === 'APPROVED' ? 'border-green-900/50' : 'border-zinc-800'
+                      }`}>
                         <div className="flex items-start justify-between gap-3 flex-wrap">
-                          <div>
-                            <p className="text-sm font-medium text-zinc-100">
-                              {proof.currency} {Number(proof.amount).toFixed(2)}
+                          <div className="space-y-0.5">
+                            <p className="text-sm font-semibold text-zinc-100">
+                              {Number(proof.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {proof.currency === 'MMK' ? 'Kyats' : proof.currency}
                             </p>
-                            {proof.reference_number && (
-                              <p className="text-xs text-zinc-500 mt-0.5">Ref: {proof.reference_number}</p>
+                            {proof.target_plan_name && (
+                              <p className="text-xs text-green-400 font-medium">→ {proof.target_plan_name}</p>
                             )}
-                            <p className="text-xs text-zinc-600 mt-0.5">{fmtDate(proof.created_at)}</p>
+                            {proof.reference_number && (
+                              <p className="text-xs text-zinc-500">Ref: {proof.reference_number}</p>
+                            )}
+                            <p className="text-xs text-zinc-600">{fmtDate(proof.created_at)}</p>
                           </div>
                           <Badge variant={PROOF_VARIANT[proof.status] ?? 'default'} dot>
                             {proof.status}
                           </Badge>
                         </div>
+
+                        {/* Review result — shown prominently when reviewed */}
                         {proof.reviewed_at && (
-                          <p className="text-xs text-zinc-600 mt-2">
-                            Reviewed {fmtDate(proof.reviewed_at)}
-                            {proof.review_notes && ` — ${proof.review_notes}`}
-                          </p>
+                          <div className={`mt-3 rounded-xl px-3 py-2 text-sm ${
+                            proof.status === 'APPROVED'
+                              ? 'bg-green-900/20 border border-green-800/40 text-green-300'
+                              : 'bg-red-900/20 border border-red-800/40 text-red-300'
+                          }`}>
+                            <p className="font-medium">
+                              {proof.status === 'APPROVED' ? '✓ Approved' : '✗ Rejected'} · {fmtDate(proof.reviewed_at)}
+                            </p>
+                            {proof.review_notes ? (
+                              <p className="mt-0.5 text-xs opacity-90">{proof.review_notes}</p>
+                            ) : (
+                              <p className="mt-0.5 text-xs opacity-60 italic">No notes provided.</p>
+                            )}
+                          </div>
                         )}
-                        <button
-                          onClick={() => openProofFile(proof.proof_file_url)}
-                          className="inline-flex items-center gap-1 mt-2 text-xs text-amber-400 hover:text-amber-300"
-                        >
-                          View proof
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                        </button>
+
+                        {proof.proof_file_url && (
+                          <button
+                            onClick={() => openProofFile(proof.proof_file_url)}
+                            className="inline-flex items-center gap-1 mt-3 text-xs text-amber-400 hover:text-amber-300"
+                          >
+                            View proof
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                          </button>
+                        )}
                       </div>
                     ))}
                     {proofsQuery.data.total_pages > 1 && (

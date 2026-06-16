@@ -39,6 +39,7 @@ from app.procurement.schemas import (
     PurchaseOrderUpdate,
     SupplierPaymentCreate,
 )
+from app.repositories.product_repository import ProductRepository
 from app.services.audit_service import AuditService
 from app.services.inventory_service import InventoryService
 
@@ -362,6 +363,7 @@ class ReceivingService:
         self.gr_counter_repo = GRCounterRepository(session)
         self.audit = AuditService(session)
         self.inv_service = InventoryService(session)
+        self.product_repo = ProductRepository(session)
 
     async def _generate_receipt_number(self, tenant_id: uuid.UUID) -> str:
         counter = await self.gr_counter_repo.get_or_create_locked(tenant_id)
@@ -464,6 +466,13 @@ class ReceivingService:
                 unit_cost=item_data.unit_cost,
                 reason=f"Goods receipt {receipt_number} from PO {po.po_number}",
             )
+
+            # Update product cost price with the received unit cost
+            product = await self.product_repo.get_active_by_id_and_tenant(
+                poi.product_id, tenant_id
+            )
+            if product:
+                await self.product_repo.update(product, cost_price=item_data.unit_cost)
 
         await self.session.flush()
 

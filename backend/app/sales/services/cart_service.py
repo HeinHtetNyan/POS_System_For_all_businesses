@@ -139,21 +139,28 @@ class CartService:
         await self.session.delete(cart)
         await self.session.flush()
 
-    def preview_totals(self, cart: Cart) -> dict:
+    def preview_totals(self, cart: Cart, order_discount: Decimal = Decimal("0")) -> dict:
         subtotal = Decimal("0")
         tax_amount = Decimal("0")
-        discount_amount = Decimal("0")
+        item_discount_total = Decimal("0")
 
         for item in cart.items:
             item_sub = item.unit_price * item.quantity
             subtotal += item_sub
-            discount_amount += item.discount_amount
+            item_discount_total += item.discount_amount
             tax_amount += (item_sub - item.discount_amount) * item.tax_rate
 
-        total = subtotal - discount_amount + tax_amount
+        # Mirror checkout_service: order-level discount reduces the tax base proportionally
+        item_taxable_total = subtotal - item_discount_total
+        if item_taxable_total > Decimal("0") and order_discount > Decimal("0"):
+            effective_disc = min(order_discount, item_taxable_total)
+            tax_amount = tax_amount * (item_taxable_total - effective_disc) / item_taxable_total
+
+        total_discount = item_discount_total + order_discount
+        total = subtotal - total_discount + tax_amount
         return {
             "subtotal": subtotal,
-            "discount_amount": discount_amount,
+            "discount_amount": total_discount,
             "tax_amount": tax_amount,
             "total_amount": max(total, Decimal("0")),
             "item_count": len(cart.items),

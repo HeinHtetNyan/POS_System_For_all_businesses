@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -7,6 +9,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import AuditAction, EntityType, UserRole, UserStatus
+from app.models.password_reset_token import PasswordResetToken
 from app.core.exceptions import AuthenticationError, BusinessRuleError, TokenError
 from app.core.logging import get_logger
 from app.core.security import (
@@ -61,14 +64,26 @@ class AuthService:
             user = await self.user_repo.get_by_phone(phone)
 
         if not user or not verify_password(password, user.hashed_password):
-            await self.audit_service.log(
-                action=AuditAction.LOGIN_FAILED,
-                entity_type=EntityType.AUTH_SESSION,
-                metadata={"identifier": email or identifier, "reason": "Invalid credentials"},
-                ip_address=ip_address,
-                user_agent=user_agent,
-                request_id=request_id,
-            )
+            import hashlib as _hl
+            _raw = (email or identifier or "").encode()
+            _id_hash = _hl.sha256(_raw).hexdigest()[:16]
+            try:
+                # Use an independent session so the audit write is committed even
+                # though we're about to raise (which rolls back the main session).
+                from app.db.session import AsyncSessionLocal
+                async with AsyncSessionLocal() as _audit_session:
+                    from app.services.audit_service import AuditService as _AuditSvc
+                    await _AuditSvc(_audit_session).log(
+                        action=AuditAction.LOGIN_FAILED,
+                        entity_type=EntityType.AUTH_SESSION,
+                        metadata={"identifier_hash": _id_hash, "reason": "Invalid credentials"},
+                        ip_address=ip_address,
+                        user_agent=user_agent,
+                        request_id=request_id,
+                    )
+                    await _audit_session.commit()
+            except Exception:
+                pass  # audit failure must never block a login attempt
             raise AuthenticationError("Invalid credentials")
 
         if user.status != UserStatus.ACTIVE:
@@ -112,7 +127,6 @@ class AuthService:
 
         token_response = TokenResponse(
             access_token=access_token,
-            refresh_token=refresh_token_str,
             expires_in=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         )
         return token_response, refresh_token_str
@@ -180,7 +194,6 @@ class AuthService:
 
         token_response = TokenResponse(
             access_token=access_token,
-            refresh_token=new_refresh_token,
             expires_in=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         )
         return token_response, new_refresh_token
@@ -232,5 +245,83 @@ class AuthService:
             tenant_id=tenant_id,
             entity_type=EntityType.USER,
             entity_id=str(user_id),
+            request_id=request_id,
+        )
+
+    async def create_password_reset_token(
+        self,
+        email: str,
+        request_id: str | None = None,
+    ) -> tuple[str, str] | None:
+        """
+        Look up the user by email, check eligibility (BUSINESS_OWNER or RESELLER only),
+        create a hashed reset token in the DB, and return (email, raw_token).
+        Returns None silently if the user doesn't exist or is not eligible —
+        the route always responds with the same message to prevent user enumeration.
+        """
+        user = await self.user_repo.get_by_email(email)
+        if not user or user.role not in (UserRole.BUSINESS_OWNER, UserRole.RESELLER):
+            return None
+
+        raw_token = secrets.token_urlsafe(48)
+        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            minutes=settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES
+        )
+
+        reset_record = PasswordResetToken(
+            user_id=user.id,
+            token_hash=token_hash,
+            expires_at=expires_at,
+        )
+        self.session.add(reset_record)
+
+        await self.audit_service.log(
+            action=AuditAction.PASSWORD_RESET_REQUESTED,
+            actor_user_id=user.id,
+            tenant_id=user.tenant_id,
+            entity_type=EntityType.USER,
+            entity_id=str(user.id),
+            request_id=request_id,
+        )
+
+        return (user.email, raw_token)
+
+    async def reset_password(
+        self,
+        token: str,
+        new_password: str,
+        request_id: str | None = None,
+    ) -> None:
+        """
+        Validate the reset token, update the user's password, mark the token used,
+        and revoke all existing sessions so old refresh tokens are invalidated.
+        """
+        from sqlalchemy import select
+
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        stmt = select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash)
+        result = await self.session.execute(stmt)
+        reset_record = result.scalar_one_or_none()
+
+        if reset_record is None or not reset_record.is_valid:
+            raise BusinessRuleError("Invalid or expired password reset link.")
+
+        user = await self.user_repo.get_by_id_active(reset_record.user_id)
+        if not user:
+            raise BusinessRuleError("Invalid or expired password reset link.")
+
+        user.hashed_password = hash_password(new_password)
+        reset_record.is_used = True
+
+        # Revoke all active sessions so the old password can't be used via cached tokens
+        await self.auth_repo.revoke_all_user_tokens(user.id)
+
+        await self.audit_service.log(
+            action=AuditAction.PASSWORD_RESET_COMPLETED,
+            actor_user_id=user.id,
+            tenant_id=user.tenant_id,
+            entity_type=EntityType.USER,
+            entity_id=str(user.id),
             request_id=request_id,
         )

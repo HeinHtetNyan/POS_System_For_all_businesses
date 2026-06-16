@@ -25,6 +25,7 @@ class BranchInventoryResponse(TimestampedSchema):
     quantity_on_hand: Decimal
     quantity_reserved: Decimal
     quantity_available: Decimal
+    quantity_sold: Decimal = Decimal("0")
     reorder_point: Decimal | None
     reorder_quantity: Decimal | None
     sync_version: int
@@ -53,6 +54,7 @@ class StockMovementResponse(TimestampedSchema):
     reason: str | None
     notes: str | None
     actor_user_id: uuid.UUID
+    actor_name: str | None = None
 
 
 # Opening Stock

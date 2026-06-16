@@ -67,6 +67,11 @@ export default function PlansPage() {
                           Referral Plan
                         </span>
                       )}
+                      {plan.is_custom && (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-400 border border-violet-500/30">
+                          Custom
+                        </span>
+                      )}
                       <span className="text-xs text-zinc-600 font-mono">{plan.code}</span>
                     </div>
                     {plan.description && (

@@ -40,6 +40,9 @@ from app.schemas.inventory import (
     InventoryTransferCreateRequest,
     OpeningStockRequest,
 )
+from app.events.base import DomainEvent
+from app.events.publisher import EventPublisher
+from app.events.types import EventType
 from app.services.audit_service import AuditService
 
 
@@ -63,6 +66,7 @@ class InventoryService:
         self.transfer_repo = InventoryTransferRepository(session)
         self.product_repo = ProductRepository(session)
         self.audit = AuditService(session)
+        self.publisher = EventPublisher()
 
     # Core Stock Movement Engine
 
@@ -252,8 +256,32 @@ class InventoryService:
                 reference_id=str(adjustment.id),
                 unit_cost=item_req.unit_cost,
                 reason=data.reason,
-                notes=item_req.notes,
+                notes=item_req.notes or data.notes,
             )
+
+            # Fire low stock alert when a stock-decreasing adjustment drops
+            # quantity at or below the per-branch reorder point.
+            if (
+                movement_type in STOCK_OUTBOUND_TYPES
+                and inv.reorder_point is not None
+                and inv.quantity_on_hand <= inv.reorder_point
+            ):
+                product = await self.product_repo.get_active_by_id_and_tenant(item_req.product_id, tenant_id)
+                if product:
+                    await self.publisher.publish(
+                        DomainEvent(
+                            event_type=EventType.LOW_STOCK,
+                            tenant_id=tenant_id,
+                            payload={
+                                "product_id": str(product.id),
+                                "product_name": product.name,
+                                "sku": product.sku or "",
+                                "current_stock": float(inv.quantity_on_hand),
+                                "reorder_level": float(inv.reorder_point),
+                                "branch_id": str(data.branch_id),
+                            },
+                        )
+                    )
 
             adj_item = InventoryAdjustmentItem(
                 adjustment_id=adjustment.id,
@@ -621,7 +649,19 @@ class InventoryService:
         inv = await self.inv_repo.get_by_branch_and_product(
             branch_id, product_id, variant_id
         )
-        if not inv or inv.tenant_id != tenant_id:
+        if inv is None:
+            # Create a zero-quantity BranchInventory so the reorder point can be
+            # configured before any stock movements happen (e.g. right after product creation).
+            inv = BranchInventory(
+                tenant_id=tenant_id,
+                branch_id=branch_id,
+                product_id=product_id,
+                variant_id=variant_id,
+            )
+            self.session.add(inv)
+            await self.session.flush()
+            await self.session.refresh(inv)
+        elif inv.tenant_id != tenant_id:
             raise NotFoundError("BranchInventory", f"branch={branch_id} product={product_id}")
         if reorder_point is not None:
             inv.reorder_point = reorder_point
