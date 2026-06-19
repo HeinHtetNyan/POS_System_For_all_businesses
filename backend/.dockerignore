@@ -16,6 +16,7 @@ env/
 .env.*.local
 .env.production
 .env.staging
+*.env
 
 # Claude Code session data
 .claude/
@@ -52,6 +53,15 @@ docker-compose*.yml
 # OS
 .DS_Store
 Thumbs.db
+
+# Testing artifacts
+tests/
+
+# Development scripts (not needed in production image)
+scripts/
+
+# User-uploaded files (bind-mounted at runtime, not baked into image)
+uploads/
 
 # SSL certs
 nginx/certs/

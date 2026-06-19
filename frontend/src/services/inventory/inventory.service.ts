@@ -24,7 +24,7 @@ export interface OpeningStockRequest {
 export interface TransferCreateRequest {
   from_branch_id: string
   to_branch_id: string
-  items: Array<{ product_id: string; variant_id?: string; quantity: string }>
+  items: Array<{ product_id: string; variant_id?: string; quantity_requested: string }>
   notes?: string
 }
 
