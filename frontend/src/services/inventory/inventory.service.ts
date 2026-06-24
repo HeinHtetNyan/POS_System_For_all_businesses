@@ -63,7 +63,7 @@ export const inventoryService = {
     apiClient.patch(`/inventory/branches/${branchId}/products/${productId}/reorder`, payload).then(r => r.data),
 
   approveTransfer: (transferId: string) =>
-    apiClient.patch(`/inventory/transfers/${transferId}/approve`).then(r => r.data),
+    apiClient.post(`/inventory/transfers/${transferId}/approve`).then(r => r.data),
 
   executeTransfer: (transferId: string) =>
     apiClient.post(`/inventory/transfers/${transferId}/execute`).then(r => r.data),

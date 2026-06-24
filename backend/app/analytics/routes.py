@@ -40,7 +40,7 @@ from app.api.deps import (
 )
 from app.core.cache import cache_get, cache_set
 from app.core.constants import UserRole
-from app.db.redis import get_redis
+from app.db.redis import get_redis_optional
 from app.models.user import User
 
 router = APIRouter()
@@ -59,7 +59,7 @@ async def get_dashboard(
     tenant_id: EffectiveTenantId,
     request_id: RequestId,
     branch_id: uuid.UUID | None = Query(default=None),
-    redis=Depends(get_redis),
+    redis=Depends(get_redis_optional),
 ) -> DashboardResponse:
     # Cashiers only see their own sales; everyone else sees branch/tenant-level data.
     cashier_user_id = current_user.id if current_user.role == UserRole.CASHIER.value else None
