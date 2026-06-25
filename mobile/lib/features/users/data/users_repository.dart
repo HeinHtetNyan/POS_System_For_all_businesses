@@ -1,10 +1,11 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/api/api_endpoints.dart';
 import '../../../models/user_model.dart';
 
 class UsersRepository {
-  final _dio = apiClient.dio;
+  Dio get _dio => apiClient.dio;
 
   Future<({List<UserModel> items, int total})> listUsers({
     String? role,
@@ -50,6 +51,10 @@ class UsersRepository {
 
   Future<void> deactivateUser(String id) async {
     await _dio.put(ApiEndpoints.user(id), data: {'status': 'INACTIVE'});
+  }
+
+  Future<void> resetPassword(String id, String newPassword) async {
+    await _dio.post('/users/$id/reset-password', data: {'new_password': newPassword});
   }
 }
 

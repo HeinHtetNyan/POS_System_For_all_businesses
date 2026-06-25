@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme/app_colors.dart';
 
 class InfoRow extends StatelessWidget {
@@ -6,6 +7,8 @@ class InfoRow extends StatelessWidget {
   final String value;
   final Color? valueColor;
   final bool isLast;
+  final bool copyable;
+  final double? labelWidth;
 
   const InfoRow({
     super.key,
@@ -13,6 +16,8 @@ class InfoRow extends StatelessWidget {
     required this.value,
     this.valueColor,
     this.isLast = false,
+    this.copyable = false,
+    this.labelWidth,
   });
 
   @override
@@ -22,26 +27,59 @@ class InfoRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 130,
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontSize: 13,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ),
-          Expanded(
+          labelWidth != null
+              ? SizedBox(
+                  width: labelWidth,
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                )
+              : Flexible(
+                  flex: 2,
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+          const SizedBox(width: 8),
+          Flexible(
+            flex: 3,
             child: Text(
               value,
               style: TextStyle(
-                fontSize: 13,
+                fontSize: 14,
                 fontWeight: FontWeight.w500,
                 color: valueColor ?? AppColors.textPrimary,
               ),
             ),
           ),
+          if (copyable) ...[
+            const SizedBox(width: 6),
+            GestureDetector(
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: value));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Copied: $value'),
+                    duration: const Duration(seconds: 1),
+                    backgroundColor: AppColors.surfaceVariant,
+                  ),
+                );
+              },
+              child: const Icon(
+                Icons.copy_outlined,
+                size: 14,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -56,8 +94,13 @@ class InfoSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.divider, width: 1),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -67,13 +110,13 @@ class InfoSection extends StatelessWidget {
               Text(
                 title!,
                 style: const TextStyle(
-                  fontSize: 13,
+                  fontSize: 11,
                   fontWeight: FontWeight.w700,
                   color: AppColors.textSecondary,
-                  letterSpacing: 0.5,
+                  letterSpacing: 0.8,
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
             ],
             ...children,
           ],

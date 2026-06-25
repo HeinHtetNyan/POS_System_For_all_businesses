@@ -1,3 +1,5 @@
+import 'dart:math';
+
 class OrderModel {
   final String id;
   final String orderNumber;
@@ -110,7 +112,7 @@ class OrderItemModel {
       productName: json['product_name'] as String? ?? '',
       variantId: json['variant_id'] as String?,
       variantName: json['variant_name'] as String?,
-      quantityOrdered: json['quantity_ordered'] as int? ?? 1,
+      quantityOrdered: max(1, json['quantity_ordered'] as int? ?? 1),
       unitPrice: (json['unit_price'] as num?)?.toDouble() ?? 0.0,
       discountAmount:
           (json['discount_amount'] as num?)?.toDouble() ?? 0.0,

@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/api/api_endpoints.dart';
@@ -5,7 +6,7 @@ import '../../../models/product_model.dart';
 import '../../../models/category_model.dart';
 
 class ProductsRepository {
-  final _dio = apiClient.dio;
+  Dio get _dio => apiClient.dio;
 
   Future<({List<ProductModel> items, int total})> listProducts({
     String? search,

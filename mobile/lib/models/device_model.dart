@@ -25,6 +25,32 @@ class DeviceModel {
 
   bool get isActive => status == 'ACTIVE';
 
+  DeviceModel copyWith({
+    String? id,
+    String? deviceIdentifier,
+    String? deviceName,
+    String? platform,
+    String? status,
+    DateTime? lastSeenAt,
+    DateTime? registeredAt,
+    String? tenantId,
+    String? branchId,
+    String? appVersion,
+  }) {
+    return DeviceModel(
+      id: id ?? this.id,
+      deviceIdentifier: deviceIdentifier ?? this.deviceIdentifier,
+      deviceName: deviceName ?? this.deviceName,
+      platform: platform ?? this.platform,
+      status: status ?? this.status,
+      lastSeenAt: lastSeenAt ?? this.lastSeenAt,
+      registeredAt: registeredAt ?? this.registeredAt,
+      tenantId: tenantId ?? this.tenantId,
+      branchId: branchId ?? this.branchId,
+      appVersion: appVersion ?? this.appVersion,
+    );
+  }
+
   factory DeviceModel.fromJson(Map<String, dynamic> json) {
     return DeviceModel(
       id: json['id'] as String,

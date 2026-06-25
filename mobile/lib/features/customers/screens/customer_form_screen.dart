@@ -11,7 +11,8 @@ class CustomerFormScreen extends ConsumerStatefulWidget {
   const CustomerFormScreen({super.key, this.customer});
 
   @override
-  ConsumerState<CustomerFormScreen> createState() => _CustomerFormScreenState();
+  ConsumerState<CustomerFormScreen> createState() =>
+      _CustomerFormScreenState();
 }
 
 class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
@@ -20,6 +21,8 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
   final _creditController = TextEditingController(text: '0');
+  final _notesController = TextEditingController();
+  final _addressCtrl = TextEditingController();
   bool _isLoading = false;
 
   bool get _isEdit => widget.customer != null;
@@ -31,7 +34,10 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
       _nameController.text = widget.customer!.name;
       _phoneController.text = widget.customer!.phone ?? '';
       _emailController.text = widget.customer!.email ?? '';
-      _creditController.text = widget.customer!.creditLimit.toStringAsFixed(0);
+      _creditController.text =
+          widget.customer!.creditLimit.toStringAsFixed(0);
+      _notesController.text = widget.customer!.notes ?? '';
+      _addressCtrl.text = widget.customer!.address ?? '';
     }
   }
 
@@ -41,6 +47,8 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
     _phoneController.dispose();
     _emailController.dispose();
     _creditController.dispose();
+    _notesController.dispose();
+    _addressCtrl.dispose();
     super.dispose();
   }
 
@@ -55,6 +63,10 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
       if (_emailController.text.trim().isNotEmpty)
         'email': _emailController.text.trim(),
       'credit_limit': double.tryParse(_creditController.text) ?? 0.0,
+      'notes': _notesController.text.trim().isNotEmpty
+          ? _notesController.text.trim()
+          : null,
+      'address': _addressCtrl.text.trim(),
     };
 
     try {
@@ -83,78 +95,151 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         title: Text(_isEdit ? 'Edit Customer' : 'New Customer'),
-        actions: [
-          TextButton(
-            onPressed: _isLoading ? null : _save,
-            child: _isLoading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Save'),
-          ),
-        ],
       ),
       body: ContentWrapper(
         child: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            TextFormField(
-              controller: _nameController,
-              decoration: const InputDecoration(
-                labelText: 'Full Name *',
-                prefixIcon: Icon(Icons.person_outline),
+          key: _formKey,
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              // PERSONAL INFO
+              _SectionHeader(label: 'PERSONAL INFO'),
+              const SizedBox(height: 12),
+
+              TextFormField(
+                controller: _nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Full Name *',
+                  prefixIcon: Icon(Icons.person_outline),
+                ),
+                textCapitalization: TextCapitalization.words,
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? 'Name is required' : null,
               ),
-              textCapitalization: TextCapitalization.words,
-              validator: (v) =>
-                  v == null || v.trim().isEmpty ? 'Name is required' : null,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _phoneController,
-              decoration: const InputDecoration(
-                labelText: 'Phone',
-                prefixIcon: Icon(Icons.phone_outlined),
+              const SizedBox(height: 20),
+
+              // CONTACT
+              _SectionHeader(label: 'CONTACT'),
+              const SizedBox(height: 12),
+
+              TextFormField(
+                controller: _phoneController,
+                decoration: const InputDecoration(
+                  labelText: 'Phone',
+                  prefixIcon: Icon(Icons.phone_outlined),
+                ),
+                keyboardType: TextInputType.phone,
               ),
-              keyboardType: TextInputType.phone,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _emailController,
-              decoration: const InputDecoration(
-                labelText: 'Email',
-                prefixIcon: Icon(Icons.email_outlined),
+              const SizedBox(height: 12),
+
+              TextFormField(
+                controller: _emailController,
+                decoration: const InputDecoration(
+                  labelText: 'Email',
+                  prefixIcon: Icon(Icons.email_outlined),
+                ),
+                keyboardType: TextInputType.emailAddress,
               ),
-              keyboardType: TextInputType.emailAddress,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _creditController,
-              decoration: const InputDecoration(
-                labelText: 'Credit Limit (MMK)',
-                prefixIcon: Icon(Icons.credit_card_outlined),
-                prefixText: 'MMK ',
+              const SizedBox(height: 12),
+
+              TextFormField(
+                controller: _addressCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Address',
+                  prefixIcon: Icon(Icons.location_on_outlined),
+                  alignLabelWithHint: true,
+                ),
+                maxLines: 3,
+                textCapitalization: TextCapitalization.sentences,
               ),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            ),
-            const SizedBox(height: 32),
-            SizedBox(
-              height: 52,
-              child: ElevatedButton(
-                onPressed: _isLoading ? null : _save,
-                child: _isLoading
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : Text(_isEdit ? 'Update Customer' : 'Create Customer'),
+              const SizedBox(height: 20),
+
+              // CREDIT
+              _SectionHeader(label: 'CREDIT'),
+              const SizedBox(height: 12),
+
+              TextFormField(
+                controller: _creditController,
+                decoration: const InputDecoration(
+                  labelText: 'Credit Limit (MMK)',
+                  prefixIcon: Icon(Icons.credit_card_outlined),
+                  prefixText: 'MMK ',
+                ),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
               ),
-            ),
-          ],
+              const SizedBox(height: 20),
+
+              // NOTES
+              _SectionHeader(label: 'INTERNAL NOTES'),
+              const SizedBox(height: 12),
+
+              TextFormField(
+                controller: _notesController,
+                decoration: const InputDecoration(
+                  labelText: 'Notes (optional)',
+                  prefixIcon: Icon(Icons.notes_outlined),
+                  alignLabelWithHint: true,
+                ),
+                maxLines: 3,
+                textCapitalization: TextCapitalization.sentences,
+              ),
+              const SizedBox(height: 32),
+
+              // Save button — full-width amber
+              SizedBox(
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _save,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: AppColors.primaryFg,
+                    disabledBackgroundColor:
+                        AppColors.primary.withValues(alpha: 0.4),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.primaryFg))
+                      : Text(
+                          _isEdit ? 'Update Customer' : 'Create Customer',
+                          style: const TextStyle(
+                              fontSize: 15, fontWeight: FontWeight.w600),
+                        ),
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+          ),
         ),
-        ),
+      ),
+    );
+  }
+}
+
+// Section header helper
+
+class _SectionHeader extends StatelessWidget {
+  final String label;
+  const _SectionHeader({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      label,
+      style: const TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        color: AppColors.textSecondary,
+        letterSpacing: 1.0,
       ),
     );
   }

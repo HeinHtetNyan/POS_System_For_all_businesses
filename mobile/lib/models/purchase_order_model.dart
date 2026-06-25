@@ -26,7 +26,7 @@ class PurchaseOrderModel {
   bool get isDraft => status == 'DRAFT';
   bool get isOrdered => status == 'ORDERED';
   bool get isReceived => status == 'RECEIVED';
-  bool get isPartial => status == 'PARTIAL';
+  bool get isPartial => status == 'PARTIALLY_RECEIVED';
   bool get isCancelled => status == 'CANCELLED';
 
   factory PurchaseOrderModel.fromJson(Map<String, dynamic> json) {

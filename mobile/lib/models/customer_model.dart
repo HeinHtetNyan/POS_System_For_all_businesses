@@ -7,6 +7,12 @@ class CustomerModel {
   final double creditLimit;
   final double currentBalance;
   final bool isActive;
+  final String? notes;
+  final String? address;
+  final int totalOrders;
+  final double totalSpent;
+  final DateTime? createdAt;
+  final DateTime? lastPurchaseAt;
 
   const CustomerModel({
     required this.id,
@@ -17,6 +23,12 @@ class CustomerModel {
     required this.creditLimit,
     required this.currentBalance,
     required this.isActive,
+    this.notes,
+    this.address,
+    this.totalOrders = 0,
+    this.totalSpent = 0.0,
+    this.createdAt,
+    this.lastPurchaseAt,
   });
 
   bool get hasCredit => creditLimit > 0;
@@ -33,6 +45,16 @@ class CustomerModel {
       currentBalance:
           (json['current_balance'] as num?)?.toDouble() ?? 0.0,
       isActive: json['is_active'] as bool? ?? true,
+      notes: json['notes'] as String?,
+      address: json['address'] as String?,
+      totalOrders: (json['total_orders'] as num?)?.toInt() ?? 0,
+      totalSpent: (json['total_spent'] as num?)?.toDouble() ?? 0.0,
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'] as String)
+          : null,
+      lastPurchaseAt: json['last_purchase_at'] != null
+          ? DateTime.tryParse(json['last_purchase_at'] as String)
+          : null,
     );
   }
 }

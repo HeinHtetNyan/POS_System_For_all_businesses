@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:usb_serial/usb_serial.dart';
 import '../../models/order_model.dart';
+import '../../models/product_model.dart';
 import '../utils/currency_formatter.dart';
 
 // Supports:
@@ -26,12 +28,46 @@ class PrinterService {
   BluetoothDevice? _connectedBtDevice;
   BluetoothCharacteristic? _printCharacteristic;
 
+  // WiFi / LAN — persisted config
+  static const _kWifiIp = 'pos_printer_wifi_ip';
+  static const _kWifiPort = 'pos_printer_wifi_port';
+  String? _savedWifiIp;
+  int _savedWifiPort = 9100;
+
+  String? get savedWifiIp => _savedWifiIp;
+  int get savedWifiPort => _savedWifiPort;
+
+  // Load persisted WiFi config from shared_preferences.
+  // Call once at app startup (main.dart).
+  Future<void> loadPersistedConfig() async {
+    final prefs = await SharedPreferences.getInstance();
+    _savedWifiIp = prefs.getString(_kWifiIp);
+    _savedWifiPort = prefs.getInt(_kWifiPort) ?? 9100;
+  }
+
+  Future<void> saveWifiConfig(String ip, int port) async {
+    _savedWifiIp = ip;
+    _savedWifiPort = port;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kWifiIp, ip);
+    await prefs.setInt(_kWifiPort, port);
+  }
+
+  Future<void> clearWifiConfig() async {
+    _savedWifiIp = null;
+    _savedWifiPort = 9100;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kWifiIp);
+    await prefs.remove(_kWifiPort);
+  }
+
   // Connection status
 
   bool get isUsbConnected => _usbPort != null;
   bool get isSerialConnected => _usbPort != null && _usbMode == _UsbMode.serial;
   bool get isBtConnected => _printCharacteristic != null;
-  bool get isAnyConnected => isUsbConnected || isBtConnected;
+  bool get isWifiConfigured => _savedWifiIp != null && _savedWifiIp!.isNotEmpty;
+  bool get isAnyConnected => isUsbConnected || isBtConnected || isWifiConfigured;
 
   // USB (direct USB thermal printer)
 
@@ -49,7 +85,7 @@ class PrinterService {
       await _usbPort!.setDTR(true);
       await _usbPort!.setRTS(true);
       await _usbPort!.setPortParameters(
-        38400, UsbPort.DATABITS_8, UsbPort.STOPBITS_1, UsbPort.PARITY_NONE,
+        9600, UsbPort.DATABITS_8, UsbPort.STOPBITS_1, UsbPort.PARITY_NONE,
       );
       _usbMode = _UsbMode.usb;
       return true;
@@ -94,16 +130,23 @@ class PrinterService {
   Future<List<BluetoothDevice>> scanBluetooth(
       {Duration timeout = const Duration(seconds: 5)}) async {
     final results = <BluetoothDevice>[];
-    final sub = FlutterBluePlus.scanResults.listen((scanResults) {
-      for (final r in scanResults) {
-        if (!results.any((d) => d.remoteId == r.device.remoteId)) {
-          results.add(r.device);
+    StreamSubscription? sub;
+    try {
+      sub = FlutterBluePlus.scanResults.listen((scanResults) {
+        for (final r in scanResults) {
+          if (!results.any((d) => d.remoteId == r.device.remoteId)) {
+            results.add(r.device);
+          }
         }
-      }
-    });
-    await FlutterBluePlus.startScan(timeout: timeout);
-    await Future.delayed(timeout);
-    await sub.cancel();
+      });
+      await FlutterBluePlus.startScan(timeout: timeout);
+      await Future.delayed(timeout);
+      await sub.cancel();
+    } catch (_) {
+      await sub?.cancel();
+      await FlutterBluePlus.stopScan();
+      return [];
+    }
     return results;
   }
 
@@ -215,6 +258,99 @@ class PrinterService {
 
   List<int> openCashDrawerCommand() => [0x1B, 0x70, 0x00, 0x19, 0x19];
 
+  // Build 58/80mm barcode label ESC/POS bytes
+  List<int> buildLabel(ProductModel product, {String? businessName}) {
+    final bytes = <int>[];
+    bytes.addAll([0x1B, 0x40]); // ESC @ — init
+
+    // Center alignment
+    bytes.addAll([0x1B, 0x61, 0x01]);
+
+    // Business name (small)
+    if (businessName != null && businessName.isNotEmpty) {
+      bytes.addAll(_encode('${businessName.toUpperCase()}\n'));
+    }
+
+    // Product name (bold, double height)
+    bytes.addAll([0x1B, 0x45, 0x01]);
+    bytes.addAll([0x1D, 0x21, 0x01]); // double height
+    final name = product.name.length > 20
+        ? product.name.substring(0, 20)
+        : product.name;
+    bytes.addAll(_encode('$name\n'));
+    bytes.addAll([0x1D, 0x21, 0x00]);
+    bytes.addAll([0x1B, 0x45, 0x00]);
+
+    // SKU (if present)
+    if (product.sku != null && product.sku!.isNotEmpty) {
+      bytes.addAll(_encode('SKU: ${product.sku}\n'));
+    }
+
+    // Price
+    bytes.addAll([0x1B, 0x45, 0x01]);
+    bytes.addAll(_encode(
+        '${CurrencyFormatter.format(product.sellingPrice)}\n'));
+    bytes.addAll([0x1B, 0x45, 0x00]);
+
+    // Barcode (CODE128) — if product has a barcode
+    final barcodeData = product.barcode ?? product.sku;
+    if (barcodeData != null && barcodeData.isNotEmpty) {
+      bytes.addAll([0x1D, 0x77, 0x02]); // barcode width
+      bytes.addAll([0x1D, 0x68, 0x50]); // barcode height = 80 dots
+      bytes.addAll([0x1D, 0x48, 0x02]); // HRI below barcode
+      bytes.addAll([0x1D, 0x66, 0x00]); // HRI font A
+      // CODE128: GS k 73 n d1...dn (new format, m = 0x49 = 73)
+      final dataBytes = barcodeData.codeUnits;
+      bytes.addAll([0x1D, 0x6B, 0x49, dataBytes.length]);
+      bytes.addAll(dataBytes);
+    }
+
+    bytes.addAll(_encode('\n\n'));
+    bytes.addAll([0x1D, 0x56, 0x00]); // full cut
+
+    return bytes;
+  }
+
+  // Print label (routes to connected transport)
+  Future<bool> printLabel(ProductModel product, {String? businessName}) async {
+    final data =
+        buildLabel(product, businessName: businessName);
+
+    if (_usbPort != null) {
+      try {
+        await _usbPort!.write(Uint8List.fromList(data));
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    if (_printCharacteristic != null) {
+      try {
+        const chunk = 512;
+        for (var i = 0; i < data.length; i += chunk) {
+          final end =
+              (i + chunk) < data.length ? i + chunk : data.length;
+          await _printCharacteristic!.write(
+            data.sublist(i, end),
+            withoutResponse: true,
+          );
+          await Future.delayed(const Duration(milliseconds: 20));
+        }
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    if (_savedWifiIp != null && _savedWifiIp!.isNotEmpty) {
+      return printViaWifi(
+          ipAddress: _savedWifiIp!, port: _savedWifiPort, data: data);
+    }
+
+    return false;
+  }
+
   // Print receipt (routes to connected transport)
   // Priority: USB/Serial > Bluetooth > WiFi (explicit params required)
 
@@ -257,9 +393,10 @@ class PrinterService {
       }
     }
 
-    // WiFi (explicit IP required)
-    if (wifiIp != null) {
-      return printViaWifi(ipAddress: wifiIp, port: wifiPort, data: data);
+    // WiFi — use explicit IP, else fall back to saved config
+    final ip = wifiIp ?? _savedWifiIp;
+    if (ip != null && ip.isNotEmpty) {
+      return printViaWifi(ipAddress: ip, port: wifiPort, data: data);
     }
 
     return false;

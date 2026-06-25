@@ -10,6 +10,8 @@ class CustomersState {
   final bool hasMore;
   final int page;
   final String? searchQuery;
+  // null = All, true = Active, false = Inactive
+  final bool? activeFilter;
 
   const CustomersState({
     this.items = const [],
@@ -19,6 +21,7 @@ class CustomersState {
     this.hasMore = true,
     this.page = 1,
     this.searchQuery,
+    this.activeFilter,
   });
 
   CustomersState copyWith({
@@ -30,6 +33,7 @@ class CustomersState {
     int? page,
     String? searchQuery,
     bool clearError = false,
+    Object? activeFilter = _sentinel,
   }) {
     return CustomersState(
       items: items ?? this.items,
@@ -39,19 +43,30 @@ class CustomersState {
       hasMore: hasMore ?? this.hasMore,
       page: page ?? this.page,
       searchQuery: searchQuery ?? this.searchQuery,
+      activeFilter:
+          activeFilter == _sentinel ? this.activeFilter : activeFilter as bool?,
     );
   }
 }
+
+const _sentinel = Object();
 
 class CustomersNotifier extends StateNotifier<CustomersState> {
   final CustomersRepository _repo;
   CustomersNotifier(this._repo) : super(const CustomersState());
 
-  Future<void> load({bool refresh = false, String? search}) async {
-    if (refresh || search != state.searchQuery) {
+  Future<void> load({
+    bool refresh = false,
+    String? search,
+    Object? activeFilter = _sentinel,
+  }) async {
+    final newActive =
+        activeFilter == _sentinel ? state.activeFilter : activeFilter as bool?;
+    if (refresh || search != state.searchQuery || newActive != state.activeFilter) {
       state = CustomersState(
         isLoading: true,
         searchQuery: search ?? state.searchQuery,
+        activeFilter: newActive,
       );
     } else if (state.items.isEmpty) {
       state = state.copyWith(isLoading: true);
@@ -60,6 +75,7 @@ class CustomersNotifier extends StateNotifier<CustomersState> {
     try {
       final result = await _repo.listCustomers(
         search: state.searchQuery,
+        isActive: state.activeFilter,
         page: 1,
       );
       state = state.copyWith(
@@ -80,6 +96,7 @@ class CustomersNotifier extends StateNotifier<CustomersState> {
     try {
       final result = await _repo.listCustomers(
         search: state.searchQuery,
+        isActive: state.activeFilter,
         page: state.page + 1,
       );
       state = state.copyWith(
@@ -95,6 +112,11 @@ class CustomersNotifier extends StateNotifier<CustomersState> {
 
   void search(String query) {
     load(refresh: true, search: query.isEmpty ? null : query);
+  }
+
+  void filterActive(bool? active) {
+    // Pass active directly — null means "All", which load() treats as clearing the filter.
+    load(refresh: true, search: state.searchQuery, activeFilter: active);
   }
 
   void addItem(CustomerModel customer) {

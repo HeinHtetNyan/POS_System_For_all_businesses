@@ -23,14 +23,22 @@ class EmptyView extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 64, color: AppColors.textDisabled),
-            const SizedBox(height: 16),
+            Container(
+              width: 72,
+              height: 72,
+              decoration: const BoxDecoration(
+                color: AppColors.surfaceVariant,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: 32, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 20),
             Text(
               title,
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
-                color: AppColors.textSecondary,
+                color: AppColors.textPrimary,
               ),
               textAlign: TextAlign.center,
             ),
@@ -40,7 +48,7 @@ class EmptyView extends StatelessWidget {
                 subtitle!,
                 style: const TextStyle(
                   fontSize: 13,
-                  color: AppColors.textDisabled,
+                  color: AppColors.textSecondary,
                 ),
                 textAlign: TextAlign.center,
               ),

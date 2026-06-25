@@ -14,6 +14,8 @@ class TenantsState {
   final String? error;
   final bool hasMore;
   final int page;
+  final String search;
+  final String? statusFilter;
 
   const TenantsState({
     this.items = const [],
@@ -22,6 +24,8 @@ class TenantsState {
     this.error,
     this.hasMore = true,
     this.page = 1,
+    this.search = '',
+    this.statusFilter,
   });
 
   TenantsState copyWith({
@@ -31,6 +35,8 @@ class TenantsState {
     String? error,
     bool? hasMore,
     int? page,
+    String? search,
+    Object? statusFilter = _sentinel,
     bool clearError = false,
   }) =>
       TenantsState(
@@ -40,8 +46,12 @@ class TenantsState {
         error: clearError ? null : (error ?? this.error),
         hasMore: hasMore ?? this.hasMore,
         page: page ?? this.page,
+        search: search ?? this.search,
+        statusFilter: statusFilter == _sentinel ? this.statusFilter : statusFilter as String?,
       );
 }
+
+const _sentinel = Object();
 
 class TenantsNotifier extends StateNotifier<TenantsState> {
   final AdminRepository _repo;
@@ -49,10 +59,14 @@ class TenantsNotifier extends StateNotifier<TenantsState> {
 
   Future<void> load({bool refresh = false}) async {
     if (refresh || state.items.isEmpty) {
-      state = const TenantsState(isLoading: true);
+      state = TenantsState(isLoading: true, search: state.search, statusFilter: state.statusFilter);
     }
     try {
-      final result = await _repo.listTenants(page: 1);
+      final result = await _repo.listTenants(
+        page: 1,
+        search: state.search.isEmpty ? null : state.search,
+        status: state.statusFilter,
+      );
       state = state.copyWith(
         items: result.items, isLoading: false,
         hasMore: result.items.length >= 20, page: 1, clearError: true,
@@ -66,7 +80,11 @@ class TenantsNotifier extends StateNotifier<TenantsState> {
     if (!state.hasMore || state.isLoadingMore || state.isLoading) return;
     state = state.copyWith(isLoadingMore: true);
     try {
-      final result = await _repo.listTenants(page: state.page + 1);
+      final result = await _repo.listTenants(
+        page: state.page + 1,
+        search: state.search.isEmpty ? null : state.search,
+        status: state.statusFilter,
+      );
       state = state.copyWith(
         items: [...state.items, ...result.items],
         isLoadingMore: false, hasMore: result.items.length >= 20,
@@ -75,6 +93,16 @@ class TenantsNotifier extends StateNotifier<TenantsState> {
     } catch (_) {
       state = state.copyWith(isLoadingMore: false);
     }
+  }
+
+  void setSearch(String q) {
+    state = state.copyWith(search: q);
+    load(refresh: true);
+  }
+
+  void setStatusFilter(String? s) {
+    state = TenantsState(statusFilter: s, search: state.search, isLoading: true);
+    load();
   }
 }
 
@@ -86,6 +114,8 @@ class AdminUsersState {
   final String? error;
   final bool hasMore;
   final int page;
+  final String search;
+  final String? roleFilter;
 
   const AdminUsersState({
     this.items = const [],
@@ -94,16 +124,21 @@ class AdminUsersState {
     this.error,
     this.hasMore = true,
     this.page = 1,
+    this.search = '',
+    this.roleFilter,
   });
 
   AdminUsersState copyWith({
     List<UserModel>? items, bool? isLoading, bool? isLoadingMore,
-    String? error, bool? hasMore, int? page, bool clearError = false,
+    String? error, bool? hasMore, int? page,
+    String? search, Object? roleFilter = _sentinel, bool clearError = false,
   }) => AdminUsersState(
     items: items ?? this.items, isLoading: isLoading ?? this.isLoading,
     isLoadingMore: isLoadingMore ?? this.isLoadingMore,
     error: clearError ? null : (error ?? this.error),
     hasMore: hasMore ?? this.hasMore, page: page ?? this.page,
+    search: search ?? this.search,
+    roleFilter: roleFilter == _sentinel ? this.roleFilter : roleFilter as String?,
   );
 }
 
@@ -112,9 +147,15 @@ class AdminUsersNotifier extends StateNotifier<AdminUsersState> {
   AdminUsersNotifier(this._repo) : super(const AdminUsersState());
 
   Future<void> load({bool refresh = false}) async {
-    if (refresh || state.items.isEmpty) state = const AdminUsersState(isLoading: true);
+    if (refresh || state.items.isEmpty) {
+      state = AdminUsersState(isLoading: true, search: state.search, roleFilter: state.roleFilter);
+    }
     try {
-      final result = await _repo.listAllUsers(page: 1);
+      final result = await _repo.listAllUsers(
+        page: 1,
+        search: state.search.isEmpty ? null : state.search,
+        role: state.roleFilter,
+      );
       state = state.copyWith(
         items: result.items, isLoading: false,
         hasMore: result.items.length >= 20, page: 1, clearError: true,
@@ -128,13 +169,27 @@ class AdminUsersNotifier extends StateNotifier<AdminUsersState> {
     if (!state.hasMore || state.isLoadingMore || state.isLoading) return;
     state = state.copyWith(isLoadingMore: true);
     try {
-      final result = await _repo.listAllUsers(page: state.page + 1);
+      final result = await _repo.listAllUsers(
+        page: state.page + 1,
+        search: state.search.isEmpty ? null : state.search,
+        role: state.roleFilter,
+      );
       state = state.copyWith(
         items: [...state.items, ...result.items],
         isLoadingMore: false, hasMore: result.items.length >= 20,
         page: state.page + 1,
       );
     } catch (_) { state = state.copyWith(isLoadingMore: false); }
+  }
+
+  void setSearch(String q) {
+    state = state.copyWith(search: q);
+    load(refresh: true);
+  }
+
+  void setRoleFilter(String? role) {
+    state = AdminUsersState(roleFilter: role, search: state.search, isLoading: true);
+    load();
   }
 }
 
@@ -252,6 +307,24 @@ class DevicesNotifier extends StateNotifier<DevicesState> {
       );
     } catch (_) { state = state.copyWith(isLoadingMore: false); }
   }
+
+  Future<void> approveDevice(String deviceId) async {
+    await _repo.approveDevice(deviceId);
+    final updated = state.items.map((d) {
+      if (d.id == deviceId) return d.copyWith(status: 'ACTIVE');
+      return d;
+    }).toList();
+    state = state.copyWith(items: updated);
+  }
+
+  Future<void> revokeDevice(String deviceId) async {
+    await _repo.revokeDevice(deviceId);
+    final updated = state.items.map((d) {
+      if (d.id == deviceId) return d.copyWith(status: 'REVOKED');
+      return d;
+    }).toList();
+    state = state.copyWith(items: updated);
+  }
 }
 
 // Audit Logs
@@ -262,20 +335,32 @@ class AuditLogsState {
   final String? error;
   final bool hasMore;
   final int page;
+  final String? entityTypeFilter;
+  final String? actionFilter;
+  final String? startDate;
+  final String? endDate;
 
   const AuditLogsState({
     this.items = const [], this.isLoading = false, this.isLoadingMore = false,
     this.error, this.hasMore = true, this.page = 1,
+    this.entityTypeFilter, this.actionFilter,
+    this.startDate, this.endDate,
   });
 
   AuditLogsState copyWith({
     List<AuditLogModel>? items, bool? isLoading, bool? isLoadingMore,
     String? error, bool? hasMore, int? page, bool clearError = false,
+    Object? entityTypeFilter = _sentinel, Object? actionFilter = _sentinel,
+    Object? startDate = _sentinel, Object? endDate = _sentinel,
   }) => AuditLogsState(
     items: items ?? this.items, isLoading: isLoading ?? this.isLoading,
     isLoadingMore: isLoadingMore ?? this.isLoadingMore,
     error: clearError ? null : (error ?? this.error),
     hasMore: hasMore ?? this.hasMore, page: page ?? this.page,
+    entityTypeFilter: entityTypeFilter == _sentinel ? this.entityTypeFilter : entityTypeFilter as String?,
+    actionFilter: actionFilter == _sentinel ? this.actionFilter : actionFilter as String?,
+    startDate: startDate == _sentinel ? this.startDate : startDate as String?,
+    endDate: endDate == _sentinel ? this.endDate : endDate as String?,
   );
 }
 
@@ -284,9 +369,23 @@ class AuditLogsNotifier extends StateNotifier<AuditLogsState> {
   AuditLogsNotifier(this._repo) : super(const AuditLogsState());
 
   Future<void> load({bool refresh = false}) async {
-    if (refresh || state.items.isEmpty) state = const AuditLogsState(isLoading: true);
+    if (refresh || state.items.isEmpty) {
+      state = AuditLogsState(
+        isLoading: true,
+        entityTypeFilter: state.entityTypeFilter,
+        actionFilter: state.actionFilter,
+        startDate: state.startDate,
+        endDate: state.endDate,
+      );
+    }
     try {
-      final result = await _repo.listAuditLogs(page: 1);
+      final result = await _repo.listAuditLogs(
+        page: 1,
+        entityType: state.entityTypeFilter,
+        action: state.actionFilter,
+        startDate: state.startDate,
+        endDate: state.endDate,
+      );
       state = state.copyWith(
         items: result.items, isLoading: false,
         hasMore: result.items.length >= 30, page: 1, clearError: true,
@@ -300,13 +399,43 @@ class AuditLogsNotifier extends StateNotifier<AuditLogsState> {
     if (!state.hasMore || state.isLoadingMore || state.isLoading) return;
     state = state.copyWith(isLoadingMore: true);
     try {
-      final result = await _repo.listAuditLogs(page: state.page + 1);
+      final result = await _repo.listAuditLogs(
+        page: state.page + 1,
+        entityType: state.entityTypeFilter,
+        action: state.actionFilter,
+        startDate: state.startDate,
+        endDate: state.endDate,
+      );
       state = state.copyWith(
         items: [...state.items, ...result.items],
         isLoadingMore: false, hasMore: result.items.length >= 30,
         page: state.page + 1,
       );
     } catch (_) { state = state.copyWith(isLoadingMore: false); }
+  }
+
+  void setEntityType(String? et) {
+    state = AuditLogsState(
+      entityTypeFilter: et, actionFilter: state.actionFilter,
+      startDate: state.startDate, endDate: state.endDate, isLoading: true,
+    );
+    load();
+  }
+
+  void setAction(String? a) {
+    state = AuditLogsState(
+      actionFilter: a, entityTypeFilter: state.entityTypeFilter,
+      startDate: state.startDate, endDate: state.endDate, isLoading: true,
+    );
+    load();
+  }
+
+  void setDateRange(String? startDate, String? endDate) {
+    state = AuditLogsState(
+      entityTypeFilter: state.entityTypeFilter, actionFilter: state.actionFilter,
+      startDate: startDate, endDate: endDate, isLoading: true,
+    );
+    load();
   }
 }
 
@@ -318,20 +447,23 @@ class AdminSubscriptionsState {
   final String? error;
   final bool hasMore;
   final int page;
+  final String? statusFilter;
 
   const AdminSubscriptionsState({
     this.items = const [], this.isLoading = false, this.isLoadingMore = false,
-    this.error, this.hasMore = true, this.page = 1,
+    this.error, this.hasMore = true, this.page = 1, this.statusFilter,
   });
 
   AdminSubscriptionsState copyWith({
     List<Map<String, dynamic>>? items, bool? isLoading, bool? isLoadingMore,
-    String? error, bool? hasMore, int? page, bool clearError = false,
+    String? error, bool? hasMore, int? page,
+    Object? statusFilter = _sentinel, bool clearError = false,
   }) => AdminSubscriptionsState(
     items: items ?? this.items, isLoading: isLoading ?? this.isLoading,
     isLoadingMore: isLoadingMore ?? this.isLoadingMore,
     error: clearError ? null : (error ?? this.error),
     hasMore: hasMore ?? this.hasMore, page: page ?? this.page,
+    statusFilter: statusFilter == _sentinel ? this.statusFilter : statusFilter as String?,
   );
 }
 
@@ -340,9 +472,13 @@ class AdminSubscriptionsNotifier extends StateNotifier<AdminSubscriptionsState> 
   AdminSubscriptionsNotifier(this._repo) : super(const AdminSubscriptionsState());
 
   Future<void> load({bool refresh = false}) async {
-    if (refresh || state.items.isEmpty) state = const AdminSubscriptionsState(isLoading: true);
+    if (refresh || state.items.isEmpty) {
+      state = AdminSubscriptionsState(isLoading: true, statusFilter: state.statusFilter);
+    }
     try {
-      final result = await _repo.listSubscriptions(page: 1);
+      final result = await _repo.listSubscriptions(
+        page: 1, status: state.statusFilter,
+      );
       state = state.copyWith(
         items: result.items, isLoading: false,
         hasMore: result.items.length >= 20, page: 1, clearError: true,
@@ -356,13 +492,20 @@ class AdminSubscriptionsNotifier extends StateNotifier<AdminSubscriptionsState> 
     if (!state.hasMore || state.isLoadingMore || state.isLoading) return;
     state = state.copyWith(isLoadingMore: true);
     try {
-      final result = await _repo.listSubscriptions(page: state.page + 1);
+      final result = await _repo.listSubscriptions(
+        page: state.page + 1, status: state.statusFilter,
+      );
       state = state.copyWith(
         items: [...state.items, ...result.items],
         isLoadingMore: false, hasMore: result.items.length >= 20,
         page: state.page + 1,
       );
     } catch (_) { state = state.copyWith(isLoadingMore: false); }
+  }
+
+  void setStatusFilter(String? s) {
+    state = AdminSubscriptionsState(statusFilter: s, isLoading: true);
+    load();
   }
 }
 

@@ -1,10 +1,11 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/api/api_endpoints.dart';
 import '../../../models/notification_model.dart';
 
 class NotificationsRepository {
-  final _dio = apiClient.dio;
+  Dio get _dio => apiClient.dio;
 
   Future<({List<NotificationModel> items, int total})> listNotifications({
     bool? unreadOnly,

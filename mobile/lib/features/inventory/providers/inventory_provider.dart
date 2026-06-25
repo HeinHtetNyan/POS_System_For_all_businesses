@@ -10,6 +10,7 @@ class InventoryState {
   final int page;
   final String? searchQuery;
   final bool lowStockOnly;
+  final String? branchId;
 
   const InventoryState({
     this.items = const [],
@@ -20,6 +21,7 @@ class InventoryState {
     this.page = 1,
     this.searchQuery,
     this.lowStockOnly = false,
+    this.branchId,
   });
 
   InventoryState copyWith({
@@ -31,6 +33,8 @@ class InventoryState {
     int? page,
     String? searchQuery,
     bool? lowStockOnly,
+    String? branchId,
+    bool clearBranchId = false,
     bool clearError = false,
   }) {
     return InventoryState(
@@ -42,6 +46,7 @@ class InventoryState {
       page: page ?? this.page,
       searchQuery: searchQuery ?? this.searchQuery,
       lowStockOnly: lowStockOnly ?? this.lowStockOnly,
+      branchId: clearBranchId ? null : (branchId ?? this.branchId),
     );
   }
 }
@@ -54,12 +59,20 @@ class InventoryNotifier extends StateNotifier<InventoryState> {
     bool refresh = false,
     String? search,
     bool? lowStockOnly,
+    String? branchId,
+    bool clearBranchId = false,
   }) async {
-    if (refresh || search != state.searchQuery || lowStockOnly != state.lowStockOnly) {
+    final effectiveBranchId =
+        clearBranchId ? null : (branchId ?? state.branchId);
+    if (refresh ||
+        search != state.searchQuery ||
+        lowStockOnly != state.lowStockOnly ||
+        effectiveBranchId != state.branchId) {
       state = InventoryState(
         isLoading: true,
         searchQuery: search ?? state.searchQuery,
         lowStockOnly: lowStockOnly ?? state.lowStockOnly,
+        branchId: effectiveBranchId,
       );
     } else if (state.items.isEmpty) {
       state = state.copyWith(isLoading: true);
@@ -69,6 +82,7 @@ class InventoryNotifier extends StateNotifier<InventoryState> {
       final result = await _repo.getStockLevels(
         search: state.searchQuery,
         lowStockOnly: state.lowStockOnly ? true : null,
+        branchId: state.branchId,
         page: 1,
       );
       state = state.copyWith(
@@ -90,6 +104,7 @@ class InventoryNotifier extends StateNotifier<InventoryState> {
       final result = await _repo.getStockLevels(
         search: state.searchQuery,
         lowStockOnly: state.lowStockOnly ? true : null,
+        branchId: state.branchId,
         page: state.page + 1,
       );
       state = state.copyWith(
@@ -109,6 +124,14 @@ class InventoryNotifier extends StateNotifier<InventoryState> {
 
   void search(String query) {
     load(refresh: true, search: query.isEmpty ? null : query);
+  }
+
+  void selectBranch(String? branchId) {
+    load(
+      refresh: true,
+      branchId: branchId,
+      clearBranchId: branchId == null,
+    );
   }
 }
 

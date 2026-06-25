@@ -45,8 +45,9 @@ async def get_redis_optional() -> AsyncGenerator[Redis | None, None]:
     Use this for endpoints where Redis is used for rate-limiting or caching but
     must never block the primary operation (login, password reset, etc.).
     """
+    pool: Redis | None = None
     try:
         pool = await get_redis_pool()
-        yield pool
     except Exception:
-        yield None
+        pass
+    yield pool

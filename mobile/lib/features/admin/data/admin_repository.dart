@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/api/api_endpoints.dart';
@@ -8,7 +9,7 @@ import '../../../models/audit_log_model.dart';
 import '../../../models/subscription_model.dart';
 
 class AdminRepository {
-  final _dio = apiClient.dio;
+  Dio get _dio => apiClient.dio;
 
   // Tenants
   Future<({List<TenantModel> items, int total})> listTenants({
@@ -142,10 +143,27 @@ class AdminRepository {
     );
   }
 
+  // Device actions
+  Future<void> approveDevice(String deviceId) async {
+    await _dio.patch(ApiEndpoints.device(deviceId), data: {'status': 'ACTIVE'});
+  }
+
+  Future<void> revokeDevice(String deviceId) async {
+    await _dio.patch(ApiEndpoints.device(deviceId), data: {'status': 'REVOKED'});
+  }
+
+  // Payment proof review
+  Future<void> reviewPaymentProof(String proofId, String action) async {
+    await _dio.post('/subscriptions/payment-proofs/$proofId/review',
+        data: {'action': action});
+  }
+
   // Audit Logs
   Future<({List<AuditLogModel> items, int total})> listAuditLogs({
     String? entityType,
     String? action,
+    String? startDate,
+    String? endDate,
     int page = 1,
     int pageSize = 30,
   }) async {
@@ -154,6 +172,8 @@ class AdminRepository {
       'page_size': pageSize,
       if (entityType != null) 'entity_type': entityType,
       if (action != null) 'action': action,
+      if (startDate != null) 'start_date': startDate,
+      if (endDate != null) 'end_date': endDate,
     };
     final response = await _dio.get(
         ApiEndpoints.auditLogs, queryParameters: params);

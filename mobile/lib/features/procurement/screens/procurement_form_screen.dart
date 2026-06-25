@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/procurement_repository.dart';
 import '../providers/procurement_provider.dart';
+import '../../../core/providers/auth_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/responsive.dart';
 
 class ProcurementFormScreen extends ConsumerStatefulWidget {
-  const ProcurementFormScreen({super.key});
+  final String? initialSupplierId;
+  const ProcurementFormScreen({super.key, this.initialSupplierId});
 
   @override
   ConsumerState<ProcurementFormScreen> createState() =>
@@ -26,12 +28,13 @@ class _ProcurementFormScreenState
   @override
   void initState() {
     super.initState();
+    _selectedSupplierId = widget.initialSupplierId;
     Future.microtask(() {
       if (ref.read(procurementProvider).suppliers.isEmpty) {
         ref.read(procurementProvider.notifier).loadSuppliers();
       }
     });
-    _addItem(); // start with one empty row
+    _addItem();
   }
 
   @override
@@ -65,14 +68,14 @@ class _ProcurementFormScreenState
     if (_selectedSupplierId == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('Please select a supplier'),
-        backgroundColor: AppColors.warning,
+        backgroundColor: AppColors.warningLight,
       ));
       return;
     }
     if (_items.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('Add at least one item'),
-        backgroundColor: AppColors.warning,
+        backgroundColor: AppColors.warningLight,
       ));
       return;
     }
@@ -80,19 +83,20 @@ class _ProcurementFormScreenState
     setState(() => _isSaving = true);
     try {
       final repo = ref.read(procurementRepositoryProvider);
+      final user = ref.read(currentUserProvider);
       final itemsData = _items
           .map((item) => {
+                'product_id': item.productId.text.trim(),
                 'product_name': item.productName.text.trim(),
-                'quantity_ordered':
-                    int.tryParse(item.qty.text) ?? 1,
-                'unit_cost':
-                    double.tryParse(item.unitCost.text) ?? 0.0,
+                'ordered_quantity': int.tryParse(item.qty.text) ?? 1,
+                'unit_cost': double.tryParse(item.unitCost.text) ?? 0.0,
               })
           .toList();
 
       final data = {
         'supplier_id': _selectedSupplierId,
         'items': itemsData,
+        if (user?.primaryBranchId != null) 'branch_id': user!.primaryBranchId,
         if (_notes.text.trim().isNotEmpty) 'notes': _notes.text.trim(),
         if (_expectedDate != null)
           'expected_date':
@@ -106,7 +110,7 @@ class _ProcurementFormScreenState
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('Error: $e'),
-          backgroundColor: AppColors.error,
+          backgroundColor: AppColors.errorLight,
         ));
       }
     } finally {
@@ -119,146 +123,308 @@ class _ProcurementFormScreenState
     final suppliers = ref.watch(procurementProvider).suppliers;
 
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(
+        backgroundColor: AppColors.background,
         title: const Text('New Purchase Order'),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(height: 1, color: AppColors.divider),
+        ),
         actions: [
-          TextButton(
-            onPressed: _isSaving ? null : _save,
-            child: _isSaving
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Save'),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: TextButton(
+              onPressed: _isSaving ? null : _save,
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.primary,
+              ),
+              child: _isSaving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: AppColors.primary),
+                    )
+                  : const Text(
+                      'Save',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+            ),
           ),
         ],
       ),
       body: ContentWrapper(
         child: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            // Supplier
-            DropdownButtonFormField<String>(
-              initialValue: _selectedSupplierId,
-              decoration: const InputDecoration(
-                labelText: 'Supplier *',
-                prefixIcon: Icon(Icons.business_outlined),
-              ),
-              items: suppliers
-                  .map((s) => DropdownMenuItem(
-                        value: s.id,
-                        child: Text(s.name),
-                      ))
-                  .toList(),
-              onChanged: (v) => setState(() => _selectedSupplierId = v),
-              validator: (v) =>
-                  v == null ? 'Select a supplier' : null,
-            ),
-            const SizedBox(height: 16),
-            // Expected date
-            InkWell(
-              onTap: () async {
-                final picked = await showDatePicker(
-                  context: context,
-                  initialDate:
-                      _expectedDate ?? DateTime.now().add(const Duration(days: 7)),
-                  firstDate: DateTime.now(),
-                  lastDate: DateTime.now().add(const Duration(days: 365)),
-                );
-                if (picked != null) {
-                  setState(() => _expectedDate = picked);
-                }
-              },
-              child: InputDecorator(
-                decoration: const InputDecoration(
-                  labelText: 'Expected Date',
-                  prefixIcon: Icon(Icons.calendar_today_outlined),
+          key: _formKey,
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              // Supplier
+              _SectionLabel(label: 'Supplier'),
+              const SizedBox(height: 6),
+              DropdownButtonFormField<String>(
+                initialValue: _selectedSupplierId,
+                dropdownColor: AppColors.surfaceVariant,
+                decoration: InputDecoration(
+                  hintText: 'Select supplier',
+                  hintStyle: const TextStyle(color: AppColors.textSecondary),
+                  prefixIcon: const Icon(Icons.business_outlined,
+                      color: AppColors.textSecondary),
+                  filled: true,
+                  fillColor: AppColors.surface,
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: AppColors.divider),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide:
+                        const BorderSide(color: AppColors.primary, width: 1.5),
+                  ),
+                  errorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: AppColors.error),
+                  ),
+                  focusedErrorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: AppColors.error),
+                  ),
                 ),
-                child: Text(
-                  _expectedDate != null
-                      ? '${_expectedDate!.day}/${_expectedDate!.month}/${_expectedDate!.year}'
-                      : 'Optional',
-                  style: TextStyle(
-                    color: _expectedDate != null
-                        ? null
-                        : AppColors.textSecondary,
+                style: const TextStyle(color: AppColors.textPrimary),
+                items: suppliers
+                    .map((s) => DropdownMenuItem(
+                          value: s.id,
+                          child: Text(s.name),
+                        ))
+                    .toList(),
+                onChanged: (v) => setState(() => _selectedSupplierId = v),
+                validator: (v) => v == null ? 'Select a supplier' : null,
+              ),
+              const SizedBox(height: 20),
+
+              // Expected Date
+              _SectionLabel(label: 'Expected Date'),
+              const SizedBox(height: 6),
+              InkWell(
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: _expectedDate ??
+                        DateTime.now().add(const Duration(days: 7)),
+                    firstDate: DateTime.now(),
+                    lastDate:
+                        DateTime.now().add(const Duration(days: 365)),
+                    builder: (context, child) => Theme(
+                      data: Theme.of(context).copyWith(
+                        colorScheme: const ColorScheme.dark(
+                          primary: AppColors.primary,
+                          onPrimary: AppColors.primaryFg,
+                          surface: AppColors.surfaceVariant,
+                          onSurface: AppColors.textPrimary,
+                        ),
+                      ),
+                      child: child!,
+                    ),
+                  );
+                  if (picked != null) setState(() => _expectedDate = picked);
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.divider),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.calendar_today_outlined,
+                          size: 18, color: AppColors.textSecondary),
+                      const SizedBox(width: 12),
+                      Text(
+                        _expectedDate != null
+                            ? '${_expectedDate!.day}/${_expectedDate!.month}/${_expectedDate!.year}'
+                            : 'Optional',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: _expectedDate != null
+                              ? AppColors.textPrimary
+                              : AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            // Notes
-            TextFormField(
-              controller: _notes,
-              decoration: const InputDecoration(
-                labelText: 'Notes',
-                prefixIcon: Icon(Icons.notes_outlined),
-                alignLabelWithHint: true,
-              ),
-              maxLines: 2,
-            ),
-            const SizedBox(height: 20),
-            // Line items header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Line Items',
-                    style: TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w700)),
-                TextButton.icon(
-                  onPressed: _addItem,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Add Item'),
+              const SizedBox(height: 20),
+
+              // Notes
+              _SectionLabel(label: 'Notes'),
+              const SizedBox(height: 6),
+              TextFormField(
+                controller: _notes,
+                style: const TextStyle(color: AppColors.textPrimary),
+                decoration: InputDecoration(
+                  hintText: 'Optional notes...',
+                  hintStyle:
+                      const TextStyle(color: AppColors.textSecondary),
+                  prefixIcon: const Icon(Icons.notes_outlined,
+                      color: AppColors.textSecondary),
+                  alignLabelWithHint: true,
+                  filled: true,
+                  fillColor: AppColors.surface,
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: AppColors.divider),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide:
+                        const BorderSide(color: AppColors.primary, width: 1.5),
+                  ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            ..._items.asMap().entries.map(
-              (e) => _LineItemWidget(
-                key: ValueKey(e.key),
-                row: e.value,
-                index: e.key,
-                onRemove: _items.length > 1 ? () => _removeItem(e.key) : null,
+                maxLines: 2,
               ),
-            ),
-            const Divider(),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Estimated Total',
+              const SizedBox(height: 24),
+
+              // Line Items
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Line Items',
                     style: TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 15)),
-                StatefulBuilder(
-                  builder: (context, setInner) {
-                    // Rebuild total when typing
-                    return Text(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: _addItem,
+                    style: TextButton.styleFrom(
+                        foregroundColor: AppColors.primary),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Add Item',
+                        style: TextStyle(fontWeight: FontWeight.w600)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ..._items.asMap().entries.map(
+                    (e) => _LineItemWidget(
+                      key: ValueKey(e.key),
+                      row: e.value,
+                      index: e.key,
+                      onRemove: _items.length > 1
+                          ? () => _removeItem(e.key)
+                          : null,
+                    ),
+                  ),
+
+              // Total
+              Container(
+                margin: const EdgeInsets.only(top: 8),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: AppColors.primary.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Estimated Total',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    Text(
                       'MMK ${_total.toStringAsFixed(0)}',
                       style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 15,
-                          color: AppColors.primary),
-                    );
-                  },
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 32),
-          ],
-        ),
+              ),
+              const SizedBox(height: 24),
+
+              // Submit
+              SizedBox(
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: _isSaving ? null : _save,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: AppColors.primaryFg,
+                    disabledBackgroundColor:
+                        AppColors.primary.withValues(alpha: 0.4),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: _isSaving
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: AppColors.primaryFg,
+                          ),
+                        )
+                      : const Text(
+                          'Create Purchase Order',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 15),
+                        ),
+                ),
+              ),
+              const SizedBox(height: 32),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
+class _SectionLabel extends StatelessWidget {
+  final String label;
+  const _SectionLabel({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      label,
+      style: const TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        color: AppColors.textSecondary,
+        letterSpacing: 0.4,
+      ),
+    );
+  }
+}
+
 class _LineItemRow {
+  final productId = TextEditingController();
   final productName = TextEditingController();
   final qty = TextEditingController(text: '1');
   final unitCost = TextEditingController();
 
   void dispose() {
+    productId.dispose();
     productName.dispose();
     qty.dispose();
     unitCost.dispose();
@@ -279,81 +445,207 @@ class _LineItemWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text('Item ${index + 1}',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w600, fontSize: 13)),
-                const Spacer(),
-                if (onRemove != null)
-                  IconButton(
-                    icon: const Icon(Icons.close,
-                        size: 18, color: AppColors.error),
-                    onPressed: onRemove,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceVariant,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  'Item ${index + 1}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
                   ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            TextFormField(
-              controller: row.productName,
-              decoration: const InputDecoration(
-                hintText: 'Product name',
-                isDense: true,
+                ),
               ),
-              textCapitalization: TextCapitalization.words,
-              validator: (v) =>
-                  v == null || v.trim().isEmpty ? 'Required' : null,
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: TextFormField(
-                    controller: row.qty,
-                    decoration: const InputDecoration(
-                      labelText: 'Qty',
-                      isDense: true,
+              const Spacer(),
+              if (onRemove != null)
+                GestureDetector(
+                  onTap: onRemove,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: AppColors.errorLight,
+                      borderRadius: BorderRadius.circular(6),
                     ),
-                    keyboardType: TextInputType.number,
-                    validator: (v) {
-                      if (v == null || v.isEmpty) return 'Required';
-                      if (int.tryParse(v) == null) return 'Invalid';
-                      return null;
-                    },
+                    child: const Icon(Icons.close,
+                        size: 14, color: AppColors.error),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 2,
-                  child: TextFormField(
-                    controller: row.unitCost,
-                    decoration: const InputDecoration(
-                      labelText: 'Unit Cost',
-                      prefixText: 'MMK ',
-                      isDense: true,
-                    ),
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    validator: (v) {
-                      if (v == null || v.isEmpty) return 'Required';
-                      if (double.tryParse(v) == null) return 'Invalid';
-                      return null;
-                    },
-                  ),
-                ),
-              ],
+            ],
+          ),
+          const SizedBox(height: 10),
+          TextFormField(
+            controller: row.productId,
+            style: const TextStyle(color: AppColors.textPrimary),
+            decoration: InputDecoration(
+              hintText: 'Product ID (UUID)',
+              hintStyle: const TextStyle(color: AppColors.textSecondary),
+              labelText: 'Product ID',
+              labelStyle: const TextStyle(color: AppColors.textSecondary),
+              isDense: true,
+              filled: true,
+              fillColor: AppColors.surface,
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: const BorderSide(color: AppColors.divider),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide:
+                    const BorderSide(color: AppColors.primary, width: 1.5),
+              ),
+              errorBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: const BorderSide(color: AppColors.error),
+              ),
+              focusedErrorBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: const BorderSide(color: AppColors.error),
+              ),
             ),
-          ],
-        ),
+            validator: (v) =>
+                v == null || v.trim().isEmpty ? 'Product ID required' : null,
+          ),
+          const SizedBox(height: 8),
+          TextFormField(
+            controller: row.productName,
+            style: const TextStyle(color: AppColors.textPrimary),
+            decoration: InputDecoration(
+              hintText: 'Product name',
+              hintStyle: const TextStyle(color: AppColors.textSecondary),
+              isDense: true,
+              filled: true,
+              fillColor: AppColors.surface,
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: const BorderSide(color: AppColors.divider),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide:
+                    const BorderSide(color: AppColors.primary, width: 1.5),
+              ),
+              errorBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: const BorderSide(color: AppColors.error),
+              ),
+              focusedErrorBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: const BorderSide(color: AppColors.error),
+              ),
+            ),
+            textCapitalization: TextCapitalization.words,
+            validator: (v) =>
+                v == null || v.trim().isEmpty ? 'Required' : null,
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: row.qty,
+                  style: const TextStyle(color: AppColors.textPrimary),
+                  decoration: InputDecoration(
+                    labelText: 'Qty',
+                    labelStyle:
+                        const TextStyle(color: AppColors.textSecondary),
+                    isDense: true,
+                    filled: true,
+                    fillColor: AppColors.surface,
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide:
+                          const BorderSide(color: AppColors.divider),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide: const BorderSide(
+                          color: AppColors.primary, width: 1.5),
+                    ),
+                    errorBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide:
+                          const BorderSide(color: AppColors.error),
+                    ),
+                    focusedErrorBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide:
+                          const BorderSide(color: AppColors.error),
+                    ),
+                  ),
+                  keyboardType: TextInputType.number,
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return 'Required';
+                    if (int.tryParse(v) == null) return 'Invalid';
+                    return null;
+                  },
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: TextFormField(
+                  controller: row.unitCost,
+                  style: const TextStyle(color: AppColors.textPrimary),
+                  decoration: InputDecoration(
+                    labelText: 'Unit Cost',
+                    labelStyle:
+                        const TextStyle(color: AppColors.textSecondary),
+                    prefixText: 'MMK ',
+                    prefixStyle:
+                        const TextStyle(color: AppColors.textSecondary),
+                    isDense: true,
+                    filled: true,
+                    fillColor: AppColors.surface,
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide:
+                          const BorderSide(color: AppColors.divider),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide: const BorderSide(
+                          color: AppColors.primary, width: 1.5),
+                    ),
+                    errorBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide:
+                          const BorderSide(color: AppColors.error),
+                    ),
+                    focusedErrorBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide:
+                          const BorderSide(color: AppColors.error),
+                    ),
+                  ),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return 'Required';
+                    if (double.tryParse(v) == null) return 'Invalid';
+                    return null;
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

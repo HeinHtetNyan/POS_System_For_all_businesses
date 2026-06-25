@@ -15,8 +15,7 @@ class OpenSessionScreen extends ConsumerStatefulWidget {
 
 class _OpenSessionScreenState extends ConsumerState<OpenSessionScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _balanceController =
-      TextEditingController(text: '0');
+  final _balanceController = TextEditingController(text: '0');
   String? _selectedBranchId;
 
   @override
@@ -41,7 +40,9 @@ class _OpenSessionScreenState extends ConsumerState<OpenSessionScreen> {
       return;
     }
 
-    final success = await ref.read(sessionProvider.notifier).openSession(
+    final success = await ref
+        .read(sessionProvider.notifier)
+        .openSession(
           branchId: branchId,
           openingBalance:
               double.tryParse(_balanceController.text) ?? 0.0,
@@ -70,7 +71,7 @@ class _OpenSessionScreenState extends ConsumerState<OpenSessionScreen> {
     });
 
     return Scaffold(
-      backgroundColor: AppColors.primary,
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -79,39 +80,51 @@ class _OpenSessionScreenState extends ConsumerState<OpenSessionScreen> {
               constraints: const BoxConstraints(maxWidth: 480),
               child: Column(
                 children: [
-                  // Header
-                  const Icon(
-                    Icons.lock_open_rounded,
-                    color: Colors.white,
-                    size: 56,
+                  // Amber icon on dark background
+                  Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                          color: AppColors.primary.withValues(alpha: 0.3),
+                          width: 1.5),
+                    ),
+                    child: const Icon(
+                      Icons.lock_open_rounded,
+                      color: AppColors.primary,
+                      size: 40,
+                    ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 20),
                   const Text(
                     'Open Cash Register',
                     style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.w700,
-                      color: Colors.white,
+                      color: AppColors.textPrimary,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'Hi, ${user?.firstName ?? 'Cashier'}! Count your opening cash before starting.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 14,
-                      color: Colors.white.withValues(alpha: 0.75),
+                      color: AppColors.textSecondary,
                     ),
                   ),
                   const SizedBox(height: 32),
 
-                  // Card
+                  // Dark form card
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
                       color: AppColors.surface,
                       borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppColors.divider),
                     ),
                     child: Form(
                       key: _formKey,
@@ -129,23 +142,42 @@ class _OpenSessionScreenState extends ConsumerState<OpenSessionScreen> {
                           const SizedBox(height: 8),
                           TextFormField(
                             controller: _balanceController,
-                            keyboardType: const TextInputType.numberWithOptions(
-                                decimal: true),
+                            keyboardType:
+                                const TextInputType.numberWithOptions(
+                                    decimal: true),
                             style: const TextStyle(
                               fontSize: 32,
                               fontWeight: FontWeight.w700,
                               color: AppColors.textPrimary,
                             ),
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               prefixText: 'MMK ',
-                              prefixStyle: TextStyle(
+                              prefixStyle: const TextStyle(
                                 fontSize: 20,
                                 fontWeight: FontWeight.w600,
                                 color: AppColors.textSecondary,
                               ),
+                              filled: true,
+                              fillColor: AppColors.surfaceVariant,
                               border: OutlineInputBorder(
-                                borderRadius:
-                                    BorderRadius.all(Radius.circular(12)),
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: const BorderSide(
+                                    color: AppColors.divider),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: const BorderSide(
+                                    color: AppColors.divider),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: const BorderSide(
+                                    color: AppColors.primary, width: 2),
+                              ),
+                              errorBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: const BorderSide(
+                                    color: AppColors.error),
                               ),
                             ),
                             validator: (v) {
@@ -159,23 +191,42 @@ class _OpenSessionScreenState extends ConsumerState<OpenSessionScreen> {
                             },
                           ),
                           const SizedBox(height: 24),
+                          // Open session button — amber primary
                           SizedBox(
                             width: double.infinity,
                             height: 52,
                             child: ElevatedButton.icon(
-                              onPressed:
-                                  sessionState.isLoading ? null : _openSession,
+                              onPressed: sessionState.isLoading
+                                  ? null
+                                  : _openSession,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.primary,
+                                foregroundColor: AppColors.primaryFg,
+                                disabledBackgroundColor: AppColors.primary
+                                    .withValues(alpha: 0.5),
+                              ),
                               icon: sessionState.isLoading
                                   ? const SizedBox(
                                       width: 20,
                                       height: 20,
                                       child: CircularProgressIndicator(
-                                          strokeWidth: 2, color: Colors.white),
+                                        strokeWidth: 2,
+                                        color: AppColors.primaryFg,
+                                      ),
                                     )
-                                  : const Icon(Icons.play_arrow_rounded),
-                              label: Text(sessionState.isLoading
-                                  ? 'Opening...'
-                                  : 'Start Shift'),
+                                  : const Icon(
+                                      Icons.play_arrow_rounded,
+                                      color: AppColors.primaryFg,
+                                    ),
+                              label: Text(
+                                sessionState.isLoading
+                                    ? 'Opening...'
+                                    : 'Start Shift',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.primaryFg,
+                                ),
+                              ),
                             ),
                           ),
                         ],
@@ -189,7 +240,7 @@ class _OpenSessionScreenState extends ConsumerState<OpenSessionScreen> {
                         ref.read(authProvider.notifier).logout(),
                     child: const Text(
                       'Sign out',
-                      style: TextStyle(color: Colors.white70),
+                      style: TextStyle(color: AppColors.textSecondary),
                     ),
                   ),
                 ],

@@ -20,7 +20,7 @@ class AppConstants {
   static const Duration syncInterval = Duration(minutes: 5);
 
   // App
-  static const String appName = 'SawYun POS';
+  static const String appName = 'SawYunTech POS';
   static const String appVersion = '1.0.0';
   static const String platform = 'ANDROID';
 }

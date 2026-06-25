@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/pos_repository.dart';
+import '../../../core/api/api_client.dart';
+import '../../../core/storage/offline_queue.dart';
 import '../../../models/product_model.dart';
 import '../../../models/cart_model.dart';
 import '../../../models/order_model.dart';
@@ -15,6 +17,9 @@ class PosCartState {
   final bool isCheckingOut;
   final String? error;
   final OrderModel? lastCompletedOrder;
+  // Order-level discount
+  final String? orderDiscountType; // 'PERCENT' | 'AMOUNT'
+  final double orderDiscountValue;
 
   const PosCartState({
     this.items = const [],
@@ -24,14 +29,24 @@ class PosCartState {
     this.isCheckingOut = false,
     this.error,
     this.lastCompletedOrder,
+    this.orderDiscountType,
+    this.orderDiscountValue = 0,
   });
 
   double get subtotal =>
       items.fold(0, (sum, i) => sum + i.lineSubtotal);
   double get taxTotal =>
       items.fold(0, (sum, i) => sum + i.taxAmount);
-  double get discountTotal =>
+  double get lineDiscountTotal =>
       items.fold(0, (sum, i) => sum + i.discountAmount * i.quantity);
+  double get orderDiscountAmount {
+    if (orderDiscountType == null || orderDiscountValue <= 0) return 0;
+    if (orderDiscountType == 'PERCENT') {
+      return (subtotal - lineDiscountTotal) * orderDiscountValue / 100;
+    }
+    return orderDiscountValue.clamp(0, subtotal - lineDiscountTotal);
+  }
+  double get discountTotal => lineDiscountTotal + orderDiscountAmount;
   double get total => subtotal + taxTotal - discountTotal;
   int get itemCount =>
       items.fold(0, (sum, i) => sum + i.quantity);
@@ -49,6 +64,8 @@ class PosCartState {
     bool clearError = false,
     OrderModel? lastCompletedOrder,
     bool clearLastOrder = false,
+    Object? orderDiscountType = _posSentinel,
+    double? orderDiscountValue,
   }) {
     return PosCartState(
       items: items ?? this.items,
@@ -61,9 +78,15 @@ class PosCartState {
       lastCompletedOrder: clearLastOrder
           ? null
           : lastCompletedOrder ?? this.lastCompletedOrder,
+      orderDiscountType: orderDiscountType == _posSentinel
+          ? this.orderDiscountType
+          : orderDiscountType as String?,
+      orderDiscountValue: orderDiscountValue ?? this.orderDiscountValue,
     );
   }
 }
+
+const _posSentinel = Object();
 
 class PosCartNotifier extends StateNotifier<PosCartState> {
   final PosRepository _repo;
@@ -131,6 +154,20 @@ class PosCartNotifier extends StateNotifier<PosCartState> {
     state = state.copyWith(items: updated);
   }
 
+  void setOrderDiscount(String type, double value) {
+    state = state.copyWith(
+      orderDiscountType: value > 0 ? type : null,
+      orderDiscountValue: value,
+    );
+  }
+
+  void clearOrderDiscount() {
+    state = state.copyWith(
+      orderDiscountType: null,
+      orderDiscountValue: 0,
+    );
+  }
+
   void setCustomer(CustomerModel? customer) {
     if (customer == null) {
       state = state.copyWith(clearCustomer: true);
@@ -157,17 +194,22 @@ class PosCartNotifier extends StateNotifier<PosCartState> {
         customerId: state.customer?.id,
       );
 
-      // Step 2: Add all items
-      for (final item in state.items) {
-        await _repo.addToCart(
-          cartId: serverCart.id,
-          productId: item.productId,
-          variantId: item.variantId,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          discountAmount: item.discountAmount,
-          taxRate: item.taxRate,
-        );
+      // Step 2: Add all items (clean up orphaned cart on failure)
+      try {
+        for (final item in state.items) {
+          await _repo.addToCart(
+            cartId: serverCart.id,
+            productId: item.productId,
+            variantId: item.variantId,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            discountAmount: item.discountAmount,
+            taxRate: item.taxRate,
+          );
+        }
+      } catch (e) {
+        await _repo.deleteCart(serverCart.id);
+        rethrow;
       }
 
       // Step 3: Checkout
@@ -177,13 +219,34 @@ class PosCartNotifier extends StateNotifier<PosCartState> {
         cartId: serverCart.id,
         payments: payments,
         customerId: state.customer?.id,
+        orderDiscountType: state.orderDiscountType,
+        orderDiscountValue:
+            state.orderDiscountValue > 0 ? state.orderDiscountValue : null,
       );
 
       state = PosCartState(lastCompletedOrder: order);
       return order;
     } catch (e) {
-      state = state.copyWith(
-          isCheckingOut: false, error: e.toString());
+      // Network error (no HTTP status code) → save locally for offline sync
+      final isNetworkError = e is AppException && e.statusCode == null;
+      if (isNetworkError) {
+        await offlineQueueService.enqueue(
+          branchId: _branchId,
+          sessionId: _sessionId,
+          customerId: state.customer?.id,
+          items: state.items,
+          payments: payments,
+        );
+        final pending = offlineQueueService.pendingCount.value;
+        state = state.copyWith(
+          isCheckingOut: false,
+          error:
+              'No connection — order queued for offline sync ($pending pending).',
+        );
+      } else {
+        state = state.copyWith(
+            isCheckingOut: false, error: e.toString());
+      }
       return null;
     }
   }

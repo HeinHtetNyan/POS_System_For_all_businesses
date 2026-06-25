@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/api/api_endpoints.dart';
@@ -69,7 +70,7 @@ class StockMovementModel {
 }
 
 class InventoryRepository {
-  final _dio = apiClient.dio;
+  Dio get _dio => apiClient.dio;
 
   Future<({List<StockLevelModel> items, int total})> getStockLevels({
     String? branchId,
@@ -114,6 +115,7 @@ class InventoryRepository {
 
   Future<List<StockMovementModel>> getMovements({
     String? productId,
+    String? branchId,
     int page = 1,
     int pageSize = 30,
   }) async {
@@ -121,6 +123,7 @@ class InventoryRepository {
       'page': page,
       'page_size': pageSize,
       if (productId != null) 'product_id': productId,
+      if (branchId != null) 'branch_id': branchId,
     };
     final response = await _dio.get(
         ApiEndpoints.stockMovements, queryParameters: params);

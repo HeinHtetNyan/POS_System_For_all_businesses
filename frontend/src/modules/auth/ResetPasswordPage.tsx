@@ -157,6 +157,21 @@ export default function ResetPasswordPage() {
             </form>
           </>
         )}
+
+        {token && !success && (
+          <div className="mt-4 pt-4 border-t border-zinc-800 text-center">
+            <p className="text-zinc-600 text-xs mb-2">On Android? Reset directly in the app</p>
+            <a
+              href={`pos://reset-password?token=${token}`}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-400 text-xs hover:text-zinc-200 hover:border-zinc-600 transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+              </svg>
+              Open in SawYun POS App
+            </a>
+          </div>
+        )}
       </div>
 
       {!success && (

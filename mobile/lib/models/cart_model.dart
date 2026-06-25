@@ -148,4 +148,30 @@ class LocalCartItem {
       variantName != null ? '$productName - $variantName' : productName;
 
   String get key => variantId ?? productId;
+
+  Map<String, dynamic> toJson() => {
+        'product_id': productId,
+        'product_name': productName,
+        if (variantId != null) 'variant_id': variantId,
+        if (variantName != null) 'variant_name': variantName,
+        'quantity': quantity,
+        'unit_price': unitPrice,
+        'discount_amount': discountAmount,
+        'tax_rate': taxRate,
+        if (sku != null) 'sku': sku,
+        if (barcode != null) 'barcode': barcode,
+      };
+
+  factory LocalCartItem.fromJson(Map<String, dynamic> json) => LocalCartItem(
+        productId: json['product_id'] as String,
+        productName: json['product_name'] as String,
+        variantId: json['variant_id'] as String?,
+        variantName: json['variant_name'] as String?,
+        quantity: json['quantity'] as int,
+        unitPrice: (json['unit_price'] as num).toDouble(),
+        discountAmount: (json['discount_amount'] as num).toDouble(),
+        taxRate: (json['tax_rate'] as num).toDouble(),
+        sku: json['sku'] as String?,
+        barcode: json['barcode'] as String?,
+      );
 }

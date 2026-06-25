@@ -61,9 +61,9 @@ class ResellerWalletNotifier extends StateNotifier<ResellerWalletState> {
     }
   }
 
-  Future<bool> requestPayout(double amount) async {
+  Future<bool> requestPayout(double amount, {String? reason}) async {
     try {
-      await _repo.requestPayout(amount);
+      await _repo.requestPayout(amount, reason: reason);
       await load(refresh: true);
       return true;
     } catch (_) {

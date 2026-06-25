@@ -25,7 +25,6 @@ from app.db.session import engine, get_db
 from app.events import handlers as _event_handlers  # noqa: F401 — registers handlers
 from app.notifications import handlers as _notification_handlers  # noqa: F401 — registers notification handlers
 from app.reseller_finance.events import handlers as _reseller_finance_handlers # noqa: F401 — handlers
-from app.middleware.error_handler import ErrorHandlerMiddleware
 from app.middleware.idempotency import IdempotencyMiddleware
 from app.middleware.logging import RequestLoggingMiddleware
 from app.middleware.rate_limit import PerUserRateLimitMiddleware
@@ -64,8 +63,7 @@ def create_application() -> FastAPI:
     )
 
     # Middleware — last added = outermost (executes first on request)
-    # Execution order: CORS → RequestID → Logging → PerUserRateLimit → Idempotency → ErrorHandler → route
-    app.add_middleware(ErrorHandlerMiddleware)
+    # Execution order: CORS → RequestID → Logging → PerUserRateLimit → Idempotency → route
     app.add_middleware(IdempotencyMiddleware)
     app.add_middleware(PerUserRateLimitMiddleware)
     app.add_middleware(RequestLoggingMiddleware)
@@ -109,6 +107,25 @@ def create_application() -> FastAPI:
                     "code": "VALIDATION_ERROR",
                     "message": "Request validation failed",
                     "details": {"errors": safe_errors},
+                },
+            },
+        )
+
+    @app.exception_handler(Exception)
+    async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        logger.exception(
+            "unhandled_error",
+            error=str(exc),
+            request_id=getattr(request.state, "request_id", None),
+        )
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "error": {
+                    "code": "INTERNAL_SERVER_ERROR",
+                    "message": "An unexpected error occurred",
+                    "details": {},
                 },
             },
         )

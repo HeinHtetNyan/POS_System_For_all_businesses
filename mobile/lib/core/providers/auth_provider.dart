@@ -44,9 +44,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final token = await _storage.getAccessToken();
       if (userJson != null && token != null) {
         final user = UserModel.fromJson(jsonDecode(userJson));
-        state = AuthState(user: user);
-        // Silently refresh user data in background
-        _refreshUserData();
+        // Explicitly set isLoading: false so the router is unblocked.
+        state = AuthState(user: user, isLoading: false);
+        // Silently refresh user data in background — only if still mounted.
+        if (mounted) _refreshUserData();
       } else {
         state = const AuthState();
       }
@@ -99,11 +100,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final user =
           UserModel.fromJson(userResponse.data as Map<String, dynamic>);
       await _storage.saveUserJson(jsonEncode(user.toJson()));
-      state = AuthState(user: user);
+      // Guard against setState after dispose for fire-and-forget calls.
+      if (mounted) state = AuthState(user: user);
     } catch (_) {
       // Silently fail — user stays logged in with cached data
     }
   }
+
+  Future<void> refreshUser() => _refreshUserData();
 
   void clearError() {
     state = state.copyWith(clearError: true);

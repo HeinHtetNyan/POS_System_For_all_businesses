@@ -1,7 +1,12 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import '../constants/app_constants.dart';
 import '../storage/secure_storage.dart';
 import 'api_endpoints.dart';
+
+// Global notifier: set to true when a 402 Subscription Required response is
+// received. The router listens to this and redirects to /trial-expired.
+final subscriptionExpiredNotifier = ValueNotifier<bool>(false);
 
 class ApiClient {
   static ApiClient? _instance;
@@ -34,11 +39,6 @@ class ApiClient {
     ));
   }
 
-  Future<void> updateBaseUrl(String url) async {
-    await _secureStorage.saveBaseUrl(url);
-    _dio.options.baseUrl = '$url${AppConstants.apiPrefix}';
-  }
-
   void _onRequest(
       RequestOptions options, RequestInterceptorHandler handler) async {
     final token = await _secureStorage.getAccessToken();
@@ -49,6 +49,11 @@ class ApiClient {
   }
 
   void _onError(DioException err, ErrorInterceptorHandler handler) async {
+    if (err.response?.statusCode == 402) {
+      subscriptionExpiredNotifier.value = true;
+      handler.next(err);
+      return;
+    }
     if (err.response?.statusCode == 401) {
       if (_isRefreshing) {
         // Queue request until refresh completes
@@ -111,6 +116,19 @@ class ApiClient {
   }
 
   Dio get dio => _dio;
+
+  String get currentBaseUrl {
+    final full = _dio.options.baseUrl;
+    return full.endsWith(AppConstants.apiPrefix)
+        ? full.substring(0, full.length - AppConstants.apiPrefix.length)
+        : full;
+  }
+
+  Future<void> updateBaseUrl(String newBaseUrl) async {
+    final trimmed = newBaseUrl.trimRight().replaceAll(RegExp(r'/+$'), '');
+    await _secureStorage.saveBaseUrl(trimmed);
+    _dio.options.baseUrl = '$trimmed${AppConstants.apiPrefix}';
+  }
 
   // Convenience wrappers
   Future<Response> get(String path,

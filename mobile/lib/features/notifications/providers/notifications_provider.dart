@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/notifications_repository.dart';
 import '../../../models/notification_model.dart';
@@ -45,7 +46,15 @@ class NotificationsState {
 
 class NotificationsNotifier extends StateNotifier<NotificationsState> {
   final NotificationsRepository _repo;
+  Timer? _pollingTimer;
+
   NotificationsNotifier(this._repo) : super(const NotificationsState());
+
+  @override
+  void dispose() {
+    _pollingTimer?.cancel();
+    super.dispose();
+  }
 
   Future<void> load({bool refresh = false}) async {
     if (refresh) {
@@ -69,6 +78,14 @@ class NotificationsNotifier extends StateNotifier<NotificationsState> {
         unreadCount: results[1] as int,
         clearError: true,
       );
+
+      _pollingTimer?.cancel();
+      _pollingTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
+        try {
+          final count = await _repo.getUnreadCount();
+          if (mounted) state = state.copyWith(unreadCount: count);
+        } catch (_) {}
+      });
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
@@ -91,25 +108,39 @@ class NotificationsNotifier extends StateNotifier<NotificationsState> {
   }
 
   Future<void> markRead(String id) async {
+    final previousItems = state.items;
+    final previousUnreadCount = state.unreadCount;
+    state = state.copyWith(
+      items: state.items
+          .map((n) => n.id == id ? n.copyWith(isRead: true, readAt: DateTime.now()) : n)
+          .toList(),
+      unreadCount: (state.unreadCount - 1).clamp(0, 999),
+    );
     try {
       await _repo.markRead(id);
+    } catch (_) {
       state = state.copyWith(
-        items: state.items
-            .map((n) => n.id == id ? n.copyWith(isRead: true) : n)
-            .toList(),
-        unreadCount: (state.unreadCount - 1).clamp(0, 999),
+        items: previousItems,
+        unreadCount: previousUnreadCount,
       );
-    } catch (_) {}
+    }
   }
 
   Future<void> markAllRead() async {
+    final previousItems = state.items;
+    final previousUnreadCount = state.unreadCount;
+    state = state.copyWith(
+      items: state.items.map((n) => n.copyWith(isRead: true)).toList(),
+      unreadCount: 0,
+    );
     try {
       await _repo.markAllRead();
+    } catch (_) {
       state = state.copyWith(
-        items: state.items.map((n) => n.copyWith(isRead: true)).toList(),
-        unreadCount: 0,
+        items: previousItems,
+        unreadCount: previousUnreadCount,
       );
-    } catch (_) {}
+    }
   }
 }
 

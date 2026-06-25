@@ -154,6 +154,8 @@ class PosRepository {
     required List<CheckoutPayment> payments,
     String? customerId,
     String? notes,
+    String? orderDiscountType,
+    double? orderDiscountValue,
   }) async {
     try {
       final response = await apiClient.post(
@@ -165,6 +167,12 @@ class PosRepository {
           if (customerId != null) 'customer_id': customerId,
           'payments': payments.map((p) => p.toJson()).toList(),
           if (notes != null) 'notes': notes,
+          if (orderDiscountType != null &&
+              orderDiscountValue != null &&
+              orderDiscountValue > 0) ...{
+            'discount_type': orderDiscountType,
+            'discount_value': orderDiscountValue,
+          },
         },
       );
       return OrderModel.fromJson(response.data as Map<String, dynamic>);
@@ -256,4 +264,12 @@ class CheckoutPayment {
           'reference_number': referenceNumber,
         if (notes != null) 'notes': notes,
       };
+
+  factory CheckoutPayment.fromJson(Map<String, dynamic> json) =>
+      CheckoutPayment(
+        paymentMethod: json['payment_method'] as String,
+        amount: (json['amount'] as num).toDouble(),
+        referenceNumber: json['reference_number'] as String?,
+        notes: json['notes'] as String?,
+      );
 }

@@ -12,6 +12,7 @@ import '../../cashier_session/providers/session_provider.dart';
 import '../../../core/providers/auth_provider.dart';
 import '../../../core/providers/connectivity_provider.dart';
 import '../../../core/hardware/scanner_service.dart';
+import '../../../core/storage/offline_queue.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../models/order_model.dart';
@@ -26,6 +27,7 @@ class PosScreen extends ConsumerStatefulWidget {
 class _PosScreenState extends ConsumerState<PosScreen> {
   bool _showCartSheet = false;
   StreamSubscription<String>? _scannerSub;
+  double _currentWidth = 9999; // cached; updated each build for use in callbacks
 
   @override
   void initState() {
@@ -42,12 +44,13 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   }
 
   bool _handleHwKey(KeyEvent event) {
+    if (_currentWidth < 700) return false; // POS blocked on narrow screens
     scannerService.handleKeyEvent(event);
     return false;
   }
 
   void _onBarcode(String barcode) {
-    if (!mounted) return;
+    if (!mounted || _currentWidth < 700) return; // POS blocked on narrow screens
     final user = ref.read(authProvider).user;
     final session = ref.read(sessionProvider).session;
     if (user == null || session == null) return;
@@ -84,21 +87,43 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     if (barcode != null) _onBarcode(barcode);
   }
 
+  Future<void> _syncOfflineQueue() async {
+    final repo = ref.read(posRepositoryProvider);
+    final synced = await offlineQueueService.syncPending(repo);
+    if (!mounted) return;
+    if (synced > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('$synced offline order(s) synced successfully!'),
+        backgroundColor: AppColors.success,
+        duration: const Duration(seconds: 3),
+      ));
+    } else if (offlineQueueService.pendingCount.value > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Sync failed — still offline. Orders remain queued.'),
+        backgroundColor: AppColors.warning,
+        duration: Duration(seconds: 3),
+      ));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    _currentWidth = MediaQuery.sizeOf(context).width;
     final user = ref.watch(authProvider).user;
     final session = ref.watch(sessionProvider).session;
     final isOnline = ref.watch(isOnlineProvider);
 
     if (user == null || session == null) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+        backgroundColor: AppColors.background,
+        body: Center(child: CircularProgressIndicator(color: AppColors.primary)),
       );
     }
 
     // Gate: POS checkout requires tablet (≥700dp). Small phones are not supported.
-    if (MediaQuery.of(context).size.width < 700) {
+    if (_currentWidth < 700) {
       return Scaffold(
+        backgroundColor: AppColors.background,
         appBar: AppBar(title: const Text('Point of Sale')),
         body: Center(
           child: Padding(
@@ -111,7 +136,9 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                 const SizedBox(height: 24),
                 const Text('Tablet Required',
                     style: TextStyle(
-                        fontSize: 22, fontWeight: FontWeight.w700)),
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary)),
                 const SizedBox(height: 12),
                 const Text(
                   'The POS checkout is not available on small screens.\nPlease use a tablet or larger device.',
@@ -136,9 +163,15 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     final cartParams = (branchId: branchId, sessionId: session.id);
     final cartState = ref.watch(posCartProvider(cartParams));
 
+    // Auto-sync queued offline orders when connectivity is restored
+    ref.listen<bool>(isOnlineProvider, (prev, next) {
+      if (prev == false && next == true) {
+        _syncOfflineQueue();
+      }
+    });
+
     // Listen for completed order
-    ref.listen<PosCartState>(posCartProvider(cartParams),
-        (prev, next) {
+    ref.listen<PosCartState>(posCartProvider(cartParams), (prev, next) {
       if (next.lastCompletedOrder != null &&
           (prev?.lastCompletedOrder == null)) {
         _showOrderComplete(context, next.lastCompletedOrder!, cartParams);
@@ -155,39 +188,49 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     });
 
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(
+        backgroundColor: AppColors.background,
         title: const Text('Point of Sale'),
         actions: [
-          // Camera scanner button
-          Builder(builder: (ctx) => IconButton(
-            icon: const Icon(Icons.qr_code_scanner_outlined),
-            tooltip: 'Scan barcode',
-            onPressed: () => _openCameraScanner(ctx),
-          )),
-          // Offline indicator
+          // Camera scanner button — amber icon
+          Builder(
+            builder: (ctx) => IconButton(
+              icon: const Icon(Icons.qr_code_scanner_outlined,
+                  color: AppColors.primary),
+              tooltip: 'Scan barcode',
+              onPressed: () => _openCameraScanner(ctx),
+            ),
+          ),
+          // Offline indicator — amber warning badge
           if (!isOnline)
             Container(
               margin: const EdgeInsets.only(right: 4),
               padding: const EdgeInsets.symmetric(
                   horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: AppColors.warning.withValues(alpha: 0.2),
+                color: AppColors.warningLight,
+                border: Border.all(
+                    color: AppColors.warning.withValues(alpha: 0.4)),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.wifi_off, size: 14,
-                      color: AppColors.warning),
+                  Icon(Icons.wifi_off,
+                      size: 14, color: AppColors.warning),
                   SizedBox(width: 4),
                   Text('Offline',
                       style: TextStyle(
-                          fontSize: 12, color: AppColors.warning)),
+                          fontSize: 12,
+                          color: AppColors.warning,
+                          fontWeight: FontWeight.w600)),
                 ],
               ),
             ),
           PopupMenuButton(
-            icon: const Icon(Icons.more_vert),
+            icon: const Icon(Icons.more_vert,
+                color: AppColors.textSecondary),
             itemBuilder: (_) => [
               const PopupMenuItem(
                 value: 'session',
@@ -226,91 +269,157 @@ class _PosScreenState extends ConsumerState<PosScreen> {
           ),
         ],
       ),
-      body: LayoutBuilder(
-        builder: (ctx, constraints) {
-          // Tablet layout: side by side
-          if (constraints.maxWidth >= 720) {
-            return Row(
-              children: [
-                // Product grid (left, 60%)
-                Expanded(
-                  flex: 60,
-                  child: ProductGrid(
-                    branchId: branchId,
-                    sessionId: session.id,
-                    branchIdForCart: branchId,
-                  ),
+      body: Column(
+        children: [
+          // Offline queue banner — amber warning style
+          ValueListenableBuilder<int>(
+            valueListenable: offlineQueueService.pendingCount,
+            builder: (_, count, __) {
+              if (count == 0) return const SizedBox.shrink();
+              return Container(
+                width: double.infinity,
+                color: AppColors.warningLight,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 10),
+                child: Row(
+                  children: [
+                    const Icon(Icons.cloud_off,
+                        size: 16, color: AppColors.warning),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '$count order(s) queued offline',
+                        style: const TextStyle(
+                            fontSize: 13,
+                            color: AppColors.warning,
+                            fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: _syncOfflineQueue,
+                      style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          tapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          foregroundColor: AppColors.warning),
+                      child: const Text('Sync Now',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.warning,
+                              fontWeight: FontWeight.w700)),
+                    ),
+                  ],
                 ),
-                const VerticalDivider(width: 1),
-                // Cart (right, 40%)
-                SizedBox(
-                  width: constraints.maxWidth * 0.38,
-                  child: CartPanel(
-                    branchId: branchId,
-                    sessionId: session.id,
-                    onCheckout: () => _showPaymentDialog(
-                        context, cartState.total, cartParams),
-                    onClear: () => ref
-                        .read(posCartProvider(cartParams).notifier)
-                        .clearCart(),
-                  ),
-                ),
-              ],
-            );
-          }
+              );
+            },
+          ),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (ctx, constraints) {
+                // Tablet layout: side by side with dark divider
+                if (constraints.maxWidth >= 700) {
+                  return Row(
+                    children: [
+                      // Product grid (left, 60%)
+                      Expanded(
+                        flex: 60,
+                        child: ProductGrid(
+                          branchId: branchId,
+                          sessionId: session.id,
+                          branchIdForCart: branchId,
+                        ),
+                      ),
+                      const VerticalDivider(
+                          width: 1,
+                          thickness: 1,
+                          color: AppColors.divider),
+                      // Cart (right, 40%)
+                      SizedBox(
+                        width: constraints.maxWidth * 0.38,
+                        child: CartPanel(
+                          branchId: branchId,
+                          sessionId: session.id,
+                          onCheckout: () => _showPaymentDialog(
+                              context, cartState.total, cartParams),
+                          onClear: () => ref
+                              .read(posCartProvider(cartParams).notifier)
+                              .clearCart(),
+                        ),
+                      ),
+                    ],
+                  );
+                }
 
-          // Phone layout: full product grid + bottom cart button
-          return Stack(
-            children: [
-              ProductGrid(
-                branchId: branchId,
-                sessionId: session.id,
-                branchIdForCart: branchId,
-                onItemAdded: () {
-                  if (!_showCartSheet) {
-                    setState(() => _showCartSheet = true);
-                  }
-                },
-              ),
-              if (!cartState.isEmpty)
-                Positioned(
-                  bottom: 16,
-                  left: 16,
-                  right: 16,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _showCartBottomSheet(
-                        context, branchId, session.id, cartParams),
-                    icon: Stack(
-                      alignment: Alignment.topRight,
-                      children: [
-                        const Icon(Icons.shopping_cart_outlined),
-                        Positioned(
-                          top: -2,
-                          right: -4,
-                          child: Container(
-                            padding: const EdgeInsets.all(3),
-                            decoration: const BoxDecoration(
-                              color: Colors.red,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Text(
-                              '${cartState.itemCount}',
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w700),
-                            ),
+                // Phone layout: full product grid + floating amber cart button
+                return Stack(
+                  children: [
+                    ProductGrid(
+                      branchId: branchId,
+                      sessionId: session.id,
+                      branchIdForCart: branchId,
+                      onItemAdded: () {
+                        if (!_showCartSheet) {
+                          setState(() => _showCartSheet = true);
+                        }
+                      },
+                    ),
+                    if (!cartState.isEmpty)
+                      Positioned(
+                        bottom: 16,
+                        left: 16,
+                        right: 16,
+                        child: ElevatedButton.icon(
+                          onPressed: () => _showCartBottomSheet(
+                              context, branchId, session.id, cartParams),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            foregroundColor: AppColors.primaryFg,
+                            elevation: 4,
+                            shadowColor:
+                                AppColors.primary.withValues(alpha: 0.4),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14)),
+                            minimumSize: const Size(double.infinity, 52),
+                          ),
+                          icon: Stack(
+                            alignment: Alignment.topRight,
+                            children: [
+                              const Icon(Icons.shopping_cart_outlined,
+                                  color: AppColors.primaryFg),
+                              Positioned(
+                                top: -2,
+                                right: -4,
+                                child: Container(
+                                  padding: const EdgeInsets.all(3),
+                                  decoration: const BoxDecoration(
+                                    color: AppColors.error,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Text(
+                                    '${cartState.itemCount}',
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w700),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          label: Text(
+                            'View Cart · ${CurrencyFormatter.format(cartState.total)}',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.primaryFg),
                           ),
                         ),
-                      ],
-                    ),
-                    label: Text(
-                        'View Cart · ${CurrencyFormatter.format(cartState.total)}'),
-                  ),
-                ),
-            ],
-          );
-        },
+                      ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -324,6 +433,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -336,8 +446,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
             sessionId: sessionId,
             onCheckout: () {
               Navigator.pop(ctx);
-              _showPaymentDialog(
-                  context, cartState.total, cartParams);
+              _showPaymentDialog(context, cartState.total, cartParams);
             },
             onClear: () {
               Navigator.pop(ctx);
@@ -356,11 +465,14 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     double total,
     ({String branchId, String sessionId}) cartParams,
   ) {
+    final hasCustomer =
+        ref.read(posCartProvider(cartParams)).customer != null;
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => PaymentDialog(
         totalAmount: total,
+        hasCustomer: hasCustomer,
         onConfirm: (payments) {
           Navigator.pop(context);
           ref
@@ -380,8 +492,11 @@ class _PosScreenState extends ConsumerState<PosScreen> {
       context: context,
       barrierDismissible: false,
       builder: (_) => AlertDialog(
+        backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20)),
+          borderRadius: BorderRadius.circular(20),
+          side: const BorderSide(color: AppColors.divider),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -398,7 +513,9 @@ class _PosScreenState extends ConsumerState<PosScreen> {
             const SizedBox(height: 16),
             const Text('Sale Complete!',
                 style: TextStyle(
-                    fontSize: 20, fontWeight: FontWeight.w700)),
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary)),
             const SizedBox(height: 8),
             Text(
               'Order #${order.orderNumber}',
@@ -426,8 +543,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                           .clearLastOrder();
                       context.push('/receipt/${order.id}');
                     },
-                    icon: const Icon(Icons.receipt_outlined,
-                        size: 18),
+                    icon: const Icon(Icons.receipt_outlined, size: 18),
                     label: const Text('Receipt'),
                   ),
                 ),
@@ -440,8 +556,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                           .read(posCartProvider(cartParams).notifier)
                           .clearLastOrder();
                     },
-                    icon: const Icon(Icons.add_shopping_cart,
-                        size: 18),
+                    icon: const Icon(Icons.add_shopping_cart, size: 18),
                     label: const Text('New Sale'),
                   ),
                 ),
@@ -476,26 +591,37 @@ class _PosScannerSheetState extends State<_PosScannerSheet> {
     return Container(
       height: MediaQuery.of(context).size.height * 0.55,
       decoration: const BoxDecoration(
-        color: Colors.black,
+        color: AppColors.background,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: Column(
         children: [
+          // Handle bar
+          Container(
+            margin: const EdgeInsets.only(top: 10),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppColors.divider,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 8, 8),
+            padding: const EdgeInsets.fromLTRB(20, 12, 8, 8),
             child: Row(
               children: [
                 const Icon(Icons.qr_code_scanner_outlined,
-                    color: Colors.white, size: 20),
+                    color: AppColors.primary, size: 20),
                 const SizedBox(width: 10),
                 const Text('Scan Product Barcode',
                     style: TextStyle(
-                        color: Colors.white,
+                        color: AppColors.textPrimary,
                         fontSize: 16,
                         fontWeight: FontWeight.w600)),
                 const Spacer(),
                 IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white70),
+                  icon: const Icon(Icons.close,
+                      color: AppColors.textSecondary),
                   onPressed: () => Navigator.of(context).pop(),
                 ),
               ],

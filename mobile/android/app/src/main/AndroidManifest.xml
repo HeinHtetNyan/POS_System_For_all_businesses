@@ -28,6 +28,9 @@
     <!-- Vibration (feedback) -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- Storage for image picking -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+
     <application
         android:label="SawYun POS"
         android:name="${applicationName}"
@@ -52,6 +55,12 @@
             <!-- USB device attached for hardware scanners/printers -->
             <intent-filter>
                 <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="pos" android:host="reset-password" />
             </intent-filter>
         </activity>
         <meta-data

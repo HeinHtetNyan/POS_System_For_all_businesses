@@ -1,10 +1,11 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/api/api_endpoints.dart';
 import '../../../models/order_model.dart';
 
 class OrdersRepository {
-  final _dio = apiClient.dio;
+  Dio get _dio => apiClient.dio;
 
   Future<({List<OrderModel> items, int total})> listOrders({
     String? status,
@@ -39,6 +40,30 @@ class OrdersRepository {
 
   Future<void> voidOrder(String id, {String? reason}) async {
     await _dio.post(ApiEndpoints.voidOrder(id), data: {'reason': reason});
+  }
+
+  Future<List<Map<String, dynamic>>> listRefunds(
+      {int page = 1, int pageSize = 20}) async {
+    final response = await _dio.get(ApiEndpoints.refunds,
+        queryParameters: {'page': page, 'page_size': pageSize});
+    final data = response.data as Map<String, dynamic>;
+    final raw = data['items'] as List<dynamic>? ?? [];
+    return raw.cast<Map<String, dynamic>>();
+  }
+
+  Future<void> processRefund(
+    String orderId, {
+    required List<Map<String, dynamic>> items,
+    required String refundMethod,
+    required String reason,
+    String? notes,
+  }) async {
+    await _dio.post(ApiEndpoints.refund(orderId), data: {
+      'items': items,
+      'refund_method': refundMethod,
+      'reason': reason,
+      if (notes != null && notes.isNotEmpty) 'notes': notes,
+    });
   }
 }
 

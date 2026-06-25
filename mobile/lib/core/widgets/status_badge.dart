@@ -10,27 +10,35 @@ class StatusBadge extends StatelessWidget {
   Color get _textColor {
     switch (status.toUpperCase()) {
       case 'ACTIVE':
+      case 'OPEN':
       case 'COMPLETED':
       case 'PAID':
       case 'RECEIVED':
+      case 'APPROVED':
+      case 'IN_STOCK':
       case 'SUCCESS':
         return AppColors.success;
-      case 'PENDING':
       case 'ORDERED':
+      case 'PROCESSING':
+      case 'INFO':
+      case 'REVIEW':
+        return AppColors.info;
+      case 'PENDING':
       case 'DRAFT':
       case 'PARTIAL':
       case 'TRIAL':
+      case 'REFUNDED':
+      case 'LOW_STOCK':
+      case 'SUSPENDED':
         return AppColors.warning;
       case 'INACTIVE':
       case 'VOIDED':
       case 'CANCELLED':
       case 'EXPIRED':
-      case 'SUSPENDED':
+      case 'REJECTED':
+      case 'OUT_OF_STOCK':
       case 'FAILED':
         return AppColors.error;
-      case 'PROCESSING':
-      case 'INFO':
-        return AppColors.info;
       default:
         return AppColors.textSecondary;
     }
@@ -39,27 +47,35 @@ class StatusBadge extends StatelessWidget {
   Color get _bgColor {
     switch (status.toUpperCase()) {
       case 'ACTIVE':
+      case 'OPEN':
       case 'COMPLETED':
       case 'PAID':
       case 'RECEIVED':
+      case 'APPROVED':
+      case 'IN_STOCK':
       case 'SUCCESS':
         return AppColors.successLight;
-      case 'PENDING':
       case 'ORDERED':
+      case 'PROCESSING':
+      case 'INFO':
+      case 'REVIEW':
+        return AppColors.infoLight;
+      case 'PENDING':
       case 'DRAFT':
       case 'PARTIAL':
       case 'TRIAL':
+      case 'REFUNDED':
+      case 'LOW_STOCK':
+      case 'SUSPENDED':
         return AppColors.warningLight;
       case 'INACTIVE':
       case 'VOIDED':
       case 'CANCELLED':
       case 'EXPIRED':
-      case 'SUSPENDED':
+      case 'REJECTED':
+      case 'OUT_OF_STOCK':
       case 'FAILED':
         return AppColors.errorLight;
-      case 'PROCESSING':
-      case 'INFO':
-        return AppColors.infoLight;
       default:
         return AppColors.surfaceVariant;
     }
@@ -67,6 +83,7 @@ class StatusBadge extends StatelessWidget {
 
   String get _displayLabel {
     final text = label ?? status;
+    if (text.isEmpty) return text;
     return text[0].toUpperCase() +
         text.substring(1).toLowerCase().replaceAll('_', ' ');
   }
@@ -77,7 +94,8 @@ class StatusBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: _bgColor,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(100),
+        border: Border.all(color: _textColor.withValues(alpha: 0.35), width: 1),
       ),
       child: Text(
         _displayLabel,
@@ -85,6 +103,7 @@ class StatusBadge extends StatelessWidget {
           color: _textColor,
           fontSize: 11,
           fontWeight: FontWeight.w600,
+          letterSpacing: 0.3,
         ),
       ),
     );

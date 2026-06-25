@@ -19,6 +19,13 @@ class ProductModel {
   final List<ProductVariantModel> variants;
   // Stock from inventory (injected when fetching products for POS)
   final double? quantityOnHand;
+  // Discount / promotion
+  final String? discountType; // PERCENTAGE | AMOUNT
+  final double? discountValue;
+  final DateTime? discountStartAt;
+  final DateTime? discountEndAt;
+  // Inventory
+  final int reorderPoint;
 
   const ProductModel({
     required this.id,
@@ -40,11 +47,54 @@ class ProductModel {
     this.unit,
     this.variants = const [],
     this.quantityOnHand,
+    this.discountType,
+    this.discountValue,
+    this.discountStartAt,
+    this.discountEndAt,
+    this.reorderPoint = 0,
   });
 
   bool get isVariable => productType == 'VARIABLE';
   bool get isSimple => productType == 'SIMPLE';
   bool get hasVariants => variants.isNotEmpty;
+
+  // Promotion helpers
+
+  /// True when a discount is configured and the current time falls within the
+  /// optional date window (or no dates are set).
+  bool get isPromoActive {
+    if (discountType == null) return false;
+    if (discountValue == null || discountValue! <= 0) return false;
+    final now = DateTime.now();
+    if (discountStartAt == null && discountEndAt == null) return true;
+    final afterStart =
+        discountStartAt == null || now.isAfter(discountStartAt!);
+    final beforeEnd =
+        discountEndAt == null || now.isBefore(discountEndAt!);
+    return afterStart && beforeEnd;
+  }
+
+  /// True when a discount is configured but hasn't started yet.
+  bool get isPromoScheduled {
+    if (discountType == null) return false;
+    if (discountValue == null || discountValue! <= 0) return false;
+    if (discountStartAt == null) return false;
+    return DateTime.now().isBefore(discountStartAt!);
+  }
+
+  /// Selling price after applying an active discount, or raw sellingPrice
+  /// when no promo is active.
+  double get effectivePrice {
+    if (!isPromoActive) return sellingPrice;
+    final v = discountValue!;
+    if (discountType == 'PERCENTAGE') {
+      final discounted = sellingPrice * (1 - v / 100);
+      return discounted < 0 ? 0 : discounted;
+    }
+    // AMOUNT
+    final discounted = sellingPrice - v;
+    return discounted < 0 ? 0 : discounted;
+  }
 
   factory ProductModel.fromJson(Map<String, dynamic> json) {
     final variantsList = json['variants'] as List<dynamic>? ?? [];
@@ -73,6 +123,15 @@ class ProductModel {
           .toList(),
       quantityOnHand:
           (json['quantity_on_hand'] as num?)?.toDouble(),
+      discountType: json['discount_type'] as String?,
+      discountValue: (json['discount_value'] as num?)?.toDouble(),
+      discountStartAt: json['discount_start_at'] != null
+          ? DateTime.tryParse(json['discount_start_at'] as String)
+          : null,
+      discountEndAt: json['discount_end_at'] != null
+          ? DateTime.tryParse(json['discount_end_at'] as String)
+          : null,
+      reorderPoint: json['reorder_point'] as int? ?? 0,
     );
   }
 }
