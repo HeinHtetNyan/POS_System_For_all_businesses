@@ -201,7 +201,7 @@ function SidebarContent({ navGroup, onClose, onSearch }: { navGroup: string; onC
           </div>
         )}
         <Link
-          to={navGroup === 'app' ? '/app/profile' : '#'}
+          to={navGroup === 'app' ? '/app/profile' : navGroup === 'super-admin' ? '/super-admin/profile' : navGroup === 'reseller' ? '/reseller/profile' : '#'}
           onClick={onClose}
           className="flex items-center gap-3 px-2 py-1.5 rounded-xl hover:bg-zinc-800 transition-colors group"
         >

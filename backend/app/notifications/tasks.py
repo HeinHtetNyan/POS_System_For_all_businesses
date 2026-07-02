@@ -283,7 +283,8 @@ async def _send_email_async(
             row = result.first()
             if row:
                 to = row[0]
-                context.setdefault("recipient_name", f"{row[1]} {row[2]}")
+                if not context.get("recipient_name"):
+                    context["recipient_name"] = f"{row[1]} {row[2]}"
 
     if not to:
         return

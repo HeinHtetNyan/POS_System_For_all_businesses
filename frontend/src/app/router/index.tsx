@@ -102,6 +102,7 @@ const AuditLogsPage               = lazy(() => import('@/features/superadmin/Aud
 const PlatformNotificationsPage     = lazy(() => import('@/features/superadmin/PlatformNotificationsPage'))
 const PlatformPaymentMethodsPage    = lazy(() => import('@/features/superadmin/PlatformPaymentMethodsPage'))
 const ResellerFinancePage           = lazy(() => import('@/features/superadmin/ResellerFinancePage'))
+const SuperAdminProfilePage         = lazy(() => import('@/features/superadmin/SuperAdminProfilePage'))
 
 function Loading() {
   return (
@@ -386,6 +387,7 @@ export const router = createBrowserRouter([
           { path: 'payment-methods',    element: S(PlatformPaymentMethodsPage) },
           { path: 'audit-logs',         element: S(AuditLogsPage)              },
           { path: 'reseller-finance',   element: S(ResellerFinancePage)        },
+          { path: 'profile',            element: S(SuperAdminProfilePage)      },
           { path: 'audit',          element: <Navigate to="/super-admin/audit-logs" replace /> },
         ],
       },
