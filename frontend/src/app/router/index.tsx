@@ -4,6 +4,7 @@ import { useAuthStore } from '@/store/auth.store'
 import { canAccess } from '@/shared/constants/rbac'
 
 import RoleGuard from '@/shared/components/guards/RoleGuard'
+import RouteErrorPage from '@/shared/components/RouteErrorPage'
 import AuthLayout from '@/shared/layouts/AuthLayout'
 import DashboardLayout from '@/shared/layouts/DashboardLayout'
 import POSLayout from '@/shared/layouts/POSLayout'
@@ -148,6 +149,11 @@ function SectionGuard({ section, children }: { section: string; children: ReactN
 }
 
 export const router = createBrowserRouter([
+  {
+    // Path-less root wrapper — catches all lazy-chunk and render errors from every route
+    errorElement: <RouteErrorPage />,
+    children: [
+
   // Root redirect
   { path: '/', element: <Navigate to="/login" replace /> },
 
@@ -432,4 +438,7 @@ export const router = createBrowserRouter([
 
   { path: '/unauthorized', element: <UnauthorizedPage /> },
   { path: '*',             element: <NotFoundPage /> },
+
+    ], // end children
+  }, // end root wrapper
 ])
