@@ -5,11 +5,17 @@ import { fmt, timeAgo, cn } from '@/lib/utils'
 import { Btn, Badge, Table, Th, Td, Empty, Spinner, StatCard, SectionHeader } from '@/components/ui'
 import { IconSearch, IconPlus, IconUser, IconChevRight, IconChevLeft } from '@/components/icons'
 import { customersService } from '@/services/customers/customers.service'
+import { useAuthStore } from '@/store/auth.store'
 
 const PAGE_SIZE = 20
 
 export default function CustomersScreen() {
   const navigate = useNavigate()
+  const user = useAuthStore(s => s.user)
+  // Cashiers get read-only lookup — creating/editing customers, notes,
+  // payments and credit sales is manager+ (matches the backend's
+  // require_manager_or_above gate on those endpoints).
+  const canManageCustomers = user?.role !== 'CASHIER'
   const [rawSearch, setRawSearch]           = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [activeFilter, setActiveFilter]     = useState<boolean | undefined>(undefined)
@@ -45,9 +51,11 @@ export default function CustomersScreen() {
         title="Customers"
         subtitle={`${total} customer${total !== 1 ? 's' : ''}`}
         action={
-          <Btn size="sm" onClick={() => navigate('/app/customers/new')}>
-            <IconPlus width="14" height="14" /> New Customer
-          </Btn>
+          canManageCustomers ? (
+            <Btn size="sm" onClick={() => navigate('/app/customers/new')}>
+              <IconPlus width="14" height="14" /> New Customer
+            </Btn>
+          ) : undefined
         }
       />
 
@@ -107,11 +115,13 @@ export default function CustomersScreen() {
               <Empty
                 icon={<IconUser width="40" height="40" />}
                 title="No customers found"
-                subtitle={rawSearch ? 'Try a different search term' : 'Add your first customer to get started'}
+                subtitle={rawSearch ? 'Try a different search term' : canManageCustomers ? 'Add your first customer to get started' : undefined}
                 action={
-                  <Btn size="sm" onClick={() => navigate('/app/customers/new')}>
-                    <IconPlus width="14" height="14" /> New Customer
-                  </Btn>
+                  canManageCustomers && !rawSearch ? (
+                    <Btn size="sm" onClick={() => navigate('/app/customers/new')}>
+                      <IconPlus width="14" height="14" /> New Customer
+                    </Btn>
+                  ) : undefined
                 }
               />
             ) : (

@@ -80,6 +80,7 @@ class UserResponse(TimestampedSchema):
     tenant_id: uuid.UUID | None
     primary_branch_id: uuid.UUID | None
     last_login_at: datetime | None
+    email_verified_at: datetime | None
     is_deleted: bool
 
 

@@ -23,6 +23,7 @@ class ReceiptResponse(BaseModel):
     cashier_name: str
     branch_name: str
     tenant_name: str
+    currency: str | None = None
     payment_methods: list[Any]
     items_snapshot: list[Any]
     issued_at: datetime

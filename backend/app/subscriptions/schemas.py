@@ -30,7 +30,7 @@ class PlanCreateRequest(BaseSchema):
     code: str = Field(min_length=1, max_length=50)
     description: str | None = Field(default=None, max_length=1000)
     billing_cycle: str = Field(min_length=1, max_length=50)
-    price: Decimal
+    price: Decimal = Field(ge=0)
     currency: str = Field(default="MMK", max_length=3)
     trial_days: int = Field(default=0, ge=0)
     is_active: bool = True
@@ -53,7 +53,7 @@ class PlanUpdateRequest(BaseSchema):
     name: str | None = Field(default=None, max_length=255)
     description: str | None = Field(default=None, max_length=1000)
     billing_cycle: str | None = Field(default=None, max_length=50)
-    price: Decimal | None = None
+    price: Decimal | None = Field(default=None, ge=0)
     currency: str | None = Field(default=None, max_length=3)
     trial_days: int | None = None
     is_active: bool | None = None

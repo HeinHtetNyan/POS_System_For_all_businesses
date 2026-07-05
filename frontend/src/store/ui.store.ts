@@ -5,6 +5,7 @@ interface UIState {
   isOnline: boolean
   posFocusMode: boolean
   pendingSyncCount: number
+  failedSyncCount: number
 
   toggleSidebar: () => void
   closeSidebar: () => void
@@ -13,6 +14,7 @@ interface UIState {
   togglePosFocusMode: () => void
   setPosFocusMode: (on: boolean) => void
   setPendingSyncCount: (count: number) => void
+  setFailedSyncCount: (count: number) => void
 }
 
 export const useUIStore = create<UIState>()((set) => ({
@@ -20,6 +22,7 @@ export const useUIStore = create<UIState>()((set) => ({
   isOnline: navigator.onLine,
   posFocusMode: false,
   pendingSyncCount: 0,
+  failedSyncCount: 0,
 
   toggleSidebar:       () => set(s => ({ sidebarOpen: !s.sidebarOpen })),
   closeSidebar:        () => set({ sidebarOpen: false }),
@@ -28,4 +31,5 @@ export const useUIStore = create<UIState>()((set) => ({
   togglePosFocusMode:  () => set(s => ({ posFocusMode: !s.posFocusMode })),
   setPosFocusMode:     (on) => set({ posFocusMode: on }),
   setPendingSyncCount: (pendingSyncCount) => set({ pendingSyncCount }),
+  setFailedSyncCount:  (failedSyncCount) => set({ failedSyncCount }),
 }))

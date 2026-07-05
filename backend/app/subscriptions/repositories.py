@@ -126,6 +126,32 @@ class TenantSubscriptionRepository:
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_by_id_locked(self, sub_id: uuid.UUID) -> TenantSubscription | None:
+        """Like get_by_id, but locks the row (SELECT ... FOR UPDATE) first."""
+        stmt = self._with_plan(
+            select(TenantSubscription)
+            .where(TenantSubscription.id == sub_id)
+            .with_for_update()
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_by_tenant_locked(self, tenant_id: uuid.UUID) -> TenantSubscription | None:
+        """
+        Like get_by_tenant, but locks the row (SELECT ... FOR UPDATE) first.
+        Approving a payment proof and cancelling a subscription both
+        read-check-then-write this row; without a lock, two concurrent
+        requests can both pass validation against the same stale snapshot and
+        both apply their side effects (double-extend, double-cancel).
+        """
+        stmt = self._with_plan(
+            select(TenantSubscription)
+            .where(TenantSubscription.tenant_id == tenant_id)
+            .with_for_update()
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def get_expiring_trials(self, days: int, now: datetime) -> list[TenantSubscription]:
         from datetime import timedelta
         from app.core.constants import SubscriptionStatus
@@ -202,6 +228,22 @@ class PaymentProofRepository:
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_by_id_locked(self, proof_id: uuid.UUID) -> PaymentProof | None:
+        """
+        Like get_by_id, but locks the row (SELECT ... FOR UPDATE) first — see
+        TenantSubscriptionRepository.get_by_tenant_locked for why this matters:
+        two concurrent approve/reject calls for the same still-PENDING proof
+        must not both pass the status check and both apply their side effects.
+        """
+        stmt = (
+            select(PaymentProof)
+            .where(PaymentProof.id == proof_id)
+            .options(*self._proof_options())
+            .with_for_update()
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def get_by_tenant(
         self, tenant_id: uuid.UUID, offset: int = 0, limit: int = 20
     ) -> tuple[list[PaymentProof], int]:
@@ -222,6 +264,53 @@ class PaymentProofRepository:
         total = total_result.scalar_one()
         result = await self.session.execute(stmt)
         return list(result.scalars().all()), total
+
+    async def get_approved_by_tenant(self, tenant_id: uuid.UUID) -> list[PaymentProof]:
+        """All APPROVED proofs for a tenant, unpaginated — used to reverse every
+        commission a reseller may have earned across a subscription's lifetime
+        (initial activation, later upgrades) when it's cancelled."""
+        from app.core.constants import PaymentProofStatus
+
+        stmt = select(PaymentProof).where(
+            PaymentProof.tenant_id == tenant_id,
+            PaymentProof.status == PaymentProofStatus.APPROVED,
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_approved_by_subscription_action_and_plan(
+        self, subscription_id: uuid.UUID, action_type: str, target_plan_id: uuid.UUID
+    ) -> PaymentProof | None:
+        """The APPROVED proof (if any) for a specific action_type + target_plan_id
+        on a subscription — used to check whether a scheduled downgrade has already
+        been paid for and approved, e.g. to block cancelling it once that happens."""
+        from app.core.constants import PaymentProofStatus
+
+        stmt = select(PaymentProof).where(
+            PaymentProof.subscription_id == subscription_id,
+            PaymentProof.action_type == action_type,
+            PaymentProof.target_plan_id == target_plan_id,
+            PaymentProof.status == PaymentProofStatus.APPROVED,
+        )
+        result = await self.session.execute(stmt)
+        return result.scalars().first()
+
+    async def get_pending_by_subscription_and_action(
+        self, subscription_id: uuid.UUID, action_type: str
+    ) -> list[PaymentProof]:
+        """PENDING proofs of a given action_type for a subscription — used to
+        reject any in-flight downgrade proof when the pending downgrade it
+        would apply is cancelled first, so it can't later be approved as a
+        silent no-op."""
+        from app.core.constants import PaymentProofStatus
+
+        stmt = select(PaymentProof).where(
+            PaymentProof.subscription_id == subscription_id,
+            PaymentProof.action_type == action_type,
+            PaymentProof.status == PaymentProofStatus.PENDING,
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
 
     async def get_all(
         self,

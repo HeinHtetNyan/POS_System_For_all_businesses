@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import AuditAction, EntityType, UserRole, UserStatus
 from app.models.password_reset_token import PasswordResetToken
+from app.models.email_verification_token import EmailVerificationToken
+from app.models.email_change_token import EmailChangeToken
 from app.core.exceptions import AuthenticationError, BusinessRuleError, TokenError
 from app.core.logging import get_logger
 from app.core.security import (
@@ -18,6 +20,7 @@ from app.core.security import (
     decode_refresh_token,
     generate_secure_token,
     hash_password,
+    normalize_phone,
     verify_password,
 )
 from app.core.config import settings
@@ -41,7 +44,6 @@ class AuthService:
         self,
         password: str,
         email: str | None = None,
-        phone: str | None = None,
         business_code: str | None = None,
         identifier: str | None = None,
         ip_address: str | None = None,
@@ -60,7 +62,7 @@ class AuthService:
 
         # Derive a stable, non-reversible key for per-account lockout tracking.
         # Normalise to lowercase so "User@Example.com" and "user@example.com" share one counter.
-        _ident_raw = (email or phone or f"{business_code}:{identifier}" or "").lower().strip()
+        _ident_raw = (email or f"{business_code}:{identifier}" or "").lower().strip()
         _account_key = f"rl:account_lock:{hashlib.sha256(_ident_raw.encode()).hexdigest()[:32]}"
 
         # Check per-account lockout BEFORE hitting the DB or doing any bcrypt work.
@@ -74,13 +76,18 @@ class AuthService:
         if business_code and identifier:
             tenant = await tenant_repo.get_by_business_code(business_code)
             if tenant:
-                user = await self.user_repo.get_by_phone_and_tenant(identifier, tenant.id)
+                # identifier may be a phone or an email — only normalize for the
+                # phone attempt, never mangle it as an email.
+                user = await self.user_repo.get_by_phone_and_tenant(
+                    normalize_phone(identifier), tenant.id
+                )
                 if not user:
                     user = await self.user_repo.get_by_email_and_tenant(identifier, tenant.id)
         elif email:
-            user = await self.user_repo.get_by_email(email)
-        elif phone:
-            user = await self.user_repo.get_by_phone(phone)
+            # Plain email+password login (no business code) — staff emails are
+            # only unique per-tenant now, so this must never match a staff row;
+            # they must always sign in via business code + phone instead.
+            user = await self.user_repo.get_by_email_for_login(email)
 
         if not user or not verify_password(password, user.hashed_password):
             _id_hash = hashlib.sha256(_ident_raw.encode()).hexdigest()[:16]
@@ -252,16 +259,37 @@ class AuthService:
         new_password: str,
         tenant_id: uuid.UUID | None = None,
         request_id: str | None = None,
+        redis=None,
     ) -> None:
+        from app.core.rate_limit import (
+            clear_failed_logins,
+            is_account_locked,
+            record_failed_login,
+        )
+
+        # Keyed by the authenticated user's own id — unlike login() there's no
+        # email/phone to hash since the caller is already identified by their JWT.
+        _account_key = f"rl:account_lock:changepw:{user_id}"
+
+        if redis and await is_account_locked(redis, _account_key):
+            raise AuthenticationError(
+                "Too many incorrect password attempts. Please try again in 15 minutes."
+            )
+
         user = await self.user_repo.get_by_id_active(user_id)
         if not user:
             raise AuthenticationError("User not found")
 
         if not verify_password(current_password, user.hashed_password):
+            if redis:
+                await record_failed_login(redis, _account_key)
             raise AuthenticationError("Current password is incorrect")
 
         user.hashed_password = hash_password(new_password)
         await self.auth_repo.revoke_all_user_tokens(user_id)
+
+        if redis:
+            await clear_failed_logins(redis, _account_key)
 
         await self.audit_service.log(
             action=AuditAction.PASSWORD_CHANGED,
@@ -347,5 +375,208 @@ class AuthService:
             tenant_id=user.tenant_id,
             entity_type=EntityType.USER,
             entity_id=str(user.id),
+            request_id=request_id,
+        )
+
+    async def create_email_verification_token(
+        self,
+        user: User,
+        request_id: str | None = None,
+    ) -> str:
+        """
+        Create a hashed verification token for `user` and return the raw token
+        to embed in the emailed link. Caller is responsible for sending it.
+        """
+        raw_token = secrets.token_urlsafe(48)
+        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            minutes=settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES
+        )
+        self.session.add(EmailVerificationToken(
+            user_id=user.id,
+            token_hash=token_hash,
+            expires_at=expires_at,
+        ))
+        await self.audit_service.log(
+            action=AuditAction.EMAIL_VERIFICATION_REQUESTED,
+            actor_user_id=user.id,
+            tenant_id=user.tenant_id,
+            entity_type=EntityType.USER,
+            entity_id=str(user.id),
+            request_id=request_id,
+        )
+        return raw_token
+
+    async def request_email_verification(
+        self,
+        email: str,
+        request_id: str | None = None,
+    ) -> tuple[str, str] | None:
+        """
+        Look up an unverified user by email and issue a fresh verification
+        token. Returns (email, raw_token), or None if the account doesn't
+        exist or is already verified — the route responds with the same
+        generic message either way to prevent user enumeration.
+        """
+        user = await self.user_repo.get_by_email(email)
+        if not user or user.email_verified_at is not None:
+            return None
+        raw_token = await self.create_email_verification_token(user, request_id=request_id)
+        return (user.email, raw_token)
+
+    async def verify_email(
+        self,
+        token: str,
+        request_id: str | None = None,
+    ) -> None:
+        """
+        Validate a verification token and mark the owning user's email verified.
+        """
+        from sqlalchemy import select
+
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        stmt = select(EmailVerificationToken).where(EmailVerificationToken.token_hash == token_hash)
+        result = await self.session.execute(stmt)
+        record = result.scalar_one_or_none()
+
+        if record is None or not record.is_valid:
+            raise BusinessRuleError("Invalid or expired verification link.")
+
+        user = await self.user_repo.get_by_id_active(record.user_id)
+        if not user:
+            raise BusinessRuleError("Invalid or expired verification link.")
+
+        if user.email_verified_at is None:
+            user.email_verified_at = datetime.now(timezone.utc)
+        record.is_used = True
+
+        await self.audit_service.log(
+            action=AuditAction.EMAIL_VERIFIED,
+            actor_user_id=user.id,
+            tenant_id=user.tenant_id,
+            entity_type=EntityType.USER,
+            entity_id=str(user.id),
+            request_id=request_id,
+        )
+
+    async def request_email_change(
+        self,
+        user_id: uuid.UUID,
+        new_email: str,
+        current_password: str,
+        tenant_id: uuid.UUID | None = None,
+        request_id: str | None = None,
+        redis=None,
+    ) -> tuple[str, str]:
+        """
+        Validate the caller's current password and that the requested new
+        email isn't already taken, then issue a confirmation token scoped to
+        that new address. Returns (old_email, raw_token) — the route sends a
+        confirmation link to the new address and a heads-up notice to the old
+        one. The user's `email` column is NOT changed until confirm_email_change
+        is called with this token.
+        """
+        from app.core.rate_limit import (
+            clear_failed_logins,
+            is_account_locked,
+            record_failed_login,
+        )
+
+        # Keyed by the authenticated user's own id, same convention as change_password.
+        _account_key = f"rl:account_lock:emailchange:{user_id}"
+
+        if redis and await is_account_locked(redis, _account_key):
+            raise AuthenticationError(
+                "Too many incorrect password attempts. Please try again in 15 minutes."
+            )
+
+        user = await self.user_repo.get_by_id_active(user_id)
+        if not user:
+            raise AuthenticationError("User not found")
+
+        if not verify_password(current_password, user.hashed_password):
+            if redis:
+                await record_failed_login(redis, _account_key)
+            raise AuthenticationError("Current password is incorrect")
+
+        if redis:
+            await clear_failed_logins(redis, _account_key)
+
+        normalized_new_email = new_email.lower().strip()
+        if normalized_new_email == user.email.lower():
+            raise BusinessRuleError("That's already your current email address.")
+
+        existing = await self.user_repo.get_by_email(normalized_new_email)
+        if existing:
+            raise BusinessRuleError("That email address is already in use.")
+
+        raw_token = secrets.token_urlsafe(48)
+        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            minutes=settings.EMAIL_CHANGE_TOKEN_EXPIRE_MINUTES
+        )
+
+        self.session.add(EmailChangeToken(
+            user_id=user.id,
+            new_email=normalized_new_email,
+            token_hash=token_hash,
+            expires_at=expires_at,
+        ))
+
+        await self.audit_service.log(
+            action=AuditAction.EMAIL_CHANGE_REQUESTED,
+            actor_user_id=user.id,
+            tenant_id=tenant_id,
+            entity_type=EntityType.USER,
+            entity_id=str(user.id),
+            after_state={"requested_new_email": normalized_new_email},
+            request_id=request_id,
+        )
+
+        return (user.email, raw_token)
+
+    async def confirm_email_change(
+        self,
+        token: str,
+        request_id: str | None = None,
+    ) -> None:
+        """
+        Validate an email-change confirmation token and apply the pending
+        new email to the user's account. The new address is treated as
+        freshly verified — the user just proved they control it.
+        """
+        from sqlalchemy import select
+
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        stmt = select(EmailChangeToken).where(EmailChangeToken.token_hash == token_hash)
+        result = await self.session.execute(stmt)
+        record = result.scalar_one_or_none()
+
+        if record is None or not record.is_valid:
+            raise BusinessRuleError("Invalid or expired confirmation link.")
+
+        user = await self.user_repo.get_by_id_active(record.user_id)
+        if not user:
+            raise BusinessRuleError("Invalid or expired confirmation link.")
+
+        # Someone else could have taken this email in the time since the
+        # change was requested — re-check right before applying it.
+        existing = await self.user_repo.get_by_email(record.new_email)
+        if existing and existing.id != user.id:
+            raise BusinessRuleError("That email address is no longer available.")
+
+        old_email = user.email
+        user.email = record.new_email
+        user.email_verified_at = datetime.now(timezone.utc)
+        record.is_used = True
+
+        await self.audit_service.log(
+            action=AuditAction.EMAIL_CHANGED,
+            actor_user_id=user.id,
+            tenant_id=user.tenant_id,
+            entity_type=EntityType.USER,
+            entity_id=str(user.id),
+            before_state={"email": old_email},
+            after_state={"email": record.new_email},
             request_id=request_id,
         )

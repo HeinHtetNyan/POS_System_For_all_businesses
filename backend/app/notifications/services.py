@@ -194,6 +194,26 @@ class NotificationService:
         ]
         return items, total
 
+    async def get_notification(
+        self, notification_id: uuid.UUID, user_id: uuid.UUID
+    ) -> NotificationSummaryResponse:
+        row = await self.notif_repo.get_by_id_for_user(notification_id, user_id)
+        if not row:
+            raise NotFoundError("Notification", notification_id)
+        notif, is_read, read_at = row
+        return NotificationSummaryResponse(
+            id=notif.id,
+            type=notif.type,
+            priority=notif.priority,
+            title=notif.title,
+            message=notif.message,
+            metadata_=notif.metadata_,
+            expires_at=notif.expires_at,
+            is_read=is_read,
+            read_at=read_at,
+            created_at=notif.created_at,
+        )
+
     async def unread_count(
         self,
         user_id: uuid.UUID,

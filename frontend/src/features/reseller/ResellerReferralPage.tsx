@@ -127,7 +127,63 @@ export function LatestProofCard({ proof }: { proof: PaymentProof }) {
   )
 }
 
-//  Plan Picker Modal 
+//  Upcoming Plan Card (shared between user page and reseller modal)
+
+export function UpcomingPlanCard({
+  plan, effectiveDate, paid, pendingReview,
+}: {
+  plan: Plan | null | undefined
+  effectiveDate: string | null
+  paid: boolean
+  pendingReview: boolean
+}) {
+  if (!plan) return null
+  const price = Number(plan.price)
+  // Free plans auto-activate on the effective date regardless of any payment
+  // proof (see process_expired_subscriptions), so they're never "unpaid".
+  const autoActivates = paid || price === 0
+
+  return (
+    <div className="bg-zinc-900 border border-amber-500/30 rounded-2xl p-5">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <p className="text-xs text-amber-400 uppercase tracking-wider mb-1">Upcoming Plan</p>
+          <h3 className="text-lg font-bold text-zinc-100">{plan.name}</h3>
+        </div>
+        <span className={cn(
+          'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border flex-shrink-0',
+          pendingReview ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+            : autoActivates ? 'bg-green-500/10 border-green-500/30 text-green-400'
+            : 'bg-zinc-800 border-zinc-700 text-zinc-400',
+        )}>
+          {pendingReview ? 'Proof Under Review' : paid ? 'Paid ✓' : autoActivates ? 'Free — No Payment Needed' : 'Payment Needed'}
+        </span>
+      </div>
+      <div className="mt-4 pt-4 border-t border-zinc-800 grid grid-cols-2 gap-4 text-sm">
+        <div>
+          <p className="text-zinc-500 text-xs mb-0.5">Price</p>
+          <p className="text-zinc-100 font-medium">
+            {price === 0 ? 'Free' : `${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${plan.currency === 'MMK' ? 'Kyats' : plan.currency}`}
+            {price > 0 && <span className="text-zinc-500 text-xs ml-1">/ {plan.billing_cycle.toLowerCase()}</span>}
+          </p>
+        </div>
+        <div>
+          <p className="text-zinc-500 text-xs mb-0.5">Takes Effect</p>
+          <p className="text-zinc-100">{effectiveDate ? fmtDate(effectiveDate) : '—'}</p>
+        </div>
+      </div>
+      <p className="text-xs text-zinc-500 mt-3">
+        {pendingReview
+          ? 'Payment proof submitted and awaiting review. It must be approved before this plan can take effect.'
+          : autoActivates
+          ? `The account switches to ${plan.name} automatically on ${effectiveDate ? fmtDate(effectiveDate) : 'the renewal date'}, no action needed.${price > 0 ? ' A new payment proof will be needed again when that plan comes up for its own renewal.' : ''}`
+          : `Payment is needed before ${effectiveDate ? fmtDate(effectiveDate) : 'the renewal date'} — otherwise the account will expire instead of switching over.`}
+      </p>
+    </div>
+  )
+}
+
+//  Plan Picker Modal
 
 function PlanPickerModal({
   mode, currentPlan, onClose, onConfirm,
@@ -141,7 +197,7 @@ function PlanPickerModal({
   const [selected, setSelected] = useState<Plan | null>(null)
   const currentPrice = Number(currentPlan.price)
   const plans = (data?.items ?? []).filter(p =>
-    p.is_active && p.id !== currentPlan.id && !p.is_referral_plan &&
+    p.is_active && !p.is_custom && p.id !== currentPlan.id && !p.is_referral_plan &&
     (mode === 'upgrade' ? Number(p.price) > currentPrice : Number(p.price) < currentPrice),
   )
 
@@ -335,7 +391,7 @@ function ResellerRequestUpgradeModal({ tenantId, currentPlan, onClose, onSuccess
   })
 
   const plans = (plansData?.items ?? []).filter(p =>
-    p.is_active && !p.is_referral_plan && p.trial_days === 0 && Number(p.price) > 0 && p.id !== currentPlan.id
+    p.is_active && !p.is_custom && !p.is_referral_plan && p.trial_days === 0 && Number(p.price) > 0 && p.id !== currentPlan.id
   ).sort((a, b) => Number(a.price) - Number(b.price))
 
   const submitMutation = useMutation({
@@ -499,11 +555,18 @@ function ResellerRequestUpgradeModal({ tenantId, currentPlan, onClose, onSuccess
   )
 }
 
-// Manage Business Modal 
+// Manage Business Modal
+
+const RESUBMIT_LABEL: Record<ProofActionType, string> = {
+  [ProofActionType.UPGRADE]:            'Upgrade Payment',
+  [ProofActionType.DOWNGRADE]:          'Downgrade Payment',
+  [ProofActionType.RENEWAL]:            'Renewal Payment',
+  [ProofActionType.INITIAL_ACTIVATION]: 'Payment',
+}
 
 function ManageBusinessModal({ referral, onClose }: { referral: TenantReferralResponse; onClose: () => void }) {
   const qc = useQueryClient()
-  type ModalMode = 'upgrade' | 'downgrade' | 'request-upgrade' | 'renew' | 'upgrade-proof' | null
+  type ModalMode = 'upgrade' | 'downgrade' | 'request-upgrade' | 'renew' | 'upgrade-proof' | 'resubmit-proof' | null
   const [modal, setModal] = useState<ModalMode>(null)
   const [upgradePlanId, setUpgradePlanId] = useState<string | null>(null)
 
@@ -551,7 +614,7 @@ function ManageBusinessModal({ referral, onClose }: { referral: TenantReferralRe
   const plan = sub?.plan
 
   const currentPrice = Number(plan?.price ?? 0)
-  const activePaidPlans = (plansData?.items ?? []).filter(p => p.is_active && !p.is_referral_plan && Number(p.price) > 0)
+  const activePaidPlans = (plansData?.items ?? []).filter(p => p.is_active && !p.is_custom && !p.is_referral_plan && Number(p.price) > 0)
   const hasHigherPlan = activePaidPlans.some(p => Number(p.price) > currentPrice)
   const hasLowerPlan = activePaidPlans.some(p => Number(p.price) < currentPrice)
 
@@ -618,6 +681,21 @@ function ManageBusinessModal({ referral, onClose }: { referral: TenantReferralRe
           onSuccess={invalidateAfterProof}
         />
       )}
+      {modal === 'resubmit-proof' && latestProof?.status === 'REJECTED' && (
+        <ResellerProofSubmitModal
+          title={`Resubmit ${RESUBMIT_LABEL[latestProof.action_type ?? ProofActionType.INITIAL_ACTIVATION]} Proof`}
+          subtitle={
+            latestProof.target_plan_name
+              ? `The previous proof for ${latestProof.target_plan_name} was rejected${latestProof.review_notes ? `: "${latestProof.review_notes}"` : ''}. Upload a new receipt to try again.`
+              : `The previous proof was rejected${latestProof.review_notes ? `: "${latestProof.review_notes}"` : ''}. Upload a new receipt to try again.`
+          }
+          tenantId={referral.tenant_id}
+          actionType={latestProof.action_type ?? ProofActionType.INITIAL_ACTIVATION}
+          targetPlanId={latestProof.target_plan_id ?? undefined}
+          onClose={() => setModal(null)}
+          onSuccess={invalidateAfterProof}
+        />
+      )}
 
       {/* Main modal */}
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
@@ -645,18 +723,6 @@ function ManageBusinessModal({ referral, onClose }: { referral: TenantReferralRe
               </div>
             ) : (
               <>
-                {/* Pending downgrade banner */}
-                {sub.pending_downgrade_plan_id && (
-                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 flex items-start gap-3">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-amber-400 flex-shrink-0 mt-0.5">
-                      <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                    </svg>
-                    <p className="text-sm text-amber-300">
-                      Downgrade to <span className="font-semibold">{pendingDowngradePlan?.name ?? 'a lower plan'}</span> scheduled for end of billing period.
-                    </p>
-                  </div>
-                )}
-
                 {/* Subscription card */}
                 <div className="bg-zinc-800/50 border border-zinc-700 rounded-xl p-4">
                   <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
@@ -695,6 +761,15 @@ function ManageBusinessModal({ referral, onClose }: { referral: TenantReferralRe
                     )}
                   </div>
                 </div>
+
+                {sub.pending_downgrade_plan_id && (
+                  <UpcomingPlanCard
+                    plan={pendingDowngradePlan}
+                    effectiveDate={sub.expires_at}
+                    paid={downgradeProofApproved}
+                    pendingReview={pendingProofType === ProofActionType.DOWNGRADE}
+                  />
+                )}
 
                 {/* Actions */}
                 <div className="bg-zinc-800/50 border border-zinc-700 rounded-xl p-4">
@@ -742,7 +817,9 @@ function ManageBusinessModal({ referral, onClose }: { referral: TenantReferralRe
                             </Btn>
                           )
                         )}
-                        {hasLowerPlan && !sub.pending_downgrade_plan_id && (
+                        {/* Hidden while an upgrade proof is pending review —
+                            see CurrentSubscriptionPage for why. */}
+                        {hasLowerPlan && !sub.pending_downgrade_plan_id && pendingProofType !== ProofActionType.UPGRADE && (
                           <Btn variant="secondary" size="sm" onClick={() => setModal('downgrade')} disabled={downgradeMutation.isPending}>
                             Downgrade Plan
                           </Btn>
@@ -750,7 +827,7 @@ function ManageBusinessModal({ referral, onClose }: { referral: TenantReferralRe
                         {sub.pending_downgrade_plan_id ? (
                           pendingProofType === ProofActionType.DOWNGRADE ? (
                             <PendingProofBadge />
-                          ) : downgradeProofApproved ? (
+                          ) : downgradeProofApproved || Number(pendingDowngradePlan?.price ?? -1) === 0 ? (
                             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-green-500/10 border border-green-500/30 text-green-400">
                               Downgrade to {pendingDowngradePlan?.name ?? 'lower plan'} scheduled{sub.expires_at ? ` for ${fmtDate(sub.expires_at)}` : ''}
                             </span>
@@ -780,7 +857,14 @@ function ManageBusinessModal({ referral, onClose }: { referral: TenantReferralRe
                 {proofLoading ? (
                   <div className="flex justify-center py-4"><Spinner size={18} /></div>
                 ) : latestProof ? (
-                  <LatestProofCard proof={latestProof} />
+                  <div>
+                    <LatestProofCard proof={latestProof} />
+                    {latestProof.status === 'REJECTED' && (
+                      <Btn size="sm" className="mt-3" onClick={() => setModal('resubmit-proof')}>
+                        Resubmit Proof
+                      </Btn>
+                    )}
+                  </div>
                 ) : (
                   <div className="bg-zinc-800/40 border border-zinc-700/50 rounded-xl px-4 py-3 text-center">
                     <p className="text-xs text-zinc-600">No payment proof uploaded yet.</p>

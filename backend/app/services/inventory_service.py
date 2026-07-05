@@ -41,7 +41,7 @@ from app.schemas.inventory import (
     OpeningStockRequest,
 )
 from app.events.base import DomainEvent
-from app.events.publisher import EventPublisher
+from app.events.publisher import event_publisher
 from app.events.types import EventType
 from app.services.audit_service import AuditService
 
@@ -66,7 +66,6 @@ class InventoryService:
         self.transfer_repo = InventoryTransferRepository(session)
         self.product_repo = ProductRepository(session)
         self.audit = AuditService(session)
-        self.publisher = EventPublisher()
 
     # Core Stock Movement Engine
 
@@ -268,7 +267,7 @@ class InventoryService:
             ):
                 product = await self.product_repo.get_active_by_id_and_tenant(item_req.product_id, tenant_id)
                 if product:
-                    await self.publisher.publish(
+                    await event_publisher.publish(
                         DomainEvent(
                             event_type=EventType.LOW_STOCK,
                             tenant_id=tenant_id,
@@ -433,7 +432,10 @@ class InventoryService:
         Executes an approved transfer. Creates TRANSFER_OUT + TRANSFER_IN movements.
         Rows are locked in deterministic order (by product_id) to prevent deadlocks.
         """
-        transfer = await self.transfer_repo.get_with_items(transfer_id)
+        # Locked so a second concurrent execute-transfer call (double-click, or a
+        # client retry) blocks until this one commits, then sees COMPLETED and
+        # is rejected below instead of re-running the transfer.
+        transfer = await self.transfer_repo.get_with_items_locked(transfer_id)
         if not transfer or transfer.tenant_id != tenant_id:
             raise NotFoundError("InventoryTransfer", transfer_id)
 
@@ -597,7 +599,8 @@ class InventoryService:
     ) -> dict:
         """
         Calculates current inventory valuation for a branch.
-        Uses cost_price from product (or unit_cost from last purchase movement as fallback).
+        Uses this branch's own cost_price, falling back to Product.cost_price
+        for stock this branch hasn't received (and thus recorded a cost for) yet.
         """
         inv_list, _ = await self.inv_repo.get_by_branch(
             branch_id=branch_id,
@@ -615,7 +618,7 @@ class InventoryService:
             if not product:
                 continue
 
-            unit_cost = product.cost_price
+            unit_cost = inv.cost_price if inv.cost_price is not None else product.cost_price
             line_value = (unit_cost or Decimal("0")) * inv.quantity_on_hand
             total_value += line_value
 

@@ -9,10 +9,13 @@ from app.api.deps import (
     DbSession,
     EffectiveTenantId,
     RequestId,
+    assert_branch_access,
+    assert_branch_access_either,
     check_reseller_access,
     require_cashier_or_above,
     require_inventory_access,
     require_manager_or_above,
+    scope_branch_filter,
 )
 from app.core.constants import UserRole
 from app.core.constants import StockMovementType
@@ -65,6 +68,7 @@ async def get_branch_inventory(
         from app.services.reseller_access import ResellerAccessService
         svc = ResellerAccessService(db)
         await svc.require_branch_and_permission(current_user.id, tenant_id, branch_id, "inventory:view")
+    assert_branch_access(current_user, branch_id)
     service = InventoryService(db)
     items, total = await service.get_branch_inventory(
         branch_id=branch_id,
@@ -115,7 +119,7 @@ async def get_branch_inventory(
     "/branches/{branch_id}/products/{product_id}/reorder",
     response_model=BranchInventoryResponse,
     summary="Update reorder levels for a product in a branch",
-    dependencies=[Depends(require_manager_or_above)],
+    dependencies=[Depends(require_inventory_access)],
 )
 async def update_reorder_levels(
     branch_id: uuid.UUID,
@@ -130,6 +134,7 @@ async def update_reorder_levels(
         from app.services.reseller_access import ResellerAccessService
         svc = ResellerAccessService(db)
         await svc.require_branch_and_permission(current_user.id, tenant_id, branch_id, "inventory:update")
+    assert_branch_access(current_user, branch_id)
     service = InventoryService(db)
     inv = await service.update_reorder_levels(
         branch_id=branch_id,
@@ -166,6 +171,7 @@ async def list_stock_movements(
         from app.services.reseller_access import ResellerAccessService
         svc = ResellerAccessService(db)
         await svc.require_branch_and_permission(current_user.id, tenant_id, branch_id, "inventory:movement:view")
+    assert_branch_access(current_user, branch_id)
     service = InventoryService(db)
     movements, total = await service.get_stock_movements(
         branch_id=branch_id,
@@ -196,7 +202,7 @@ async def list_stock_movements(
     response_model=list[StockMovementResponse],
     status_code=201,
     summary="Set opening stock for a branch",
-    dependencies=[Depends(require_manager_or_above)],
+    dependencies=[Depends(require_inventory_access)],
 )
 async def set_opening_stock(
     payload: OpeningStockRequest,
@@ -205,6 +211,11 @@ async def set_opening_stock(
     request_id: RequestId,
     tenant_id: EffectiveTenantId,
 ) -> list[StockMovementResponse]:
+    if current_user.role == UserRole.RESELLER.value:
+        from app.services.reseller_access import ResellerAccessService
+        svc = ResellerAccessService(db)
+        await svc.require_branch_and_permission(current_user.id, tenant_id, payload.branch_id, "inventory:adjust")
+    assert_branch_access(current_user, payload.branch_id)
     service = InventoryService(db)
     movements = await service.set_opening_stock(
         tenant_id=tenant_id,
@@ -233,6 +244,7 @@ async def get_inventory_valuation(
         from app.services.reseller_access import ResellerAccessService
         svc = ResellerAccessService(db)
         await svc.require_branch_and_permission(current_user.id, tenant_id, branch_id, "inventory:view")
+    assert_branch_access(current_user, branch_id)
     service = InventoryService(db)
     result = await service.get_inventory_valuation(
         branch_id=branch_id,
@@ -261,6 +273,7 @@ async def create_adjustment(
         from app.services.reseller_access import ResellerAccessService
         svc = ResellerAccessService(db)
         await svc.require_branch_and_permission(current_user.id, tenant_id, payload.branch_id, "inventory:adjust")
+    assert_branch_access(current_user, payload.branch_id)
     service = InventoryService(db)
     adjustment = await service.create_adjustment(
         tenant_id=tenant_id,
@@ -285,6 +298,7 @@ async def list_adjustments(
     page_size: int = Query(default=20, ge=1, le=500),
     branch_id: uuid.UUID | None = Query(default=None),
 ) -> PaginatedResponse[InventoryAdjustmentResponse]:
+    branch_id = scope_branch_filter(current_user, branch_id)
     service = InventoryService(db)
     adjustments, total = await service.list_adjustments(
         tenant_id=tenant_id,
@@ -314,6 +328,7 @@ async def get_adjustment(
 ) -> InventoryAdjustmentResponse:
     service = InventoryService(db)
     adjustment = await service.get_adjustment(adjustment_id, tenant_id)
+    assert_branch_access(current_user, adjustment.branch_id)
     return InventoryAdjustmentResponse.model_validate(adjustment)
 
 
@@ -338,6 +353,10 @@ async def create_transfer(
         svc = ResellerAccessService(db)
         await svc.require_branch_and_permission(current_user.id, tenant_id, payload.from_branch_id, "inventory:transfer")
         await svc.require_branch_access(current_user.id, tenant_id, payload.to_branch_id)
+    # A transfer touches two branches — CASHIER/INVENTORY_STAFF/MANAGER may
+    # initiate one as long as their assigned branch is on EITHER side of it
+    # (sending out or receiving in), not just an exact match on one field.
+    assert_branch_access_either(current_user, payload.from_branch_id, payload.to_branch_id)
     service = InventoryService(db)
     transfer = await service.create_transfer(
         tenant_id=tenant_id,
@@ -363,6 +382,7 @@ async def list_transfers(
     branch_id: uuid.UUID | None = Query(default=None),
     status: str | None = Query(default=None),
 ) -> PaginatedResponse[InventoryTransferResponse]:
+    branch_id = scope_branch_filter(current_user, branch_id)
     service = InventoryService(db)
     transfers, total = await service.list_transfers(
         tenant_id=tenant_id,
@@ -393,6 +413,9 @@ async def get_transfer(
 ) -> InventoryTransferResponse:
     service = InventoryService(db)
     transfer = await service.get_transfer(transfer_id, tenant_id)
+    # A transfer touches two branches — branch-scoped staff may view one as
+    # long as their assigned branch is on either side of it.
+    assert_branch_access_either(current_user, transfer.from_branch_id, transfer.to_branch_id)
     return InventoryTransferResponse.model_validate(transfer)
 
 
@@ -400,7 +423,7 @@ async def get_transfer(
     "/transfers/{transfer_id}/approve",
     response_model=InventoryTransferResponse,
     summary="Approve stock transfer",
-    dependencies=[Depends(require_manager_or_above)],
+    dependencies=[Depends(require_manager_or_above), check_reseller_access("inventory:transfer", check_branch=False)],
 )
 async def approve_transfer(
     transfer_id: uuid.UUID,
@@ -411,6 +434,8 @@ async def approve_transfer(
     tenant_id: EffectiveTenantId,
 ) -> InventoryTransferResponse:
     service = InventoryService(db)
+    existing = await service.get_transfer(transfer_id, tenant_id)
+    assert_branch_access_either(current_user, existing.from_branch_id, existing.to_branch_id)
     transfer = await service.approve_transfer(
         transfer_id=transfer_id,
         tenant_id=tenant_id,
@@ -424,7 +449,7 @@ async def approve_transfer(
     "/transfers/{transfer_id}/execute",
     response_model=InventoryTransferResponse,
     summary="Execute approved transfer (creates stock movements)",
-    dependencies=[Depends(require_manager_or_above)],
+    dependencies=[Depends(require_manager_or_above), check_reseller_access("inventory:transfer", check_branch=False)],
 )
 async def execute_transfer(
     transfer_id: uuid.UUID,
@@ -434,6 +459,8 @@ async def execute_transfer(
     tenant_id: EffectiveTenantId,
 ) -> InventoryTransferResponse:
     service = InventoryService(db)
+    existing = await service.get_transfer(transfer_id, tenant_id)
+    assert_branch_access_either(current_user, existing.from_branch_id, existing.to_branch_id)
     transfer = await service.execute_transfer(
         transfer_id=transfer_id,
         tenant_id=tenant_id,
@@ -447,7 +474,7 @@ async def execute_transfer(
     "/transfers/{transfer_id}/cancel",
     response_model=InventoryTransferResponse,
     summary="Cancel stock transfer",
-    dependencies=[Depends(require_manager_or_above)],
+    dependencies=[Depends(require_manager_or_above), check_reseller_access("inventory:transfer", check_branch=False)],
 )
 async def cancel_transfer(
     transfer_id: uuid.UUID,
@@ -458,6 +485,8 @@ async def cancel_transfer(
     tenant_id: EffectiveTenantId,
 ) -> InventoryTransferResponse:
     service = InventoryService(db)
+    existing = await service.get_transfer(transfer_id, tenant_id)
+    assert_branch_access_either(current_user, existing.from_branch_id, existing.to_branch_id)
     transfer = await service.cancel_transfer(
         transfer_id=transfer_id,
         tenant_id=tenant_id,

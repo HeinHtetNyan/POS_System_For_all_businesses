@@ -7,7 +7,7 @@ from __future__ import annotations
 import csv
 import io
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import and_, func, literal, select
@@ -19,11 +19,13 @@ from app.analytics.inventory_reports import InventoryReportsService
 from app.analytics.sales_reports import SalesReportsService
 from app.cashiers.models import CashierSession
 from app.core.constants import OrderStatus, PaymentStatus
+from app.core.timezone import local_day_end_utc, local_day_start_utc
 from app.customers.models import Customer
 from app.models.branch import Branch
 from app.models.inventory import BranchInventory, StockMovement
 from app.models.product import Category, Product, ProductVariant
 from app.models.supplier import Supplier
+from app.models.tenant import Tenant
 from app.models.user import User
 from app.payments.models import Payment, Refund, RefundItem
 from app.procurement.models import (
@@ -34,10 +36,6 @@ from app.procurement.models import (
     SupplierPayable,
 )
 from app.sales.models import Order, OrderItem
-
-
-def _utc_start(d: date) -> datetime:
-    return datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
 
 
 def _fmt_dt(dt: datetime | None) -> str:
@@ -70,7 +68,7 @@ _SUM_COLS: frozenset[str] = frozenset({
     # Trend
     "Net Revenue",
     # Profit report
-    "COGS", "Gross Profit",
+    "COGS", "Profit",
     # Low stock
     "Shortage",
     # Stock movements
@@ -81,6 +79,8 @@ _SUM_COLS: frozenset[str] = frozenset({
     "Invoice Amount", "Paid Amount", "Remaining Amount",
     "Ordered Qty", "Received Qty",
 })
+
+_STOCK_MOVEMENT_EXPORT_CAP = 10000
 
 
 def _totals_row(headers: list[str], rows: list[dict]) -> dict:
@@ -194,7 +194,13 @@ class ExportService:
 
     # shared helpers
 
-    def _order_filters(
+    async def _get_timezone(self, tenant_id: uuid.UUID) -> str:
+        result = await self.session.execute(
+            select(Tenant.timezone).where(Tenant.id == tenant_id)
+        )
+        return result.scalar_one_or_none() or "UTC"
+
+    async def _order_filters(
         self,
         tenant_id: uuid.UUID,
         start_date: date | None,
@@ -209,10 +215,12 @@ class ExportService:
                 OrderStatus.REFUNDED.value,
             ]),
         ]
-        if start_date:
-            f.append(Order.created_at >= _utc_start(start_date))
-        if end_date:
-            f.append(Order.created_at < _utc_start(end_date) + timedelta(days=1))
+        if start_date or end_date:
+            tz_name = await self._get_timezone(tenant_id)
+            if start_date:
+                f.append(Order.created_at >= local_day_start_utc(start_date, tz_name))
+            if end_date:
+                f.append(Order.created_at < local_day_end_utc(end_date, tz_name))
         if branch_id:
             f.append(Order.branch_id == branch_id)
         return f
@@ -284,6 +292,7 @@ class ExportService:
     ) -> list[dict]:
         CashierUser = aliased(User)
         pay_subq = self._pay_methods_subq(tenant_id)
+        order_filters = await self._order_filters(tenant_id, start_date, end_date, branch_id)
 
         stmt = (
             select(
@@ -308,7 +317,7 @@ class ExportService:
             .join(CashierUser, CashierUser.id == CashierSession.cashier_user_id)
             .outerjoin(Customer, Customer.id == Order.customer_id)
             .outerjoin(pay_subq, pay_subq.c.order_id == Order.id)
-            .where(and_(*self._order_filters(tenant_id, start_date, end_date, branch_id)))
+            .where(and_(*order_filters))
             .order_by(Order.created_at.desc())
         )
 
@@ -344,10 +353,12 @@ class ExportService:
         ProcessedByUser = aliased(User)
 
         refund_filters: list = [Refund.tenant_id == tenant_id]
-        if start_date:
-            refund_filters.append(Refund.processed_at >= _utc_start(start_date))
-        if end_date:
-            refund_filters.append(Refund.processed_at < _utc_start(end_date) + timedelta(days=1))
+        if start_date or end_date:
+            tz_name = await self._get_timezone(tenant_id)
+            if start_date:
+                refund_filters.append(Refund.processed_at >= local_day_start_utc(start_date, tz_name))
+            if end_date:
+                refund_filters.append(Refund.processed_at < local_day_end_utc(end_date, tz_name))
         if branch_id:
             refund_filters.append(Order.branch_id == branch_id)
 
@@ -381,8 +392,17 @@ class ExportService:
         )
 
         rows_raw = (await self.session.execute(stmt)).mappings().all()
-        return [
-            {
+        # A refund with multiple line items fans out to multiple rows here (one per
+        # RefundItem), but Refund.amount is the whole refund's total — repeating it
+        # on every line row would make the TOTAL row sum it once per line instead of
+        # once per refund. Only stamp it on the first row of each refund; _totals_row
+        # skips blank values, so later rows don't get double/triple-counted.
+        seen_refunds: set = set()
+        rows: list[dict] = []
+        for r in rows_raw:
+            is_first = r.refund_number not in seen_refunds
+            seen_refunds.add(r.refund_number)
+            rows.append({
                 "Refund Number":       r.refund_number,
                 "Refund Date":         _fmt_dt(r.processed_at),
                 "Original Order":      r.order_number,
@@ -394,14 +414,13 @@ class ExportService:
                 "Qty":                 str(r.quantity) if r.quantity is not None else "",
                 "Unit Price":          _fmt_dec(r.unit_price) if r.unit_price is not None else "",
                 "Line Refund Amount":  _fmt_dec(r.line_refund_amount) if r.line_refund_amount is not None else "",
-                "Total Refund Amount": _fmt_dec(r.total_refund_amount),
+                "Total Refund Amount": _fmt_dec(r.total_refund_amount) if is_first else "",
                 "Reason":              r.reason,
                 "Type":                r.refund_type,
                 "Processed By":        r.processed_by or "",
                 "Notes":               r.notes or "",
-            }
-            for r in rows_raw
-        ]
+            })
+        return rows
 
     # export 2: order line items
 
@@ -418,6 +437,7 @@ class ExportService:
         """
         CashierUser = aliased(User)
         pay_subq = self._pay_methods_subq(tenant_id)
+        order_filters = await self._order_filters(tenant_id, start_date, end_date, branch_id)
 
         stmt = (
             select(
@@ -446,7 +466,7 @@ class ExportService:
             .join(CashierUser, CashierUser.id == CashierSession.cashier_user_id)
             .outerjoin(Customer, Customer.id == Order.customer_id)
             .outerjoin(pay_subq, pay_subq.c.order_id == Order.id)
-            .where(and_(*self._order_filters(tenant_id, start_date, end_date, branch_id)))
+            .where(and_(*order_filters))
             .order_by(Order.created_at.desc(), OrderItem.id)
         )
 
@@ -649,12 +669,13 @@ class ExportService:
         svc = SalesReportsService(self.session)
         items = await svc.get_by_category(tenant_id, start_date, end_date, branch_id)
         total_revenue = sum(item.sales for item in items) or Decimal("1")
-        headers = ["Category", "Units Sold", "Revenue", "Share %", "Profit Estimate"]
+        headers = ["Category", "Units Sold", "Revenue", "Refunded Amount", "Share %", "Profit Estimate"]
         rows = [
             {
                 "Category": item.category_name,
                 "Units Sold": _fmt_dec(item.quantity_sold),
                 "Revenue": _fmt_dec(item.sales),
+                "Refunded Amount": _fmt_dec(item.refunded_amount),
                 "Share %": _fmt_dec(
                     (item.sales / total_revenue * 100).quantize(Decimal("0.00"))
                 ),
@@ -739,13 +760,16 @@ class ExportService:
         svc = FinancialReportsService(self.session)
 
         def _profit_rows(items, label_col: str) -> tuple[list[str], list[dict]]:
-            headers = [label_col, "Revenue", "COGS", "Gross Profit", "Margin %"]
+            # "Profit" here is net of refunds (revenue - refunded - cogs), matching
+            # the financial summary's gross_profit convention so the two reconcile.
+            headers = [label_col, "Revenue", "Refunded Amount", "COGS", "Profit", "Margin %"]
             rows = [
                 {
                     label_col: item.dimension_name,
                     "Revenue": _fmt_dec(item.revenue),
+                    "Refunded Amount": _fmt_dec(item.refunded_amount),
                     "COGS": _fmt_dec(item.cogs),
-                    "Gross Profit": _fmt_dec(item.profit),
+                    "Profit": _fmt_dec(item.profit),
                     "Margin %": _fmt_dec(item.margin_pct),
                 }
                 for item in items
@@ -869,12 +893,12 @@ class ExportService:
         fmt: str = "csv",
     ) -> bytes:
         filters: list = [StockMovement.tenant_id == tenant_id]
-        if start_date:
-            filters.append(StockMovement.created_at >= _utc_start(start_date))
-        if end_date:
-            filters.append(
-                StockMovement.created_at < _utc_start(end_date) + timedelta(days=1)
-            )
+        if start_date or end_date:
+            tz_name = await self._get_timezone(tenant_id)
+            if start_date:
+                filters.append(StockMovement.created_at >= local_day_start_utc(start_date, tz_name))
+            if end_date:
+                filters.append(StockMovement.created_at < local_day_end_utc(end_date, tz_name))
         if branch_id:
             filters.append(StockMovement.branch_id == branch_id)
         if movement_type:
@@ -903,10 +927,15 @@ class ExportService:
             .outerjoin(ProductVariant, ProductVariant.id == StockMovement.variant_id)
             .where(and_(*filters))
             .order_by(StockMovement.created_at.desc())
-            .limit(10000)
+            .limit(_STOCK_MOVEMENT_EXPORT_CAP + 1)
         )
 
-        rows_raw = (await self.session.execute(stmt)).mappings().all()
+        rows_fetched = (await self.session.execute(stmt)).mappings().all()
+        # Silently capping at 10k with no indication would look like a complete
+        # export when it isn't — fetch one extra row to detect truncation and
+        # surface it in the file itself, not just drop it.
+        truncated = len(rows_fetched) > _STOCK_MOVEMENT_EXPORT_CAP
+        rows_raw = rows_fetched[:_STOCK_MOVEMENT_EXPORT_CAP]
         headers = [
             "Date", "Branch", "Product", "Variant", "SKU",
             "Movement Type", "Qty Change", "Unit Cost", "Movement Value",
@@ -931,6 +960,13 @@ class ExportService:
             }
             for r in rows_raw
         ]
+        if truncated:
+            rows.append({
+                "Date": (
+                    f"⚠ TRUNCATED — showing the most recent {_STOCK_MOVEMENT_EXPORT_CAP:,} "
+                    "movements only. Narrow the date range for a complete export."
+                ),
+            })
         return (
             _build_xlsx(("STOCK MOVEMENTS", headers, rows))
             if fmt == "xlsx"
@@ -1028,12 +1064,12 @@ class ExportService:
             PurchaseOrder.tenant_id == tenant_id,
             PurchaseOrder.deleted_at.is_(None),
         ]
-        if start_date:
-            filters.append(PurchaseOrder.order_date >= _utc_start(start_date))
-        if end_date:
-            filters.append(
-                PurchaseOrder.order_date < _utc_start(end_date) + timedelta(days=1)
-            )
+        if start_date or end_date:
+            tz_name = await self._get_timezone(tenant_id)
+            if start_date:
+                filters.append(PurchaseOrder.order_date >= local_day_start_utc(start_date, tz_name))
+            if end_date:
+                filters.append(PurchaseOrder.order_date < local_day_end_utc(end_date, tz_name))
 
         stmt = (
             select(
@@ -1107,12 +1143,12 @@ class ExportService:
         fmt: str = "csv",
     ) -> bytes:
         filters: list = [GoodsReceipt.tenant_id == tenant_id]
-        if start_date:
-            filters.append(GoodsReceipt.receipt_date >= _utc_start(start_date))
-        if end_date:
-            filters.append(
-                GoodsReceipt.receipt_date < _utc_start(end_date) + timedelta(days=1)
-            )
+        if start_date or end_date:
+            tz_name = await self._get_timezone(tenant_id)
+            if start_date:
+                filters.append(GoodsReceipt.receipt_date >= local_day_start_utc(start_date, tz_name))
+            if end_date:
+                filters.append(GoodsReceipt.receipt_date < local_day_end_utc(end_date, tz_name))
 
         stmt = (
             select(

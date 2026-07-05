@@ -57,10 +57,12 @@ export interface WalletTransactionResponse {
   wallet_id: string
   transaction_type: string
   amount: string
+  balance_before: string
+  balance_after: string
   currency_code: string
   reference_type: string | null
   reference_id: string | null
-  note: string | null
+  notes: string | null
   created_at: string
 }
 

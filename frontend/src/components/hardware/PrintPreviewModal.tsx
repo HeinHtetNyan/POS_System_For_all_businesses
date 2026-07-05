@@ -419,7 +419,7 @@ img { max-width: 100%; display: block; }
   const LabelComponent = size === '40x30' ? Label40x30 : Label50x30
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
       <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-md flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 flex-shrink-0">

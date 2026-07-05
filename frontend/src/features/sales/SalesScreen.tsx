@@ -3,12 +3,16 @@ import { useQuery } from '@tanstack/react-query'
 import { checkoutService, refundService } from '@/services/sales/sales.service'
 import { receiptsService } from '@/services/receipts/receipts.service'
 import { useTenantStore } from '@/store/tenant.store'
+import { useAuthStore } from '@/store/auth.store'
 import { fmt, fmtDateTime, timeAgo } from '@/lib/utils'
 import { getPaymentMethodLabel } from '@/lib/paymentMethod'
 import { StatCard, Table, Th, Td, Badge, Empty, Divider, Spinner } from '@/components/ui'
-import { IconSales, IconSearch, IconRefund, IconPrint } from '@/components/icons'
+import { IconSales, IconSearch, IconRefund, IconPrint, IconAlert } from '@/components/icons'
 import { ReceiptPrintPreviewModal } from '@/components/hardware/PrintPreviewModal'
+import VoidOrderModal from './VoidOrderModal'
 import type { Order, OrderItem, RefundRecord, OrderPayment } from '@/shared/types'
+
+const VOID_ALLOWED_ROLES = new Set(['SUPER_ADMIN', 'BUSINESS_OWNER', 'MANAGER'])
 
 type TabFilter = 'all' | 'COMPLETED' | 'REFUNDED'
 
@@ -49,8 +53,8 @@ export default function SalesScreen() {
   // Refunds query (used for Refunded tab)
   const refundsQuery = useQuery({
     queryKey: ['refunds', branchId],
-    queryFn: () => refundService.list({ page_size: 200 }),
-    enabled: tab === 'REFUNDED',
+    queryFn: () => refundService.list({ branch_id: branchId || undefined, page_size: 200 }),
+    enabled: tab === 'REFUNDED' && !!branchId,
   })
 
   const orders  = ordersQuery.data?.items ?? []
@@ -72,12 +76,19 @@ export default function SalesScreen() {
     )
   })
 
-  const totalRevenue = orders
-    .filter(o => o.order_status === 'COMPLETED')
-    .reduce((s, o) => s + parseFloat(o.total_amount), 0)
-  const avgOrder = orders.length > 0
-    ? totalRevenue / Math.max(1, orders.filter(o => o.order_status === 'COMPLETED').length)
-    : 0
+  // COMPLETED/PARTIALLY_REFUNDED/REFUNDED are the only statuses that represent
+  // a real sale (mirrors the backend's _order_filters) — DRAFT/PENDING/CANCELLED/
+  // VOIDED orders never generated revenue and must not appear in these sums.
+  // A partially or fully refunded order still counts here — excluding it entirely
+  // (as before) silently dropped its remaining net revenue to zero.
+  const revenueOrders = orders.filter(o =>
+    ['COMPLETED', 'PARTIALLY_REFUNDED', 'REFUNDED'].includes(o.order_status)
+  )
+  const totalRefunded = revenueOrders.reduce((s, o) => s + parseFloat(o.refunded_amount ?? '0'), 0)
+  const totalRevenue = revenueOrders.reduce(
+    (s, o) => s + parseFloat(o.total_amount) - parseFloat(o.refunded_amount ?? '0'), 0
+  )
+  const avgOrder = revenueOrders.length > 0 ? totalRevenue / revenueOrders.length : 0
 
   if (!branchId) {
     return (
@@ -125,9 +136,10 @@ export default function SalesScreen() {
         <div className="p-4 sm:p-6 flex flex-col gap-4 sm:gap-5 lg:overflow-auto lg:flex-1 lg:min-h-0">
           {/* Stats (orders only) */}
           {tab !== 'REFUNDED' && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
               <StatCard label="Total Orders"    value={orders.length} />
               <StatCard label="Revenue"         value={fmt(totalRevenue)} accent />
+              <StatCard label="Refunded"        value={fmt(totalRefunded)} />
               <StatCard label="Avg Order Value" value={fmt(avgOrder)} />
             </div>
           )}
@@ -195,7 +207,7 @@ export default function SalesScreen() {
                           </Td>
                           <Td muted className="whitespace-nowrap text-xs">{fmtDateTime(order.created_at)}</Td>
                           <Td right mono>
-                            <span className="text-amber-400">{fmt(parseFloat(order.total_amount))}</span>
+                            <span className="text-amber-400">{fmt(parseFloat(order.total_amount), order.currency)}</span>
                           </Td>
                           <Td>
                             <Badge variant={STATUS_VARIANT[order.order_status] ?? 'warning'} dot>
@@ -334,6 +346,8 @@ export default function SalesScreen() {
 
 function OrderDetailPanel({ order, onClose }: { order: Order; onClose: () => void }) {
   const [showReprint, setShowReprint] = useState(false)
+  const [showVoid, setShowVoid] = useState(false)
+  const role = useAuthStore(s => s.user?.role)
 
   const { data: detail, isLoading } = useQuery({
     queryKey: ['order-detail', order.id],
@@ -399,9 +413,9 @@ function OrderDetailPanel({ order, onClose }: { order: Order; onClose: () => voi
                   {item.sku && <p className="text-[10px] text-zinc-600 font-mono">{item.sku}</p>}
                 </div>
                 <div className="flex-shrink-0 text-right">
-                  <p className="text-xs font-mono text-zinc-200">{fmt(parseFloat(item.total))}</p>
+                  <p className="text-xs font-mono text-zinc-200">{fmt(parseFloat(item.total), order.currency)}</p>
                   <p className="text-[10px] text-zinc-600 font-mono">
-                    {fmt(parseFloat(item.unit_price))} × {parseFloat(item.quantity).toFixed(0)}
+                    {fmt(parseFloat(item.unit_price), order.currency)} × {parseFloat(item.quantity).toFixed(0)}
                   </p>
                 </div>
               </div>
@@ -414,28 +428,28 @@ function OrderDetailPanel({ order, onClose }: { order: Order; onClose: () => voi
         <div className="flex flex-col gap-1.5">
           <div className="flex justify-between text-xs text-zinc-500">
             <span>Subtotal</span>
-            <span className="font-mono">{fmt(parseFloat(order.subtotal))}</span>
+            <span className="font-mono">{fmt(parseFloat(order.subtotal), order.currency)}</span>
           </div>
           {parseFloat(order.discount_amount) > 0 && (
             <div className="flex justify-between text-xs text-amber-500">
               <span>Discount</span>
-              <span className="font-mono">−{fmt(parseFloat(order.discount_amount))}</span>
+              <span className="font-mono">−{fmt(parseFloat(order.discount_amount), order.currency)}</span>
             </div>
           )}
           <div className="flex justify-between text-xs text-zinc-500">
             <span>Tax</span>
-            <span className="font-mono">{fmt(parseFloat(order.tax_amount))}</span>
+            <span className="font-mono">{fmt(parseFloat(order.tax_amount), order.currency)}</span>
           </div>
           {detail?.refunded_amount && parseFloat(detail.refunded_amount) > 0 && (
             <div className="flex justify-between text-xs text-red-400">
               <span>Refunded</span>
-              <span className="font-mono">−{fmt(parseFloat(detail.refunded_amount))}</span>
+              <span className="font-mono">−{fmt(parseFloat(detail.refunded_amount), order.currency)}</span>
             </div>
           )}
           <Divider />
           <div className="flex justify-between text-sm font-bold text-zinc-100">
             <span>Total</span>
-            <span className="font-mono text-amber-400">{fmt(parseFloat(order.total_amount))}</span>
+            <span className="font-mono text-amber-400">{fmt(parseFloat(order.total_amount), order.currency)}</span>
           </div>
         </div>
       </div>
@@ -457,7 +471,7 @@ function OrderDetailPanel({ order, onClose }: { order: Order; onClose: () => voi
                     <span className="text-[10px] text-zinc-600 font-mono">#{p.reference_number}</span>
                   )}
                 </div>
-                <span className="text-xs font-mono font-semibold text-amber-400">{fmt(parseFloat(p.amount))}</span>
+                <span className="text-xs font-mono font-semibold text-amber-400">{fmt(parseFloat(p.amount), order.currency)}</span>
               </div>
             ))}
           </div>
@@ -480,8 +494,8 @@ function OrderDetailPanel({ order, onClose }: { order: Order; onClose: () => voi
 
       <div className="flex-1" />
 
-      {/* Reprint button */}
-      <div className="px-4 py-3 border-t border-zinc-800 flex-shrink-0">
+      {/* Reprint / Void buttons */}
+      <div className="px-4 py-3 border-t border-zinc-800 flex-shrink-0 flex flex-col gap-2">
         <button
           onClick={() => receipt && setShowReprint(true)}
           disabled={!receipt}
@@ -490,6 +504,15 @@ function OrderDetailPanel({ order, onClose }: { order: Order; onClose: () => voi
           <IconPrint width="14" height="14" />
           Reprint Receipt
         </button>
+        {role && VOID_ALLOWED_ROLES.has(role) && (detail?.order_status ?? order.order_status) === 'COMPLETED' && (
+          <button
+            onClick={() => setShowVoid(true)}
+            className="w-full h-9 flex items-center justify-center gap-2 rounded-xl bg-red-950 hover:bg-red-900 border border-red-800 text-red-400 text-sm font-semibold transition-all"
+          >
+            <IconAlert width="14" height="14" />
+            Void Order
+          </button>
+        )}
       </div>
 
       {receipt && showReprint && (
@@ -497,6 +520,14 @@ function OrderDetailPanel({ order, onClose }: { order: Order; onClose: () => voi
           receipt={receipt}
           onClose={() => setShowReprint(false)}
           autoTrigger={false}
+        />
+      )}
+
+      {showVoid && (
+        <VoidOrderModal
+          order={detail ?? order}
+          onClose={() => setShowVoid(false)}
+          onSuccess={() => { setShowVoid(false); onClose() }}
         />
       )}
     </div>

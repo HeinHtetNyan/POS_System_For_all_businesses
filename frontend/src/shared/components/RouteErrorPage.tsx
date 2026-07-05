@@ -14,9 +14,7 @@ export default function RouteErrorPage() {
   return (
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-6">
       <div className="max-w-md w-full text-center space-y-6">
-        <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mx-auto">
-          <span className="text-3xl font-black text-amber-400">N</span>
-        </div>
+        <img src="/logo-icon.png" alt="SawYunPos" className="w-16 h-16 rounded-2xl mx-auto opacity-90" />
 
         {isChunkError ? (
           <>
@@ -51,7 +49,9 @@ export default function RouteErrorPage() {
             <div>
               <h1 className="text-xl font-semibold text-zinc-100 mb-2">Something went wrong</h1>
               <p className="text-sm text-zinc-400 leading-relaxed">
-                {error instanceof Error ? error.message : 'An unexpected error occurred.'}
+                {import.meta.env.DEV && error instanceof Error
+                  ? error.message
+                  : 'An unexpected error occurred. Please reload the page.'}
               </p>
             </div>
             <button

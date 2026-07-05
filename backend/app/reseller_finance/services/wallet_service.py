@@ -5,6 +5,7 @@ from decimal import Decimal
 from datetime import datetime, timezone
 from typing import Any
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import BusinessRuleError, NotFoundError
@@ -44,19 +45,33 @@ class WalletService:
         if wallet is not None:
             return wallet
 
-        wallet = ResellerWallet(
-            reseller_id=reseller_id,
-            available_balance=Decimal("0.00"),
-            locked_balance=Decimal("0.00"),
-            pending_balance=Decimal("0.00"),
-            total_paid_out=Decimal("0.00"),
-            currency_code=_DEFAULT_CURRENCY,
-            commission_rate_pct=_DEFAULT_COMMISSION_RATE,
-            min_payout_amount=_DEFAULT_MIN_PAYOUT,
-        )
-        self.session.add(wallet)
-        await self.session.flush()
-        await self.session.refresh(wallet)
+        # Two commission events for the same brand-new reseller can race here —
+        # SELECT ... FOR UPDATE locks nothing when no row exists yet, so both
+        # callers can reach this insert. A SAVEPOINT keeps a losing insert from
+        # poisoning the caller's outer transaction (which may include an
+        # unrelated payment-proof approval this wallet creation is just a
+        # fail-open side effect of); on conflict, fall back to the row the
+        # other caller just committed.
+        try:
+            async with self.session.begin_nested():
+                wallet = ResellerWallet(
+                    reseller_id=reseller_id,
+                    available_balance=Decimal("0.00"),
+                    locked_balance=Decimal("0.00"),
+                    pending_balance=Decimal("0.00"),
+                    total_paid_out=Decimal("0.00"),
+                    currency_code=_DEFAULT_CURRENCY,
+                    commission_rate_pct=_DEFAULT_COMMISSION_RATE,
+                    min_payout_amount=_DEFAULT_MIN_PAYOUT,
+                )
+                self.session.add(wallet)
+                await self.session.flush()
+                await self.session.refresh(wallet)
+        except IntegrityError:
+            wallet = await self.wallet_repo.get_wallet_for_update(reseller_id)
+            if wallet is None:
+                raise
+            return wallet
 
         logger.info(
             "reseller_wallet_created",

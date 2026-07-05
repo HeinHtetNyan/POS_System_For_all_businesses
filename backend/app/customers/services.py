@@ -297,7 +297,7 @@ class CustomerService:
         actor_id: uuid.UUID,
         request_id: str | None = None,
     ) -> CustomerLedger:
-        customer = await self.repo.get_active_by_id_and_tenant(customer_id, tenant_id)
+        customer = await self.repo.get_active_by_id_and_tenant_locked(customer_id, tenant_id)
         if not customer:
             raise NotFoundError("Customer", customer_id)
 
@@ -328,12 +328,14 @@ class CustomerService:
         await self._reconcile_customer_order_payments(customer_id, tenant_id)
         return entry
 
-    async def _reconcile_customer_order_payments(
+    async def _compute_order_settlement(
         self, customer_id: uuid.UUID, tenant_id: uuid.UUID
-    ) -> None:
+    ) -> tuple[list["Order"], dict[str, Decimal]]:
         """
-        Re-derive payment_status for all of this customer's orders after a
-        debt payment is recorded.
+        Shared FIFO allocation used by both _reconcile_customer_order_payments
+        (derives payment_status) and get_order_settled_amount (used by refund
+        credit-capping) — kept as one method so the two can never disagree
+        about how much of a given order has actually been settled.
 
         Two payment pools exist for a customer:
           1. Checkout payments — recorded with reference_type="ORDER" on the
@@ -343,13 +345,10 @@ class CustomerService:
              payment screen).  These are allocated FIFO across orders' remaining
              debts (oldest order first).
 
-        Mixing the two into a single pool caused double-counting: the checkout
-        amount was subtracted from order_debt AND included in the payment pool,
-        so the pool appeared larger than the actual standalone payments.
+        Returns (orders oldest-first, {order_id_str: total_amount_settled}).
         """
         from sqlalchemy import select as sa_select
         from app.sales.models import Order
-        from app.core.constants import PaymentStatus
 
         all_entries = await self.ledger_repo.get_by_customer(customer_id)
 
@@ -377,28 +376,59 @@ class CustomerService:
         orders = list(result.scalars().all())
 
         remaining = standalone_pool
+        settled: dict[str, Decimal] = {}
         for order in orders:
             order_checkout = checkout_by_order.get(str(order.id), Decimal("0"))
             order_debt = order.total_amount - order_checkout  # debt after checkout payment
 
             if order_debt <= Decimal("0"):
-                order.payment_status = PaymentStatus.PAID
+                settled[str(order.id)] = order_checkout
                 continue
 
             if remaining >= order_debt:
-                order.payment_status = PaymentStatus.PAID
+                settled[str(order.id)] = order_checkout + order_debt
                 remaining -= order_debt
             elif remaining > Decimal("0"):
-                order.payment_status = PaymentStatus.PARTIAL
+                settled[str(order.id)] = order_checkout + remaining
                 remaining = Decimal("0")
             else:
-                # Standalone pool exhausted before reaching this order.
-                # If a checkout payment was made, it's PARTIAL; otherwise PENDING.
-                order.payment_status = (
-                    PaymentStatus.PARTIAL if order_checkout > Decimal("0") else PaymentStatus.PENDING
-                )
+                settled[str(order.id)] = order_checkout
+
+        return orders, settled
+
+    async def _reconcile_customer_order_payments(
+        self, customer_id: uuid.UUID, tenant_id: uuid.UUID
+    ) -> None:
+        """Re-derive payment_status for all of this customer's orders after a
+        debt payment is recorded. See _compute_order_settlement for the
+        underlying FIFO allocation between checkout and standalone payments."""
+        from app.core.constants import PaymentStatus
+
+        orders, settled = await self._compute_order_settlement(customer_id, tenant_id)
+        for order in orders:
+            settled_amount = settled.get(str(order.id), Decimal("0"))
+            if settled_amount >= order.total_amount:
+                order.payment_status = PaymentStatus.PAID
+            elif settled_amount > Decimal("0"):
+                order.payment_status = PaymentStatus.PARTIAL
+            else:
+                order.payment_status = PaymentStatus.PENDING
 
         await self.session.flush()
+
+    async def get_order_settled_amount(
+        self, order_id: uuid.UUID, customer_id: uuid.UUID, tenant_id: uuid.UUID
+    ) -> Decimal:
+        """
+        Total amount actually settled for one order, combining direct checkout
+        Payment rows AND this customer's FIFO-allocated share of standalone
+        debt payments (which never create a Payment row). Used by refund
+        credit-capping so it doesn't double-compensate money that was already
+        paid off through the standalone debt-payment screen — total_paid from
+        Payment rows alone can't see that money.
+        """
+        _, settled = await self._compute_order_settlement(customer_id, tenant_id)
+        return settled.get(str(order_id), Decimal("0"))
 
     async def adjust_balance(
         self,
@@ -408,7 +438,7 @@ class CustomerService:
         actor_id: uuid.UUID,
         request_id: str | None = None,
     ) -> CustomerLedger:
-        customer = await self.repo.get_active_by_id_and_tenant(customer_id, tenant_id)
+        customer = await self.repo.get_active_by_id_and_tenant_locked(customer_id, tenant_id)
         if not customer:
             raise NotFoundError("Customer", customer_id)
 
@@ -501,7 +531,7 @@ class CustomerService:
         order_id: str,
     ) -> CustomerLedger:
         """Called by CheckoutService when a sale is placed on credit."""
-        customer = await self.repo.get_active_by_id_and_tenant(customer_id, tenant_id)
+        customer = await self.repo.get_active_by_id_and_tenant_locked(customer_id, tenant_id)
         if not customer:
             raise NotFoundError("Customer", customer_id)
         return await self._create_ledger_entry(
@@ -524,7 +554,7 @@ class CustomerService:
         refund_id: str,
     ) -> CustomerLedger:
         """Called by RefundService when a refund reduces customer's outstanding balance."""
-        customer = await self.repo.get_active_by_id_and_tenant(customer_id, tenant_id)
+        customer = await self.repo.get_active_by_id_and_tenant_locked(customer_id, tenant_id)
         if not customer:
             raise NotFoundError("Customer", customer_id)
         return await self._create_ledger_entry(

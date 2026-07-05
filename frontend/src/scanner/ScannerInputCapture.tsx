@@ -28,7 +28,18 @@ const US_QWERTY: Record<string, [string, string]> = {
 // 100 ms burst threshold works for virtually all USB/Bluetooth HID scanners,
 // including models with configurable inter-character delay up to 100ms.
 // It stays well below average human typing speed (~200ms per char).
+//
+// A SINGLE sub-100ms gap isn't a reliable signal on its own though — a fast
+// typist naturally lands the occasional quick key-pair (common digraphs,
+// muscle-memory combos), and over a long field like a Notes textarea, even a
+// low per-pair chance compounds into a near-certain false trigger somewhere
+// in the text. A scanner's entire multi-char payload is uniformly fast start
+// to finish, so we only commit to "this is a scanner" after REQUIRED_STREAK
+// consecutive sub-threshold gaps in a row — a real scan trivially sustains
+// that (product SKUs/barcodes here are 7+ chars), natural typing essentially
+// never does.
 const BURST_MS = 100
+const REQUIRED_STREAK = 6
 
 interface ScannerInputCaptureProps {
   onScan: (code: string) => void
@@ -39,7 +50,7 @@ interface ScannerInputCaptureProps {
 
 export function ScannerInputCapture({
   onScan,
-  minLength = 3,
+  minLength = 7,
   maxCharGap = 150,
   enabled = true,
 }: ScannerInputCaptureProps) {
@@ -47,6 +58,11 @@ export function ScannerInputCapture({
   const lastTimeRef      = useRef(0)
   const timerRef         = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isBurstRef       = useRef(false)
+  const fastGapStreakRef = useRef(0)
+  // Never require more consecutive fast gaps than the shortest valid scan can
+  // supply, so a scan of exactly minLength chars is still confirmable at its
+  // last character.
+  const requiredStreak   = Math.max(1, Math.min(REQUIRED_STREAK, minLength - 1))
   // Track the focused input and its value snapshot at the moment the first
   // scanner char arrives, so we can undo it once burst is confirmed.
   const firstCharTargetRef = useRef<{ el: HTMLInputElement | HTMLTextAreaElement; before: string } | null>(null)
@@ -56,6 +72,7 @@ export function ScannerInputCapture({
     bufferRef.current        = ''
     lastTimeRef.current      = 0
     isBurstRef.current       = false
+    fastGapStreakRef.current = 0
     firstCharTargetRef.current = null
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
 
@@ -72,6 +89,7 @@ export function ScannerInputCapture({
         bufferRef.current        = ''
         lastTimeRef.current      = 0
         isBurstRef.current       = false
+        fastGapStreakRef.current = 0
         firstCharTargetRef.current = null
         if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
         if (wasBurst && code.length >= minLength) {
@@ -93,6 +111,7 @@ export function ScannerInputCapture({
       if (lastTimeRef.current > 0 && gap > maxCharGap) {
         bufferRef.current        = ''
         isBurstRef.current       = false
+        fastGapStreakRef.current = 0
         firstCharTargetRef.current = null
       }
 
@@ -104,23 +123,28 @@ export function ScannerInputCapture({
         }
       }
 
-      // Confirm scanner burst when the second char arrives within BURST_MS
-      if (bufferRef.current.length > 0 && gap < BURST_MS) {
-        if (!isBurstRef.current) {
-          isBurstRef.current = true
-          // Undo the first char that landed in the focused input
-          const snap = firstCharTargetRef.current
-          if (snap && snap.el.isConnected) {
-            // Use the native setter so React's synthetic onChange fires correctly
-            const nativeSetter = Object.getOwnPropertyDescriptor(
-              snap.el instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype,
-              'value',
-            )?.set
-            nativeSetter?.call(snap.el, snap.before)
-            snap.el.dispatchEvent(new Event('input', { bubbles: true }))
-          }
-          firstCharTargetRef.current = null
+      // Track consecutive sub-BURST_MS gaps; only commit to "scanner" once the
+      // streak proves it (see comment on BURST_MS above) — a lone fast pair
+      // just resets to 1 rather than confirming immediately.
+      if (bufferRef.current.length > 0) {
+        fastGapStreakRef.current = gap < BURST_MS ? fastGapStreakRef.current + 1 : 0
+      }
+
+      if (!isBurstRef.current && fastGapStreakRef.current >= requiredStreak) {
+        isBurstRef.current = true
+        // Undo the chars that already landed in the focused input while we
+        // were still building confidence that this is actually a scanner.
+        const snap = firstCharTargetRef.current
+        if (snap && snap.el.isConnected) {
+          // Use the native setter so React's synthetic onChange fires correctly
+          const nativeSetter = Object.getOwnPropertyDescriptor(
+            snap.el instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype,
+            'value',
+          )?.set
+          nativeSetter?.call(snap.el, snap.before)
+          snap.el.dispatchEvent(new Event('input', { bubbles: true }))
         }
+        firstCharTargetRef.current = null
       }
 
       // Once in burst mode, stop chars from reaching the focused input element
@@ -138,6 +162,7 @@ export function ScannerInputCapture({
         bufferRef.current        = ''
         lastTimeRef.current      = 0
         isBurstRef.current       = false
+        fastGapStreakRef.current = 0
         firstCharTargetRef.current = null
         timerRef.current         = null
         if (wasBurst && code.length >= minLength) onScan(code)

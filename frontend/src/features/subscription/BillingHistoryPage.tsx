@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { fmtDate, fmtDateTime, extractApiMsg } from '@/lib/utils'
@@ -10,7 +11,7 @@ import { apiClient } from '@/app/lib/axios'
 import type { PaymentProofCreateRequest } from '@/shared/types'
 
 async function openProofFile(url: string) {
-  const token = localStorage.getItem('nexuspos_access_token') ?? ''
+  const token = localStorage.getItem('sawyunpos_access_token') ?? ''
   try {
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -200,10 +201,28 @@ export default function BillingHistoryPage() {
     queryFn: () => subscriptionsService.listPaymentProofs({ page: proofsPage, page_size: 10 }),
   })
 
+  // Decoupled from proofsPage so the button's visibility reflects the true latest
+  // proof, not just item 0 of whichever page the owner happens to be browsing.
+  const latestProofQuery = useQuery({
+    queryKey: ['subscription', 'proofs', 'latest'],
+    queryFn: () => subscriptionsService.listPaymentProofs({ page: 1, page_size: 1 }),
+  })
+
   const historyQuery = useQuery({
     queryKey: ['subscription', 'history', historyPage],
     queryFn: () => subscriptionsService.getHistory({ page: historyPage, page_size: 10 }),
   })
+
+  // This button is only for the plain "activate/renew whatever plan I'm already on"
+  // flow — upgrade/downgrade/renewal proofs are submitted from their own dedicated
+  // modals on the Current Plan page, which know which target plan to reactivate on
+  // approval. A rejected proof that WAS for a specific plan (target_plan_id set) must
+  // be resubmitted from there instead — submitting a fresh generic proof here would
+  // silently just renew the current plan rather than applying that plan change, which
+  // is exactly the confusing no-op this is guarding against. Proofs are newest-first.
+  const latestProof = latestProofQuery.data?.items[0]
+  const canSubmitProof = !latestProof || (latestProof.status === 'REJECTED' && !latestProof.target_plan_id)
+  const needsResubmitOnPlanPage = latestProof?.status === 'REJECTED' && !!latestProof.target_plan_id
 
   return (
     <>
@@ -226,8 +245,13 @@ export default function BillingHistoryPage() {
               </button>
             ))}
           </div>
-          {isOwner && tab === 'proofs' && (
+          {isOwner && tab === 'proofs' && !latestProofQuery.isLoading && canSubmitProof && (
             <Btn size="sm" onClick={() => setShowModal(true)}>Submit Proof</Btn>
+          )}
+          {isOwner && tab === 'proofs' && needsResubmitOnPlanPage && (
+            <Link to="/app/subscription/current" className="text-xs text-amber-400 hover:text-amber-300 font-medium">
+              Resubmit from Current Plan →
+            </Link>
           )}
         </div>
 
@@ -256,9 +280,9 @@ export default function BillingHistoryPage() {
                               <p className="text-xs text-green-400 font-medium">→ {proof.target_plan_name}</p>
                             )}
                             {proof.reference_number && (
-                              <p className="text-xs text-zinc-500">Ref: {proof.reference_number}</p>
+                              <p className="text-sm text-zinc-400">Ref: {proof.reference_number}</p>
                             )}
-                            <p className="text-xs text-zinc-600">{fmtDate(proof.created_at)}</p>
+                            <p className="text-sm text-zinc-500">{fmtDate(proof.created_at)}</p>
                           </div>
                           <Badge variant={PROOF_VARIANT[proof.status] ?? 'default'} dot>
                             {proof.status}
@@ -286,10 +310,10 @@ export default function BillingHistoryPage() {
                         {proof.proof_file_url && (
                           <button
                             onClick={() => openProofFile(proof.proof_file_url)}
-                            className="inline-flex items-center gap-1 mt-3 text-xs text-amber-400 hover:text-amber-300"
+                            className="inline-flex items-center gap-1.5 mt-3 text-sm font-medium text-amber-400 hover:text-amber-300"
                           >
                             View proof
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                           </button>
                         )}
                       </div>

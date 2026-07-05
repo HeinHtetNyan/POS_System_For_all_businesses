@@ -217,9 +217,10 @@ export default function ResellerWalletPage() {
                       {p.status === 'PENDING' && (
                         <button
                           onClick={() => cancelPayout.mutate(p.id)}
-                          className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                          disabled={cancelPayout.isPending}
+                          className="text-xs text-red-400 hover:text-red-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                         >
-                          Cancel
+                          {cancelPayout.isPending ? 'Cancelling…' : 'Cancel'}
                         </button>
                       )}
                     </td>
@@ -260,14 +261,17 @@ export default function ResellerWalletPage() {
               </thead>
               <tbody>
                 {transactions.items.map(tx => {
-                  const isCredit = Number(tx.amount) >= 0
+                  // `amount` is always stored as a positive magnitude regardless
+                  // of direction — the only reliable signal for credit vs debit
+                  // is whether the balance actually went up or down.
+                  const isCredit = Number(tx.balance_after) >= Number(tx.balance_before)
                   return (
                     <tr key={tx.id} className="border-b border-zinc-800/50 last:border-0">
                       <td className="px-4 py-3 text-zinc-300 text-xs">{TX_TYPE_LABEL[tx.transaction_type] ?? tx.transaction_type}</td>
                       <td className={`px-4 py-3 font-mono text-right font-bold ${isCredit ? 'text-green-400' : 'text-red-400'}`}>
-                        {isCredit ? '+' : ''}{fmt(tx.amount)}
+                        {isCredit ? '+' : '-'}{fmt(tx.amount)}
                       </td>
-                      <td className="px-4 py-3 text-zinc-600 text-xs max-w-[200px] truncate">{tx.note ?? '—'}</td>
+                      <td className="px-4 py-3 text-zinc-600 text-xs max-w-[200px] truncate">{tx.notes ?? '—'}</td>
                       <td className="px-4 py-3 text-zinc-600 text-xs">{new Date(tx.created_at).toLocaleDateString()}</td>
                     </tr>
                   )

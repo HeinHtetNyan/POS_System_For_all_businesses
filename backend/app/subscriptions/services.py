@@ -546,6 +546,12 @@ class SubscriptionService:
         if not sub:
             raise NotFoundError("TenantSubscription", tenant_id)
 
+        if sub.status != SubscriptionStatus.ACTIVE:
+            raise BusinessRuleError(
+                f"Can only schedule a downgrade for an ACTIVE subscription. "
+                f"Current: '{sub.status}'"
+            )
+
         if sub.plan_id == data.plan_id:
             raise BusinessRuleError("Already on this plan")
 
@@ -554,6 +560,15 @@ class SubscriptionService:
             raise NotFoundError("SubscriptionPlan", data.plan_id)
         if not new_plan.is_active:
             raise BusinessRuleError("Target plan is not active")
+        if new_plan.is_custom:
+            raise BusinessRuleError("Custom plans are not self-service — please contact us directly.")
+        # The payment-proof downgrade path already enforces this; this direct
+        # endpoint didn't, so a tenant could "downgrade" straight to a free
+        # plan with no proof required, and the Celery expiry job would then
+        # auto-activate it indefinitely at no cost.
+        current_price = sub.plan.price if sub.plan else None
+        if current_price is not None and float(new_plan.price) >= float(current_price):
+            raise BusinessRuleError("Target plan must be cheaper than the current plan for a downgrade")
 
         now = _now()
         sub.pending_downgrade_plan_id = data.plan_id
@@ -601,16 +616,46 @@ class SubscriptionService:
         request_id: str | None = None,
     ) -> dict[str, Any]:
         """Cancel a scheduled downgrade before it takes effect, keeping the current plan."""
-        sub = await self.sub_repo.get_by_tenant(tenant_id)
+        # Locked: the daily expiry job (process_expired_subscriptions) also reads/clears
+        # pending_downgrade_plan_id for subscriptions that expire around the same time —
+        # without the lock, a user's cancel could race that job and lose the update.
+        sub = await self.sub_repo.get_by_tenant_locked(tenant_id)
         if not sub:
             raise NotFoundError("TenantSubscription", tenant_id)
 
         if not sub.pending_downgrade_plan_id:
             raise BusinessRuleError("No pending downgrade to cancel")
 
+        # Once a super admin has approved the payment proof for this specific
+        # downgrade, it's locked in — the tenant already paid for the new plan,
+        # so unwinding it here would need a refund/commission-reversal flow that
+        # doesn't exist. Only a still-pending or rejected proof (or no proof at
+        # all yet) may be cancelled.
+        proof_repo = PaymentProofRepository(self.session)
+        approved_proof = await proof_repo.get_approved_by_subscription_action_and_plan(
+            sub.id, ProofActionType.DOWNGRADE, sub.pending_downgrade_plan_id
+        )
+        if approved_proof:
+            raise BusinessRuleError(
+                "This downgrade has already been approved and paid for — it can no longer be cancelled."
+            )
+
         cancelled_plan_id = sub.pending_downgrade_plan_id
         sub.pending_downgrade_plan_id = None
         sub.pending_downgrade_requested_at = None
+
+        # Reject any still-PENDING downgrade proof for this subscription too —
+        # otherwise it's left orphaned, and an admin approving it later would
+        # be a silent no-op (the fields it would have acted on are already
+        # cleared), showing "approved" with nothing actually happening.
+        orphaned_proofs = await proof_repo.get_pending_by_subscription_and_action(
+            sub.id, ProofActionType.DOWNGRADE
+        )
+        for proof in orphaned_proofs:
+            proof.status = PaymentProofStatus.REJECTED
+            proof.reviewed_by = actor_id
+            proof.reviewed_at = _now()
+            proof.review_notes = "Auto-rejected: the scheduled downgrade this proof was for was cancelled."
 
         self._add_history(
             sub,
@@ -642,7 +687,7 @@ class SubscriptionService:
         actor_id: uuid.UUID,
         request_id: str | None = None,
     ) -> TenantSubscription:
-        sub = await self.sub_repo.get_by_tenant(tenant_id)
+        sub = await self.sub_repo.get_by_tenant_locked(tenant_id)
         if not sub:
             raise NotFoundError("TenantSubscription", tenant_id)
 
@@ -670,6 +715,27 @@ class SubscriptionService:
             entity_id=sub.id,
             request_id=request_id,
         )
+
+        # Claw back any commission a reseller earned across this subscription's
+        # lifetime (initial activation, any later upgrades) — otherwise a
+        # cancelled tenant leaves the reseller permanently overpaid.
+        # reverse_commission is fail-open and no-ops for proofs that never
+        # earned commission, so this is safe to call for every approved proof.
+        try:
+            from app.reseller_finance.services.commission_service import CommissionService
+            commission_svc = CommissionService(self.session)
+            proof_repo = PaymentProofRepository(self.session)
+            approved_proofs = await proof_repo.get_approved_by_tenant(tenant_id)
+            for proof in approved_proofs:
+                await commission_svc.reverse_commission(
+                    payment_proof_id=proof.id,
+                    tenant_id=tenant_id,
+                    reversal_reason="Subscription cancelled",
+                    actor_id=actor_id,
+                    request_id=request_id,
+                )
+        except Exception as exc:
+            logger.warning("commission_reversal_on_cancel_failed", tenant_id=str(tenant_id), error=str(exc))
 
         return await self.sub_repo.get_by_tenant(tenant_id)  # type: ignore[return-value]
 
@@ -746,36 +812,6 @@ class SubscriptionService:
         )
 
         return await self.sub_repo.get_by_tenant(tenant_id)  # type: ignore[return-value]
-
-    async def process_expired_subscriptions(self) -> int:
-        """Mark expired subscriptions as EXPIRED. Users must upgrade to continue."""
-        now = _now()
-        expired = await self.sub_repo.get_expired(now)
-
-        for sub in expired:
-            old_status = sub.status
-            old_plan_id = sub.plan_id
-
-            sub.status = SubscriptionStatus.EXPIRED
-
-            self._add_history(
-                sub,
-                change_type=SubscriptionChangeType.EXPIRED,
-                old_plan_id=old_plan_id,
-                old_status=old_status,
-                new_status=SubscriptionStatus.EXPIRED,
-                note="Subscription auto-expired. Upgrade required to continue.",
-            )
-            await self.audit.log(
-                action=AuditAction.SUBSCRIPTION_EXPIRED,
-                tenant_id=sub.tenant_id,
-                entity_type=EntityType.TENANT_SUBSCRIPTION,
-                entity_id=sub.id,
-                after_state={"previous_status": old_status},
-            )
-
-        await self.session.flush()
-        return len(expired)
 
     async def get_subscription(self, tenant_id: uuid.UUID) -> TenantSubscription:
         sub = await self.sub_repo.get_by_tenant(tenant_id)
@@ -899,9 +935,13 @@ class PaymentProofService:
         if not user_ids:
             return
         try:
-            from app.notifications.services import NotificationService
-            svc = NotificationService(self.session)
-            await svc.notify_users(user_ids=user_ids, **kwargs)
+            # A SAVEPOINT keeps a notification-layer failure from poisoning the
+            # caller's outer transaction (e.g. a payment-proof approval, whose
+            # actual business effect must still commit even if this fails).
+            async with self.session.begin_nested():
+                from app.notifications.services import NotificationService
+                svc = NotificationService(self.session)
+                await svc.notify_users(user_ids=user_ids, **kwargs)
         except Exception as exc:
             logger.warning("notification_send_failed", error=str(exc))
 
@@ -916,6 +956,13 @@ class PaymentProofService:
         if not sub:
             raise NotFoundError("TenantSubscription", tenant_id)
 
+        # The schema only checks the path shape (/uploads/proofs/...) — without this,
+        # a tenant could submit a proof_file_url pointing into another tenant's
+        # proof directory (e.g. one it obtained through some other legitimate access)
+        # and have it recorded as its own payment proof.
+        if not data.proof_file_url.startswith(f"/uploads/proofs/{tenant_id}/"):
+            raise BusinessRuleError("proof_file_url must reference a file uploaded by this tenant.")
+
         # CANCELLED subscriptions may submit a proof to reactivate
 
         action_type = getattr(data, "action_type", None) or ProofActionType.INITIAL_ACTIVATION
@@ -929,9 +976,17 @@ class PaymentProofService:
             target_plan = await self.plan_repo.get_by_id(target_plan_id)
             if not target_plan or not target_plan.is_active:
                 raise BusinessRuleError("Target downgrade plan not found or inactive.")
+            if target_plan.is_custom:
+                raise BusinessRuleError("Custom plans are not self-service — please contact us directly.")
             if float(target_plan.price) >= float(sub.plan.price if sub.plan else 0):
                 raise BusinessRuleError("Target plan must be cheaper than current plan for a downgrade.")
             target_plan_name = target_plan.name
+        elif target_plan_id:
+            # Upgrade / initial-activation proofs also carry a target_plan_id
+            # (see PlansPage/CurrentSubscriptionPage) — block custom plans there too.
+            target_plan = await self.plan_repo.get_by_id(target_plan_id)
+            if target_plan and target_plan.is_custom:
+                raise BusinessRuleError("Custom plans are not self-service — please contact us directly.")
 
         proof = PaymentProof(
             tenant_id=tenant_id,
@@ -1018,6 +1073,11 @@ class PaymentProofService:
         sub.status = SubscriptionStatus.ACTIVE
         sub.expires_at = _expires_at_for_cycle(plan.billing_cycle, base)
         sub.trial_ends_at = None
+        # A renewal supersedes any scheduled downgrade — otherwise the stale
+        # pending_downgrade_plan_id survives to the (now pushed-out) expiry
+        # date and the Celery job force-downgrades a tenant who just renewed.
+        sub.pending_downgrade_plan_id = None
+        sub.pending_downgrade_requested_at = None
 
         # Sync denormalized tenant fields
         tenant = await self.session.get(Tenant, sub.tenant_id)
@@ -1101,6 +1161,11 @@ class PaymentProofService:
         if old_status == SubscriptionStatus.TRIAL or sub.expires_at is None or sub.expires_at <= now:
             sub.expires_at = _expires_at_for_cycle(new_plan.billing_cycle, now)
         sub.trial_ends_at = None
+        # An upgrade supersedes any scheduled downgrade — otherwise the stale
+        # pending_downgrade_plan_id survives to expiry and the Celery job
+        # force-downgrades a tenant who just paid for an upgrade instead.
+        sub.pending_downgrade_plan_id = None
+        sub.pending_downgrade_requested_at = None
 
         # Sync denormalized tenant fields
         tenant = await self.session.get(Tenant, sub.tenant_id)
@@ -1229,7 +1294,12 @@ class PaymentProofService:
         review_notes: str | None = None,
         request_id: str | None = None,
     ) -> PaymentProof:
-        proof = await self.proof_repo.get_by_id(proof_id)
+        # Lock both rows before the status check — otherwise two concurrent
+        # approve requests for the same still-PENDING proof (double-click, or
+        # two admins) can both pass validation and both apply the subscription
+        # extension/upgrade/downgrade, duplicating billing-cycle extensions,
+        # notifications, and audit rows.
+        proof = await self.proof_repo.get_by_id_locked(proof_id)
         if not proof:
             raise NotFoundError("PaymentProof", proof_id)
 
@@ -1244,7 +1314,7 @@ class PaymentProofService:
         proof.reviewed_at = now
         proof.review_notes = review_notes
 
-        sub = await self.sub_repo.get_by_id(proof.subscription_id)
+        sub = await self.sub_repo.get_by_id_locked(proof.subscription_id)
         if not sub:
             raise NotFoundError("TenantSubscription", proof.subscription_id)
 
@@ -1364,7 +1434,15 @@ class PaymentProofService:
         # DOWNGRADE approval notification is sent inside _apply_downgrade (deferred activation).
         # For all other action types, notify the owner that the subscription is now active.
         if action != ProofActionType.DOWNGRADE:
-            plan_name = sub.plan.name if sub.plan else "your plan"
+            # sub.plan is a relationship loaded before _apply_upgrade() changed
+            # sub.plan_id — it isn't refreshed by the flush, so it still points at
+            # the OLD plan whenever this proof specified a target (UPGRADE, or the
+            # INITIAL_ACTIVATION-with-target fallback above). proof.target_plan is
+            # fetched independently and is always correct in that case; only fall
+            # back to sub.plan for a true no-target activation, where sub.plan was
+            # never reassigned and is still accurate.
+            notified_plan = proof.target_plan if proof.target_plan else sub.plan
+            plan_name = notified_plan.name if notified_plan else "your plan"
             owner_ids = await self._get_tenant_owner_ids(sub.tenant_id)
             await self._notify_silent(
                 tenant_id=sub.tenant_id,
@@ -1423,8 +1501,12 @@ class PaymentProofService:
                     ProofActionType.DOWNGRADE: "Downgrade",
                     ProofActionType.INITIAL_ACTIVATION: "Activation",
                 }
-                # For UPGRADE/DOWNGRADE, the receipt is for the target plan
-                if action in {ProofActionType.UPGRADE, ProofActionType.DOWNGRADE} and proof.target_plan:
+                # Whenever the proof named a target plan (UPGRADE, DOWNGRADE, or the
+                # INITIAL_ACTIVATION-with-target fallback that also switches plans),
+                # the receipt is for that target — sub.plan may be stale (see the
+                # in-app notification above for why). Only a true no-target
+                # activation falls back to sub.plan.
+                if proof.target_plan:
                     receipt_plan = proof.target_plan
                 else:
                     receipt_plan = sub.plan
@@ -1458,7 +1540,7 @@ class PaymentProofService:
         review_notes: str | None = None,
         request_id: str | None = None,
     ) -> PaymentProof:
-        proof = await self.proof_repo.get_by_id(proof_id)
+        proof = await self.proof_repo.get_by_id_locked(proof_id)
         if not proof:
             raise NotFoundError("PaymentProof", proof_id)
 

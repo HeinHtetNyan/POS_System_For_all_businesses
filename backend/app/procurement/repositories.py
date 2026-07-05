@@ -201,7 +201,10 @@ class SupplierPayableRepository(BaseRepository[SupplierPayable]):
                 SupplierPayable.id == payable_id,
                 SupplierPayable.tenant_id == tenant_id,
             )
-            .options(selectinload(SupplierPayable.payments))
+            .options(
+                selectinload(SupplierPayable.payments),
+                selectinload(SupplierPayable.purchase_order),
+            )
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
@@ -220,23 +223,42 @@ class SupplierPayableRepository(BaseRepository[SupplierPayable]):
         limit: int = 20,
         supplier_id: uuid.UUID | None = None,
         status: str | None = None,
+        branch_id: uuid.UUID | None = None,
     ) -> tuple[list[SupplierPayable], int]:
         filters = [SupplierPayable.tenant_id == tenant_id]
         if supplier_id:
             filters.append(SupplierPayable.supplier_id == supplier_id)
         if status:
             filters.append(SupplierPayable.status == status)
+        if branch_id:
+            # SupplierPayable has no branch_id of its own — it's 1:1 with the
+            # PurchaseOrder that carries one, so scope through that instead.
+            filters.append(
+                SupplierPayable.purchase_order_id.in_(
+                    select(PurchaseOrder.id).where(PurchaseOrder.branch_id == branch_id)
+                )
+            )
         return await self.get_all(offset=offset, limit=limit, filters=filters)
 
     async def get_open_by_supplier(
-        self, supplier_id: uuid.UUID, tenant_id: uuid.UUID
+        self,
+        supplier_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        branch_id: uuid.UUID | None = None,
     ) -> list[SupplierPayable]:
         from app.core.constants import SupplierPayableStatus
-        stmt = select(SupplierPayable).where(
+        conditions = [
             SupplierPayable.tenant_id == tenant_id,
             SupplierPayable.supplier_id == supplier_id,
             SupplierPayable.status.in_([SupplierPayableStatus.OPEN, SupplierPayableStatus.PARTIAL]),
-        )
+        ]
+        if branch_id:
+            conditions.append(
+                SupplierPayable.purchase_order_id.in_(
+                    select(PurchaseOrder.id).where(PurchaseOrder.branch_id == branch_id)
+                )
+            )
+        stmt = select(SupplierPayable).where(*conditions)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
@@ -244,6 +266,7 @@ class SupplierPayableRepository(BaseRepository[SupplierPayable]):
         stmt = (
             select(SupplierPayable)
             .where(SupplierPayable.id == payable_id)
+            .options(selectinload(SupplierPayable.purchase_order))
             .with_for_update()
         )
         result = await self.session.execute(stmt)

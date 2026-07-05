@@ -188,8 +188,10 @@ def create_application() -> FastAPI:
         upload_root = Path(settings.UPLOAD_DIR).resolve()
         file_path = (upload_root / "proofs" / tenant_id / filename).resolve()
 
-        # Prevent path traversal
-        if not str(file_path).startswith(str(upload_root)):
+        # Prevent path traversal. A plain str.startswith(upload_root) prefix check
+        # would also match a sibling directory like "uploads-evil" — is_relative_to
+        # compares actual path segments, not string prefixes.
+        if not file_path.is_relative_to(upload_root):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid path")
 
         if not file_path.is_file():
@@ -204,7 +206,7 @@ def create_application() -> FastAPI:
     async def serve_payment_icon(filename: str) -> FileResponse:
         upload_root = Path(settings.UPLOAD_DIR).resolve()
         file_path = (upload_root / "payment-icons" / filename).resolve()
-        if not str(file_path).startswith(str(upload_root)):
+        if not file_path.is_relative_to(upload_root):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid path")
         if not file_path.is_file():
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")

@@ -74,7 +74,7 @@ export const useAuthStore = create<AuthState>()(
       setUser: (user) => set({ user, isAuthenticated: !!user }),
     }),
     {
-      name: 'nexuspos-auth',
+      name: 'sawyunpos-auth',
       partialize: (s) => ({ user: s.user, isAuthenticated: s.isAuthenticated }),
     },
   ),

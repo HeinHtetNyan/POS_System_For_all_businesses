@@ -259,7 +259,7 @@ export default function ResellerPlansPage() {
   })
 
   const plans = (data?.items ?? [])
-    .filter(p => p.is_active && !p.is_referral_plan)
+    .filter(p => p.is_active && !p.is_custom && !p.is_referral_plan)
     .sort((a, b) => a.sort_order - b.sort_order || Number(a.price) - Number(b.price))
 
   // Highlight the middle / most expensive non-free plan

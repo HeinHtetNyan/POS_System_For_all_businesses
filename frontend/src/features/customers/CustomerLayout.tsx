@@ -4,6 +4,7 @@ import { cn, fmt } from '@/lib/utils'
 import { Spinner, Badge, Btn } from '@/components/ui'
 import { IconChevLeft, IconUser, IconPlus } from '@/components/icons'
 import { customersService } from '@/services/customers/customers.service'
+import { useAuthStore } from '@/store/auth.store'
 
 const TABS = [
   { to: '',           end: true,  label: 'Overview'       },
@@ -14,6 +15,9 @@ const TABS = [
 export default function CustomerLayout() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const user = useAuthStore(s => s.user)
+  // Cashiers get read-only lookup — see CustomersScreen.tsx for the same rule.
+  const canManageCustomers = user?.role !== 'CASHIER'
 
   const { data: customer, isLoading } = useQuery({
     queryKey: ['customer', id],
@@ -69,13 +73,15 @@ export default function CustomerLayout() {
             </p>
           </div>
 
-          <Btn
-            size="xs"
-            onClick={() => navigate(`/app/customers/${id}/new-sale`)}
-            className="flex-shrink-0"
-          >
-            <IconPlus width="11" height="11" /> New Order
-          </Btn>
+          {canManageCustomers && (
+            <Btn
+              size="xs"
+              onClick={() => navigate(`/app/customers/${id}/new-sale`)}
+              className="flex-shrink-0"
+            >
+              <IconPlus width="11" height="11" /> New Order
+            </Btn>
+          )}
 
           <div className="flex-shrink-0 text-right">
             <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Balance</p>

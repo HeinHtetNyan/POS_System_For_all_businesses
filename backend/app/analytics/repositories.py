@@ -21,14 +21,22 @@ from app.customers.models import Customer
 from app.models.branch import Branch
 from app.models.inventory import BranchInventory, StockMovement
 from app.models.product import Category, Product
+from app.models.tenant import Tenant
 from app.models.user import User
-from app.payments.models import Payment, Refund
+from app.payments.models import Payment, Refund, RefundItem
 from app.sales.models import Order, OrderItem
 
 
 class AnalyticsRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+
+    async def get_tenant_timezone(self, tenant_id: uuid.UUID) -> str:
+        """Return the tenant's configured IANA timezone name, defaulting to UTC."""
+        result = await self.session.execute(
+            select(Tenant.timezone).where(Tenant.id == tenant_id)
+        )
+        return result.scalar_one_or_none() or "UTC"
 
 
     def _order_filters(
@@ -183,7 +191,7 @@ class AnalyticsRepository:
                 func.coalesce(
                     func.sum(
                         BranchInventory.quantity_on_hand
-                        * func.coalesce(Product.cost_price, 0)
+                        * func.coalesce(BranchInventory.cost_price, Product.cost_price, 0)
                     ),
                     0,
                 ).label("inventory_value")
@@ -231,11 +239,15 @@ class AnalyticsRepository:
         start_dt: datetime | None = None,
         end_dt: datetime | None = None,
         branch_id: uuid.UUID | None = None,
+        tz_name: str = "UTC",
     ) -> list[dict[str, Any]]:
         pg_grain = {"daily": "day", "weekly": "week", "monthly": "month"}.get(
             granularity, "day"
         )
-        period_expr = func.date_trunc(pg_grain, Order.created_at).label("period")
+        # Convert to the tenant's local timezone before truncating, so daily/weekly/
+        # monthly buckets align with the tenant's calendar rather than UTC's.
+        local_created_at = func.timezone(tz_name, Order.created_at)
+        period_expr = func.date_trunc(pg_grain, local_created_at).label("period")
         filters = self._order_filters(tenant_id, start_dt, end_dt, branch_id)
         stmt = (
             select(
@@ -298,12 +310,27 @@ class AnalyticsRepository:
         branch_id: uuid.UUID | None = None,
     ) -> list[dict[str, Any]]:
         order_filters = self._order_filters(tenant_id, start_dt, end_dt, branch_id)
+        # Net "profit" against refunds the same way _get_profit_by_dim does, so the
+        # category breakdown reconciles with the financial summary for the same period.
+        refund_subq = (
+            select(
+                Product.category_id.label("dim_key"),
+                func.coalesce(func.sum(RefundItem.amount), 0).label("refunded_amount"),
+            )
+            .join(OrderItem, OrderItem.id == RefundItem.order_item_id)
+            .join(Order, Order.id == OrderItem.order_id)
+            .join(Product, Product.id == RefundItem.product_id)
+            .where(and_(*order_filters))
+            .group_by(Product.category_id)
+            .subquery("refund_by_category_sales")
+        )
         stmt = (
             select(
                 Product.category_id,
                 func.coalesce(Category.name, "Uncategorized").label("category_name"),
                 func.sum(OrderItem.quantity).label("quantity_sold"),
                 func.sum(OrderItem.total).label("sales"),
+                func.coalesce(func.max(refund_subq.c.refunded_amount), 0).label("refunded_amount"),
                 func.coalesce(
                     func.sum(
                         OrderItem.total
@@ -311,17 +338,24 @@ class AnalyticsRepository:
                         * func.coalesce(OrderItem.unit_cost_snapshot, 0)
                     ),
                     0,
-                ).label("profit"),
+                ).label("gross_profit"),
             )
             .join(Order, Order.id == OrderItem.order_id)
             .join(Product, Product.id == OrderItem.product_id)
             .outerjoin(Category, Category.id == Product.category_id)
+            # category_id is nullable (uncategorized products) — plain `==`
+            # never matches NULL = NULL in SQL, so uncategorized refunds would
+            # silently fail to join and always show refunded_amount = 0.
+            .outerjoin(refund_subq, refund_subq.c.dim_key.is_not_distinct_from(Product.category_id))
             .where(and_(*order_filters))
             .group_by(Product.category_id, Category.name)
             .order_by(func.sum(OrderItem.total).desc())
         )
         result = await self.session.execute(stmt)
-        return [dict(r) for r in result.mappings().all()]
+        rows = [dict(r) for r in result.mappings().all()]
+        for r in rows:
+            r["profit"] = Decimal(str(r["gross_profit"])) - Decimal(str(r["refunded_amount"]))
+        return rows
 
     async def get_sales_by_branch(
         self,
@@ -438,18 +472,27 @@ class AnalyticsRepository:
         ]
         if branch_id:
             filters.append(BranchInventory.branch_id == branch_id)
+        # Sum quantity*cost PER ROW (per branch) before aggregating — each
+        # branch can hold the same product at a different cost, so summing
+        # quantity first and multiplying by one cost afterwards (the old
+        # query) is wrong whenever no branch_id filter narrows this to a
+        # single branch's own cost.
+        line_value = BranchInventory.quantity_on_hand * func.coalesce(
+            BranchInventory.cost_price, Product.cost_price, 0
+        )
+        valuation_expr = func.coalesce(func.sum(line_value), 0)
+        qty_expr = func.sum(BranchInventory.quantity_on_hand)
         stmt = (
             select(
                 BranchInventory.product_id,
                 Product.name.label("product_name"),
                 Product.sku,
-                func.sum(BranchInventory.quantity_on_hand).label("quantity_on_hand"),
-                func.coalesce(Product.cost_price, 0).label("cost_price"),
-                func.coalesce(
-                    func.sum(BranchInventory.quantity_on_hand)
-                    * func.coalesce(Product.cost_price, 0),
-                    0,
-                ).label("valuation"),
+                qty_expr.label("quantity_on_hand"),
+                # Quantity-weighted average cost across whichever branches are
+                # included — the closest single number to "cost_price" that
+                # stays consistent with the valuation total below.
+                func.coalesce(valuation_expr / func.nullif(qty_expr, 0), 0).label("cost_price"),
+                valuation_expr.label("valuation"),
             )
             .join(Product, Product.id == BranchInventory.product_id)
             .where(and_(*filters))
@@ -457,14 +500,8 @@ class AnalyticsRepository:
                 BranchInventory.product_id,
                 Product.name,
                 Product.sku,
-                Product.cost_price,
             )
-            .order_by(
-                (
-                    func.sum(BranchInventory.quantity_on_hand)
-                    * func.coalesce(Product.cost_price, 0)
-                ).desc()
-            )
+            .order_by(valuation_expr.desc())
         )
         result = await self.session.execute(stmt)
         return [dict(r) for r in result.mappings().all()]
@@ -743,13 +780,32 @@ class AnalyticsRepository:
         )
         rev_expr = func.coalesce(func.sum(OrderItem.total), 0)
 
+        # OrderItem has no refund linkage of its own — refunds are recorded per
+        # RefundItem (product-level) or per Order (branch-level). Aggregate them
+        # separately per dimension and join in, so "profit" here nets out refunds
+        # the same way FinancialReportsService.get_summary's gross_profit does
+        # (net_revenue - cogs) instead of silently ignoring refunds.
         if dimension == "product":
             dim_id = OrderItem.product_id.label("dimension_id")
             dim_name = func.max(OrderItem.product_name).label("dimension_name")
-            group_cols = [OrderItem.product_id]
-            base = (
-                select(dim_id, dim_name, rev_expr.label("revenue"), cogs_expr.label("cogs"))
+            refund_subq = (
+                select(
+                    RefundItem.product_id.label("dim_key"),
+                    func.coalesce(func.sum(RefundItem.amount), 0).label("refunded_amount"),
+                )
+                .join(OrderItem, OrderItem.id == RefundItem.order_item_id)
                 .join(Order, Order.id == OrderItem.order_id)
+                .where(and_(*order_filters))
+                .group_by(RefundItem.product_id)
+                .subquery("refund_by_product")
+            )
+            base = (
+                select(
+                    dim_id, dim_name, rev_expr.label("revenue"), cogs_expr.label("cogs"),
+                    func.coalesce(func.max(refund_subq.c.refunded_amount), 0).label("refunded_amount"),
+                )
+                .join(Order, Order.id == OrderItem.order_id)
+                .outerjoin(refund_subq, refund_subq.c.dim_key == OrderItem.product_id)
                 .where(and_(*order_filters))
                 .group_by(OrderItem.product_id)
                 .order_by(rev_expr.desc())
@@ -759,12 +815,30 @@ class AnalyticsRepository:
             dim_name = func.coalesce(
                 func.max(Category.name), "Uncategorized"
             ).label("dimension_name")
-            group_cols = [Product.category_id]
+            refund_subq = (
+                select(
+                    Product.category_id.label("dim_key"),
+                    func.coalesce(func.sum(RefundItem.amount), 0).label("refunded_amount"),
+                )
+                .join(OrderItem, OrderItem.id == RefundItem.order_item_id)
+                .join(Order, Order.id == OrderItem.order_id)
+                .join(Product, Product.id == RefundItem.product_id)
+                .where(and_(*order_filters))
+                .group_by(Product.category_id)
+                .subquery("refund_by_category")
+            )
             base = (
-                select(dim_id, dim_name, rev_expr.label("revenue"), cogs_expr.label("cogs"))
+                select(
+                    dim_id, dim_name, rev_expr.label("revenue"), cogs_expr.label("cogs"),
+                    func.coalesce(func.max(refund_subq.c.refunded_amount), 0).label("refunded_amount"),
+                )
                 .join(Order, Order.id == OrderItem.order_id)
                 .join(Product, Product.id == OrderItem.product_id)
                 .outerjoin(Category, Category.id == Product.category_id)
+                # category_id is nullable — plain `==` never matches NULL =
+                # NULL, so uncategorized products' refunds would silently
+                # fail to join and always show refunded_amount = 0.
+                .outerjoin(refund_subq, refund_subq.c.dim_key.is_not_distinct_from(Product.category_id))
                 .where(and_(*order_filters))
                 .group_by(Product.category_id)
                 .order_by(rev_expr.desc())
@@ -772,10 +846,23 @@ class AnalyticsRepository:
         else:  # branch
             dim_id = Order.branch_id.label("dimension_id")
             dim_name = Branch.name.label("dimension_name")
+            refund_subq = (
+                select(
+                    Order.branch_id.label("dim_key"),
+                    func.coalesce(func.sum(Order.refunded_amount), 0).label("refunded_amount"),
+                )
+                .where(and_(*order_filters))
+                .group_by(Order.branch_id)
+                .subquery("refund_by_branch")
+            )
             base = (
-                select(dim_id, dim_name, rev_expr.label("revenue"), cogs_expr.label("cogs"))
+                select(
+                    dim_id, dim_name, rev_expr.label("revenue"), cogs_expr.label("cogs"),
+                    func.coalesce(func.max(refund_subq.c.refunded_amount), 0).label("refunded_amount"),
+                )
                 .join(OrderItem, OrderItem.order_id == Order.id)
                 .join(Branch, Branch.id == Order.branch_id)
+                .outerjoin(refund_subq, refund_subq.c.dim_key == Order.branch_id)
                 .where(and_(*order_filters))
                 .group_by(Order.branch_id, Branch.name)
                 .order_by(rev_expr.desc())
@@ -784,5 +871,6 @@ class AnalyticsRepository:
         result = await self.session.execute(base)
         rows = [dict(r) for r in result.mappings().all()]
         for r in rows:
-            r["profit"] = Decimal(str(r["revenue"])) - Decimal(str(r["cogs"]))
+            net_revenue = Decimal(str(r["revenue"])) - Decimal(str(r["refunded_amount"]))
+            r["profit"] = net_revenue - Decimal(str(r["cogs"]))
         return rows

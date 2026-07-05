@@ -17,6 +17,14 @@ celery_app = Celery(
     ],
 )
 
+# The worker process never imports app.main (only the api process does), so
+# without these imports the domain-event handlers below never register on
+# this process's event_publisher singleton — every published event (LOW_STOCK,
+# TRIAL_EXPIRING, etc.) would silently find zero handlers and no-op.
+import app.events.handlers  # noqa: E402,F401 — registers event handlers
+import app.notifications.handlers  # noqa: E402,F401 — registers notification handlers
+import app.reseller_finance.events.handlers  # noqa: E402,F401 — registers reseller-finance handlers
+
 celery_app.conf.update(
     task_serializer=settings.CELERY_TASK_SERIALIZER,
     result_serializer=settings.CELERY_RESULT_SERIALIZER,

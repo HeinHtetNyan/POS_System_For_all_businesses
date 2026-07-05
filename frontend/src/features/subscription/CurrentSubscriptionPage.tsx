@@ -8,7 +8,7 @@ import { useAuthStore } from '@/store/auth.store'
 import { subscriptionsService } from '@/services/subscriptions/subscriptions.service'
 import type { Plan } from '@/shared/types'
 import { ProofActionType } from '@/shared/types'
-import { LatestProofCard, PendingProofBadge } from '@/features/reseller/ResellerReferralPage'
+import { LatestProofCard, PendingProofBadge, UpcomingPlanCard } from '@/features/reseller/ResellerReferralPage'
 
 const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'danger' | 'info' | 'default'> = {
   ACTIVE:    'success',
@@ -16,6 +16,13 @@ const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'danger' | 'info' |
   EXPIRED:   'danger',
   SUSPENDED: 'warning',
   CANCELLED: 'default',
+}
+
+const RESUBMIT_LABEL: Record<ProofActionType, string> = {
+  [ProofActionType.UPGRADE]:            'Upgrade Payment',
+  [ProofActionType.DOWNGRADE]:          'Downgrade Payment',
+  [ProofActionType.RENEWAL]:            'Renewal Payment',
+  [ProofActionType.INITIAL_ACTIVATION]: 'Payment',
 }
 
 const FEATURE_LABELS: Record<string, string> = {
@@ -231,6 +238,7 @@ function PlanPickerModal({
   const currentPrice = Number(currentPlan.price)
   const plans = (data?.items ?? []).filter(p =>
     p.is_active &&
+    !p.is_custom &&
     p.id !== currentPlan.id &&
     !p.is_referral_plan &&
     (mode === 'upgrade' ? Number(p.price) > currentPrice : Number(p.price) < currentPrice),
@@ -289,9 +297,9 @@ function RequestUpgradeModal({ currentPlan, onClose }: { currentPlan: Plan; onCl
     queryFn: () => subscriptionsService.listPlans({ page_size: 50 }),
   })
 
-  // Only show real paid plans (not free trial / referral)
+  // Only show real paid plans (not free trial / referral / custom)
   const plans = (plansData?.items ?? []).filter(p =>
-    p.is_active && !p.is_referral_plan && p.trial_days === 0 && Number(p.price) > 0 && p.id !== currentPlan.id
+    p.is_active && !p.is_custom && !p.is_referral_plan && p.trial_days === 0 && Number(p.price) > 0 && p.id !== currentPlan.id
   ).sort((a, b) => Number(a.price) - Number(b.price))
 
   const submitMutation = useMutation({
@@ -466,7 +474,7 @@ function RequestUpgradeModal({ currentPlan, onClose }: { currentPlan: Plan; onCl
 export default function CurrentSubscriptionPage() {
   const user = useAuthStore(s => s.user)
   const qc = useQueryClient()
-  const [modal, setModal] = useState<'upgrade' | 'downgrade' | 'request-upgrade' | 'renew-proof' | null>(null)
+  const [modal, setModal] = useState<'upgrade' | 'downgrade' | 'request-upgrade' | 'renew-proof' | 'resubmit-proof' | null>(null)
   const [upgradePlanId, setUpgradePlanId] = useState<string | null>(null)
   const isOwner = user?.role === 'BUSINESS_OWNER'
 
@@ -534,7 +542,7 @@ export default function CurrentSubscriptionPage() {
 
   // Determine which actions are available based on plans that actually exist
   const currentPrice = Number(plan.price)
-  const activePaidPlans = (plansData?.items ?? []).filter(p => p.is_active && !p.is_referral_plan && Number(p.price) > 0)
+  const activePaidPlans = (plansData?.items ?? []).filter(p => p.is_active && !p.is_custom && !p.is_referral_plan && Number(p.price) > 0)
   const hasHigherPlan = activePaidPlans.some(p => Number(p.price) > currentPrice)
   const hasLowerPlan = activePaidPlans.some(p => Number(p.price) < currentPrice)
 
@@ -613,26 +621,22 @@ export default function CurrentSubscriptionPage() {
           onClose={() => setUpgradePlanId(null)}
         />
       )}
+      {modal === 'resubmit-proof' && latestProof?.status === 'REJECTED' && (
+        <ProofSubmitModal
+          title={`Resubmit ${RESUBMIT_LABEL[latestProof.action_type ?? ProofActionType.INITIAL_ACTIVATION]} Proof`}
+          subtitle={
+            latestProof.target_plan_name
+              ? `Your previous proof for ${latestProof.target_plan_name} was rejected${latestProof.review_notes ? `: "${latestProof.review_notes}"` : ''}. Upload a new receipt to try again.`
+              : `Your previous proof was rejected${latestProof.review_notes ? `: "${latestProof.review_notes}"` : ''}. Upload a new receipt to try again.`
+          }
+          actionType={latestProof.action_type ?? ProofActionType.INITIAL_ACTIVATION}
+          targetPlanId={latestProof.target_plan_id ?? undefined}
+          onClose={() => setModal(null)}
+        />
+      )}
 
       <div className="h-full overflow-y-auto p-4 sm:p-6">
         <div className="max-w-2xl space-y-4">
-          {/* Pending downgrade info banner */}
-          {sub.pending_downgrade_plan_id && (
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 flex items-start gap-3">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-amber-400 flex-shrink-0 mt-0.5">
-                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-              </svg>
-              <p className="text-sm text-amber-300">
-                Downgrade to{' '}
-                <span className="font-semibold">{pendingDowngradePlan?.name ?? 'a lower plan'}</span>{' '}
-                scheduled for end of billing period.
-                {sub.pending_downgrade_requested_at && (
-                  <span className="text-amber-400/70 text-xs ml-1">(requested {fmtDate(sub.pending_downgrade_requested_at)})</span>
-                )}
-              </p>
-            </div>
-          )}
-
           {/* Status card */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
             <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -678,6 +682,15 @@ export default function CurrentSubscriptionPage() {
             </div>
           </div>
 
+          {sub.pending_downgrade_plan_id && (
+            <UpcomingPlanCard
+              plan={pendingDowngradePlan}
+              effectiveDate={sub.expires_at}
+              paid={downgradeProofApproved}
+              pendingReview={pendingProofType === ProofActionType.DOWNGRADE}
+            />
+          )}
+
           {/* Usage & Limits */}
           {entitlementItems.length > 0 && (
             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
@@ -704,6 +717,11 @@ export default function CurrentSubscriptionPage() {
           {latestProof && (
             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
               <LatestProofCard proof={latestProof} />
+              {isOwner && latestProof.status === 'REJECTED' && (
+                <Btn size="sm" className="mt-3" onClick={() => setModal('resubmit-proof')}>
+                  Resubmit Proof
+                </Btn>
+              )}
             </div>
           )}
 
@@ -761,7 +779,12 @@ export default function CurrentSubscriptionPage() {
                         </Btn>
                       )
                     )}
-                    {hasLowerPlan && !sub.pending_downgrade_plan_id && (
+                    {/* Hidden while an upgrade proof is pending review — the
+                        Upgrade slot above already shows that pending state,
+                        and requesting a downgrade on top of an unreviewed
+                        upgrade would schedule a downgrade the moment the
+                        upgrade lands, discarding it. */}
+                    {hasLowerPlan && !sub.pending_downgrade_plan_id && pendingProofType !== ProofActionType.UPGRADE && (
                       <Btn variant="secondary" size="sm" onClick={() => setModal('downgrade')} disabled={downgradeMutation.isPending}>
                         Downgrade Plan
                       </Btn>
@@ -769,7 +792,7 @@ export default function CurrentSubscriptionPage() {
                     {sub.pending_downgrade_plan_id ? (
                       pendingProofType === ProofActionType.DOWNGRADE ? (
                         <PendingProofBadge />
-                      ) : downgradeProofApproved ? (
+                      ) : downgradeProofApproved || Number(pendingDowngradePlan?.price ?? -1) === 0 ? (
                         <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-green-500/10 border border-green-500/30 text-green-400">
                           Downgrade to {pendingDowngradePlan?.name ?? 'lower plan'} scheduled{sub.expires_at ? ` for ${fmtDate(sub.expires_at)}` : ''}
                         </span>

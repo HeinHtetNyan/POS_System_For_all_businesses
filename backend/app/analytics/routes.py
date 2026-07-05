@@ -37,6 +37,8 @@ from app.api.deps import (
     check_reseller_access,
     require_cashier_or_above,
     require_manager_or_above,
+    require_tenant_admin,
+    scope_branch_filter,
 )
 from app.core.cache import cache_get, cache_set
 from app.core.constants import UserRole
@@ -63,6 +65,7 @@ async def get_dashboard(
 ) -> DashboardResponse:
     # Cashiers only see their own sales; everyone else sees branch/tenant-level data.
     cashier_user_id = current_user.id if current_user.role == UserRole.CASHIER.value else None
+    branch_id = scope_branch_filter(current_user, branch_id)
     cache_key = f"dashboard:{tenant_id}:{branch_id or 'all'}:{cashier_user_id or 'all'}"
 
     cached = await cache_get(redis, cache_key)
@@ -97,6 +100,7 @@ async def get_sales_summary(
     end_date: date | None = Query(default=None),
     branch_id: uuid.UUID | None = Query(default=None),
 ) -> SalesSummaryResponse:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = SalesReportsService(db)
     return await svc.get_summary(
         tenant_id=tenant_id,
@@ -123,6 +127,7 @@ async def get_sales_trend(
     end_date: date | None = Query(default=None),
     branch_id: uuid.UUID | None = Query(default=None),
 ) -> SalesTrendResponse:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = SalesReportsService(db)
     return await svc.get_trend(
         tenant_id=tenant_id,
@@ -150,6 +155,7 @@ async def get_top_products(
     branch_id: uuid.UUID | None = Query(default=None),
     limit: int = Query(default=10, ge=1, le=100),
 ) -> list[TopProductResponse]:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = SalesReportsService(db)
     return await svc.get_top_products(
         tenant_id=tenant_id,
@@ -176,6 +182,7 @@ async def get_sales_by_category(
     end_date: date | None = Query(default=None),
     branch_id: uuid.UUID | None = Query(default=None),
 ) -> list[CategorySalesResponse]:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = SalesReportsService(db)
     return await svc.get_by_category(
         tenant_id=tenant_id,
@@ -194,7 +201,10 @@ async def get_sales_by_category(
 )
 async def get_sales_by_branch(
     db: DbSession,
-    current_user: Annotated[User, Depends(require_manager_or_above)],
+    # No branch_id filter exists on this report (it compares ACROSS branches by
+    # design), so a branch-scoped MANAGER can't be limited to their own branch
+    # here the way other endpoints are — only owner-level roles may view it.
+    current_user: Annotated[User, Depends(require_tenant_admin)],
     tenant_id: EffectiveTenantId,
     request_id: RequestId,
     start_date: date | None = Query(default=None),
@@ -224,6 +234,7 @@ async def get_sales_by_cashier(
     end_date: date | None = Query(default=None),
     branch_id: uuid.UUID | None = Query(default=None),
 ) -> list[CashierSalesResponse]:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = SalesReportsService(db)
     return await svc.get_by_cashier(
         tenant_id=tenant_id,
@@ -249,6 +260,7 @@ async def get_payment_methods(
     end_date: date | None = Query(default=None),
     branch_id: uuid.UUID | None = Query(default=None),
 ) -> list[PaymentMethodResponse]:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = SalesReportsService(db)
     return await svc.get_payment_methods(
         tenant_id=tenant_id,
@@ -273,6 +285,7 @@ async def get_inventory_valuation(
     request_id: RequestId,
     branch_id: uuid.UUID | None = Query(default=None),
 ) -> InventoryValuationResponse:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = InventoryReportsService(db)
     return await svc.get_valuation(
         tenant_id=tenant_id,
@@ -294,6 +307,7 @@ async def get_low_stock(
     request_id: RequestId,
     branch_id: uuid.UUID | None = Query(default=None),
 ) -> list[LowStockResponse]:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = InventoryReportsService(db)
     return await svc.get_low_stock(
         tenant_id=tenant_id,
@@ -318,6 +332,7 @@ async def get_inventory_movements(
     branch_id: uuid.UUID | None = Query(default=None),
     movement_type: str | None = Query(default=None),
 ) -> list[MovementReportResponse]:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = InventoryReportsService(db)
     return await svc.get_movements(
         tenant_id=tenant_id,
@@ -345,6 +360,7 @@ async def get_fast_moving(
     branch_id: uuid.UUID | None = Query(default=None),
     limit: int = Query(default=10, ge=1, le=100),
 ) -> list[FastMovingResponse]:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = InventoryReportsService(db)
     return await svc.get_fast_moving(
         tenant_id=tenant_id,
@@ -370,6 +386,7 @@ async def get_dead_stock(
     days: int = Query(default=90, ge=1, le=365),
     branch_id: uuid.UUID | None = Query(default=None),
 ) -> list[DeadStockResponse]:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = InventoryReportsService(db)
     return await svc.get_dead_stock(
         tenant_id=tenant_id,
@@ -395,6 +412,7 @@ async def get_financial_summary(
     end_date: date | None = Query(default=None),
     branch_id: uuid.UUID | None = Query(default=None),
 ) -> FinancialSummaryResponse:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = FinancialReportsService(db)
     return await svc.get_summary(
         tenant_id=tenant_id,
@@ -421,6 +439,7 @@ async def get_profit_report(
     end_date: date | None = Query(default=None),
     branch_id: uuid.UUID | None = Query(default=None),
 ) -> ProfitReportResponse:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = FinancialReportsService(db)
     return await svc.get_profit_report(
         tenant_id=tenant_id,
@@ -473,6 +492,7 @@ async def export_sales_refunds(
     branch_id: uuid.UUID | None = Query(default=None),
     fmt: str = Query(default="csv", alias="format", pattern="^(csv|xlsx)$"),
 ) -> Response:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = ExportService(db)
     data = await svc.export_sales_and_refunds(
         tenant_id=tenant_id,
@@ -498,6 +518,7 @@ async def export_orders(
     branch_id: uuid.UUID | None = Query(default=None),
     fmt: str = Query(default="csv", alias="format", pattern="^(csv|xlsx)$"),
 ) -> Response:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = ExportService(db)
     data = await svc.export_order_items(
         tenant_id=tenant_id,
@@ -521,6 +542,7 @@ async def export_inventory_stocks(
     branch_id: uuid.UUID | None = Query(default=None),
     fmt: str = Query(default="csv", alias="format", pattern="^(csv|xlsx)$"),
 ) -> Response:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = ExportService(db)
     data = await svc.export_inventory_stocks(
         tenant_id=tenant_id,
@@ -543,6 +565,7 @@ async def export_top_products(
     branch_id: uuid.UUID | None = Query(default=None),
     fmt: str = Query(default="csv", alias="format", pattern="^(csv|xlsx)$"),
 ) -> Response:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = ExportService(db)
     data = await svc.export_top_products(
         tenant_id=tenant_id,
@@ -568,6 +591,7 @@ async def export_sales_by_cashier(
     branch_id: uuid.UUID | None = Query(default=None),
     fmt: str = Query(default="csv", alias="format", pattern="^(csv|xlsx)$"),
 ) -> Response:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = ExportService(db)
     data = await svc.export_sales_by_cashier(
         tenant_id=tenant_id,
@@ -593,6 +617,7 @@ async def export_sales_by_category(
     branch_id: uuid.UUID | None = Query(default=None),
     fmt: str = Query(default="csv", alias="format", pattern="^(csv|xlsx)$"),
 ) -> Response:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = ExportService(db)
     data = await svc.export_sales_by_category(
         tenant_id=tenant_id,
@@ -618,6 +643,7 @@ async def export_payment_methods(
     branch_id: uuid.UUID | None = Query(default=None),
     fmt: str = Query(default="csv", alias="format", pattern="^(csv|xlsx)$"),
 ) -> Response:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = ExportService(db)
     data = await svc.export_payment_methods(
         tenant_id=tenant_id,
@@ -644,6 +670,7 @@ async def export_sales_trend(
     granularity: str = Query(default="daily", pattern="^(daily|weekly|monthly)$"),
     fmt: str = Query(default="csv", alias="format", pattern="^(csv|xlsx)$"),
 ) -> Response:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = ExportService(db)
     data = await svc.export_sales_trend(
         tenant_id=tenant_id,
@@ -670,6 +697,7 @@ async def export_profit_report(
     branch_id: uuid.UUID | None = Query(default=None),
     fmt: str = Query(default="csv", alias="format", pattern="^(csv|xlsx)$"),
 ) -> Response:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = ExportService(db)
     data = await svc.export_profit_report(
         tenant_id=tenant_id,
@@ -693,6 +721,7 @@ async def export_low_stock(
     branch_id: uuid.UUID | None = Query(default=None),
     fmt: str = Query(default="csv", alias="format", pattern="^(csv|xlsx)$"),
 ) -> Response:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = ExportService(db)
     data = await svc.export_low_stock(
         tenant_id=tenant_id,
@@ -715,6 +744,7 @@ async def export_fast_moving(
     branch_id: uuid.UUID | None = Query(default=None),
     fmt: str = Query(default="csv", alias="format", pattern="^(csv|xlsx)$"),
 ) -> Response:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = ExportService(db)
     data = await svc.export_fast_moving(
         tenant_id=tenant_id,
@@ -739,6 +769,7 @@ async def export_dead_stock(
     branch_id: uuid.UUID | None = Query(default=None),
     fmt: str = Query(default="csv", alias="format", pattern="^(csv|xlsx)$"),
 ) -> Response:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = ExportService(db)
     data = await svc.export_dead_stock(
         tenant_id=tenant_id,
@@ -763,6 +794,7 @@ async def export_stock_movements(
     movement_type: str | None = Query(default=None),
     fmt: str = Query(default="csv", alias="format", pattern="^(csv|xlsx)$"),
 ) -> Response:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = ExportService(db)
     data = await svc.export_stock_movements(
         tenant_id=tenant_id,

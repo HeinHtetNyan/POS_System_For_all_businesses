@@ -3,7 +3,6 @@ import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { cn } from '@/shared/utils'
 import { useAuthStore } from '@/store/auth.store'
 import { useUIStore } from '@/store/ui.store'
-import { ResellerPermissionProvider } from './ResellerPermissionContext'
 import { ROLE_BADGE_STYLES } from '@/shared/constants/rbac'
 import { IconMenu, IconX, IconLogout } from '@/components/icons'
 
@@ -70,12 +69,10 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
       {/* Logo */}
       <div className="px-4 py-5 border-b border-zinc-800 flex-shrink-0">
         <Link to="/" className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-orange-500 flex items-center justify-center text-black font-black text-lg flex-shrink-0 shadow-lg shadow-orange-900/40">
-            R
-          </div>
+          <img src="/logo-icon.png" alt="SawYunPos" className="w-9 h-9 rounded-xl flex-shrink-0 shadow-lg shadow-blue-900/40" />
           <div>
             <p className="font-bold text-zinc-100 text-sm leading-tight">Reseller Portal</p>
-            <p className="text-zinc-500 text-[10px] leading-tight tracking-wider uppercase">NexusPOS</p>
+            <p className="text-zinc-500 text-[10px] leading-tight tracking-wider uppercase">SawYunPos</p>
           </div>
         </Link>
       </div>
@@ -143,7 +140,7 @@ function ResellerLayoutInner({ children }: { children?: ReactNode }) {
       )}>
         <div className="flex items-center justify-between px-4 py-3 bg-zinc-950 border-b border-zinc-800 flex-shrink-0">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-orange-500 flex items-center justify-center text-black font-black text-sm">R</div>
+            <img src="/logo-icon.png" alt="SawYunPos" className="w-7 h-7 rounded-lg" />
             <span className="font-bold text-zinc-100 text-sm">Reseller</span>
           </div>
           <button onClick={closeSidebar} aria-label="Close menu" className="w-8 h-8 flex items-center justify-center rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800">
@@ -169,9 +166,7 @@ function ResellerLayoutInner({ children }: { children?: ReactNode }) {
             <IconMenu width="16" height="16" />
           </button>
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-orange-500 flex items-center justify-center flex-shrink-0">
-              <span className="text-black font-black text-xs">R</span>
-            </div>
+            <img src="/logo-icon.png" alt="SawYunPos" className="w-6 h-6 rounded-md flex-shrink-0" />
             <span className="text-xs font-semibold text-zinc-400">Reseller Portal</span>
           </div>
         </header>
@@ -185,9 +180,5 @@ function ResellerLayoutInner({ children }: { children?: ReactNode }) {
 }
 
 export default function ResellerLayout() {
-  return (
-    <ResellerPermissionProvider>
-      <ResellerLayoutInner />
-    </ResellerPermissionProvider>
-  )
+  return <ResellerLayoutInner />
 }

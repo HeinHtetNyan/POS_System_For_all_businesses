@@ -12,10 +12,10 @@ export default defineConfig(({ mode }) => {
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico'],
+      includeAssets: ['favicon.ico', 'logo-icon.png'],
       manifest: {
-        name: 'NexusPOS',
-        short_name: 'NexusPOS',
+        name: 'SawYunPos',
+        short_name: 'SawYunPos',
         description: 'Enterprise Offline-First Point of Sale',
         theme_color: '#09090B',
         background_color: '#09090B',

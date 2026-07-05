@@ -15,6 +15,7 @@ from app.api.deps import (
     get_effective_tenant_id,
     get_request_id,
     require_roles,
+    scope_branch_filter,
 )
 from app.core.constants import UserRole
 from app.payments.schemas import (
@@ -82,7 +83,6 @@ _refund_access = require_roles(
     UserRole.SUPER_ADMIN,
     UserRole.BUSINESS_OWNER,
     UserRole.MANAGER,
-    UserRole.CASHIER,
 )
 _view_access = require_roles(
     UserRole.SUPER_ADMIN,
@@ -220,10 +220,12 @@ async def list_refunds(
     current_user: User = _view_access,
     tenant_id: uuid.UUID = Depends(get_effective_tenant_id),
     order_id: uuid.UUID | None = Query(default=None),
+    branch_id: uuid.UUID | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=500),
 ) -> RefundListResponse:
     cashier_user_id = current_user.id if current_user.role == UserRole.CASHIER.value else None
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = RefundService(db)
     items, total = await svc.list_refunds(
         tenant_id=tenant_id,
@@ -231,6 +233,7 @@ async def list_refunds(
         page_size=page_size,
         order_id=order_id,
         cashier_user_id=cashier_user_id,
+        branch_id=branch_id,
     )
 
     # Batch-load processor names: one query for all processors in this page.

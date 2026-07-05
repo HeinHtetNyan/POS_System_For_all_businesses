@@ -63,6 +63,7 @@ class CategorySalesResponse(BaseSchema):
     category_name: str
     quantity_sold: Decimal
     sales: Decimal
+    refunded_amount: Decimal
     profit: Decimal
 
 
@@ -154,6 +155,7 @@ class ProfitReportItem(BaseSchema):
     dimension_id: uuid.UUID | None
     dimension_name: str
     revenue: Decimal
+    refunded_amount: Decimal
     cogs: Decimal
     profit: Decimal
     margin_pct: Decimal

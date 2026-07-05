@@ -149,9 +149,19 @@ function AdjustmentModal({ resellerId, onClose }: { resellerId: string; onClose:
           </select>
         </div>
         <div>
-          <label className="text-xs text-zinc-400 mb-1 block">Amount (use PENALTY type to deduct)</label>
+          <label className="text-xs text-zinc-400 mb-1 block">Amount</label>
           <input type="number" value={amount} onChange={e => setAmount(e.target.value)} step="0.01"
             className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-orange-500" />
+          {/* BONUS/PENALTY always apply the absolute value in their fixed
+              direction (credit / debit) regardless of sign — only
+              MANUAL_ADJUSTMENT honours a negative amount as a debit. */}
+          <p className="text-[11px] text-zinc-500 mt-1">
+            {type === 'PENALTY'
+              ? 'Always deducted from the wallet, regardless of sign.'
+              : type === 'BONUS'
+                ? 'Always credited to the wallet, regardless of sign.'
+                : 'Positive credits the wallet, negative debits it.'}
+          </p>
         </div>
         <div>
           <label className="text-xs text-zinc-400 mb-1 block">Notes (required)</label>
@@ -160,7 +170,7 @@ function AdjustmentModal({ resellerId, onClose }: { resellerId: string; onClose:
         </div>
         <div className="flex gap-3 justify-end">
           <Btn variant="ghost" size="sm" onClick={onClose}>Cancel</Btn>
-          <Btn size="sm" onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!amount || !notes}>Apply</Btn>
+          <Btn size="sm" onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!amount || Number(amount) === 0 || !notes}>Apply</Btn>
         </div>
       </div>
     </div>

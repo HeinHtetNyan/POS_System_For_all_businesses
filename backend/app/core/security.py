@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -10,6 +11,23 @@ from jose import JWTError, jwt
 from app.core.config import settings
 from app.core.constants import TOKEN_TYPE_ACCESS, TOKEN_TYPE_REFRESH
 from app.core.exceptions import TokenError
+
+
+def normalize_phone(phone: str | None) -> str | None:
+    """Canonicalize a phone number for storage and lookup.
+
+    Login matches phone numbers with an exact string comparison, so any
+    formatting difference between what was stored (e.g. "+95 9 123 456 789")
+    and what's typed at login (e.g. "09123456789") would otherwise fail to
+    match. Strips everything but digits, keeping a leading '+' if present.
+    """
+    if not phone:
+        return phone
+    phone = phone.strip()
+    digits = re.sub(r"\D", "", phone)
+    if not digits:
+        return phone
+    return f"+{digits}" if phone.startswith("+") else digits
 
 
 def hash_password(password: str) -> str:

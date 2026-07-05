@@ -234,3 +234,19 @@ class InventoryTransferRepository(BaseRepository[InventoryTransfer]):
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def get_with_items_locked(
+        self, transfer_id: uuid.UUID
+    ) -> InventoryTransfer | None:
+        """Same as get_with_items, but with SELECT FOR UPDATE on the transfer row
+        itself — without this, two concurrent execute-transfer requests can both
+        read status=APPROVED before either commits and each run the transfer,
+        double-moving stock between branches."""
+        stmt = (
+            select(InventoryTransfer)
+            .where(InventoryTransfer.id == transfer_id)
+            .options(selectinload(InventoryTransfer.items))
+            .with_for_update()
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()

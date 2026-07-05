@@ -17,6 +17,7 @@ from app.core.constants import (
     SupplierPaymentStatus,
 )
 from app.core.exceptions import BusinessRuleError, NotFoundError, ValidationError
+from app.core.logging import get_logger
 from app.procurement.models import (
     GoodsReceipt,
     GoodsReceiptItem,
@@ -43,9 +44,30 @@ from app.repositories.product_repository import ProductRepository
 from app.services.audit_service import AuditService
 from app.services.inventory_service import InventoryService
 
+logger = get_logger(__name__)
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+async def _supplier_name(session: AsyncSession, supplier_id: uuid.UUID) -> str:
+    from sqlalchemy import select
+    from app.models.supplier import Supplier
+
+    result = await session.execute(select(Supplier.name).where(Supplier.id == supplier_id))
+    return result.scalar_one_or_none() or "Unknown Supplier"
+
+
+async def _user_name(session: AsyncSession, user_id: uuid.UUID) -> str:
+    from sqlalchemy import select
+    from app.models.user import User
+
+    result = await session.execute(
+        select(User.first_name, User.last_name).where(User.id == user_id)
+    )
+    row = result.first()
+    return f"{row[0]} {row[1]}".strip() if row else "Someone"
 
 
 
@@ -77,13 +99,12 @@ class PurchaseOrderService:
         )
         total_amount = subtotal - data.discount_amount + data.tax_amount
 
-        now = _now()
         po = PurchaseOrder(
             tenant_id=tenant_id,
             branch_id=data.branch_id,
             supplier_id=data.supplier_id,
             po_number=po_number,
-            status=PurchaseOrderStatus.APPROVED,
+            status=PurchaseOrderStatus.DRAFT,
             order_date=data.order_date,
             expected_date=data.expected_date,
             subtotal=subtotal,
@@ -92,8 +113,6 @@ class PurchaseOrderService:
             total_amount=total_amount,
             notes=data.notes,
             created_by=actor_id,
-            approved_by=actor_id,
-            approved_at=now,
         )
         self.session.add(po)
         await self.session.flush()
@@ -114,19 +133,8 @@ class PurchaseOrderService:
 
         await self.session.flush()
 
-        # Auto-create payable so owner can pay immediately (before or after receiving)
-        payable = SupplierPayable(
-            tenant_id=tenant_id,
-            supplier_id=data.supplier_id,
-            purchase_order_id=po.id,
-            total_amount=total_amount,
-            paid_amount=Decimal("0"),
-            remaining_amount=total_amount,
-            status=SupplierPayableStatus.OPEN,
-        )
-        self.session.add(payable)
-        await self.session.flush()
-
+        # No SupplierPayable here — the PO starts as DRAFT and isn't a committed
+        # debt yet. approve_po() creates the payable once a Manager+ approves it.
         await self.audit.log(
             action=AuditAction.PURCHASE_ORDER_CREATED,
             actor_user_id=actor_id,
@@ -151,8 +159,10 @@ class PurchaseOrderService:
         tenant_id: uuid.UUID,
         data: PurchaseOrderUpdate,
         actor_id: uuid.UUID,
+        request_id: str | None = None,
     ) -> PurchaseOrder:
         po = await self._get_editable(po_id, tenant_id)
+        old_total_amount = po.total_amount
 
         if data.order_date is not None:
             po.order_date = data.order_date
@@ -190,6 +200,37 @@ class PurchaseOrderService:
             po.total_amount = subtotal - po.discount_amount + po.tax_amount
 
         await self.session.flush()
+
+        # An APPROVED PO already has a SupplierPayable created at the OLD total —
+        # keep it in sync with whatever the edit just changed the PO to, or the
+        # payable silently overstates/understates what's actually owed.
+        total_delta = po.total_amount - old_total_amount
+        if total_delta != Decimal("0") and po.payable:
+            payable = await self.payable_repo.get_locked(po.payable.id)
+            if payable:
+                payable.total_amount += total_delta
+                payable.remaining_amount += total_delta
+                if payable.remaining_amount <= Decimal("0"):
+                    payable.remaining_amount = Decimal("0")
+                    payable.status = SupplierPayableStatus.PAID
+                elif payable.status == SupplierPayableStatus.PAID:
+                    payable.status = (
+                        SupplierPayableStatus.PARTIAL
+                        if payable.paid_amount > Decimal("0")
+                        else SupplierPayableStatus.OPEN
+                    )
+                await self.session.flush()
+
+        await self.audit.log(
+            action=AuditAction.PURCHASE_ORDER_UPDATED,
+            actor_user_id=actor_id,
+            tenant_id=tenant_id,
+            entity_type=EntityType.PURCHASE_ORDER,
+            entity_id=po_id,
+            before_state={"total_amount": str(old_total_amount)},
+            after_state={"total_amount": str(po.total_amount)},
+            request_id=request_id,
+        )
         return await self.po_repo.get_with_items(po_id)  # type: ignore[return-value]
 
     async def submit_po(
@@ -199,7 +240,17 @@ class PurchaseOrderService:
         actor_id: uuid.UUID,
         request_id: str | None = None,
     ) -> PurchaseOrder:
-        po = await self._get_editable(po_id, tenant_id)
+        # Deliberately NOT using _get_editable — that also allows an APPROVED PO
+        # with nothing received (so it can still be corrected), but "submit for
+        # approval" only makes sense from DRAFT. Reusing _get_editable here would
+        # let an already-APPROVED PO revert to SUBMITTED, orphaning its approval
+        # fields and letting a second approve_po() call crash on the payable's
+        # one-per-PO unique constraint.
+        po = await self._require_tenant(po_id, tenant_id)
+        if po.status != PurchaseOrderStatus.DRAFT:
+            raise BusinessRuleError(
+                f"Purchase order must be DRAFT to submit for approval. Current: '{po.status}'"
+            )
 
         po.status = PurchaseOrderStatus.SUBMITTED
         await self.session.flush()
@@ -212,6 +263,28 @@ class PurchaseOrderService:
             entity_id=po_id,
             request_id=request_id,
         )
+
+        try:
+            from app.events.base import DomainEvent
+            from app.events.publisher import event_publisher
+            from app.events.types import EventType
+            await event_publisher.publish(DomainEvent(
+                event_type=EventType.PURCHASE_ORDER_SUBMITTED,
+                tenant_id=tenant_id,
+                actor_id=actor_id,
+                payload={
+                    "purchase_order_id": str(po.id),
+                    "po_number": po.po_number,
+                    "supplier_name": await _supplier_name(self.session, po.supplier_id),
+                    "total_amount": str(po.total_amount),
+                    "currency": "MMK",
+                    "submitted_by_name": await _user_name(self.session, actor_id),
+                    "branch_id": str(po.branch_id),
+                },
+            ))
+        except Exception as exc:
+            logger.warning("po_submitted_event_failed", error=str(exc))
+
         return await self.po_repo.get_with_items(po_id)  # type: ignore[return-value]
 
     async def approve_po(
@@ -246,6 +319,10 @@ class PurchaseOrderService:
         self.session.add(payable)
         await self.session.flush()
         await self.session.refresh(payable)
+        # po.payable was already loaded (as None) by _require_tenant earlier in this
+        # request — inserting the row above doesn't retroactively update that cached
+        # relationship, so the response would still show payable=null without this.
+        po.payable = payable
 
         await self.audit.log(
             action=AuditAction.PURCHASE_ORDER_APPROVED,
@@ -268,6 +345,26 @@ class PurchaseOrderService:
             },
             request_id=request_id,
         )
+
+        try:
+            from app.events.base import DomainEvent
+            from app.events.publisher import event_publisher
+            from app.events.types import EventType
+            await event_publisher.publish(DomainEvent(
+                event_type=EventType.PURCHASE_ORDER_APPROVED,
+                tenant_id=tenant_id,
+                actor_id=actor_id,
+                payload={
+                    "purchase_order_id": str(po_id),
+                    "po_number": po.po_number,
+                    "supplier_name": await _supplier_name(self.session, po.supplier_id),
+                    "total_amount": str(po.total_amount),
+                    "currency": "MMK",
+                    "branch_id": str(po.branch_id),
+                },
+            ))
+        except Exception as exc:
+            logger.warning("po_approved_event_failed", error=str(exc))
 
         return await self.po_repo.get_with_items(po_id)  # type: ignore[return-value]
 
@@ -293,8 +390,14 @@ class PurchaseOrderService:
 
         po.status = PurchaseOrderStatus.CANCELLED
 
-        if po.payable and po.payable.status != SupplierPayableStatus.PAID:
-            po.payable.status = SupplierPayableStatus.VOIDED
+        # Re-fetch with a row lock before mutating — po.payable came from an
+        # unlocked relationship load, and a concurrent payment recording
+        # (which does lock it) could otherwise be silently clobbered back to
+        # VOIDED here, hiding that the supplier was actually paid.
+        if po.payable:
+            locked_payable = await self.payable_repo.get_locked(po.payable.id)
+            if locked_payable and locked_payable.status != SupplierPayableStatus.PAID:
+                locked_payable.status = SupplierPayableStatus.VOIDED
 
         await self.session.flush()
 
@@ -346,11 +449,19 @@ class PurchaseOrderService:
         self, po_id: uuid.UUID, tenant_id: uuid.UUID
     ) -> PurchaseOrder:
         po = await self._require_tenant(po_id, tenant_id)
-        if po.status != PurchaseOrderStatus.DRAFT:
-            raise BusinessRuleError(
-                f"Purchase order can only be edited in DRAFT status. Current: '{po.status}'"
-            )
-        return po
+        # DRAFT is always editable. APPROVED POs with nothing received yet are
+        # just as safe to edit; once any quantity has been received against
+        # them, editing would desync the receiving reconciliation.
+        if po.status == PurchaseOrderStatus.DRAFT:
+            return po
+        if po.status == PurchaseOrderStatus.APPROVED and not any(
+            item.received_quantity > 0 for item in po.items
+        ):
+            return po
+        raise BusinessRuleError(
+            f"Purchase order can no longer be edited (status: '{po.status}', "
+            "or receiving has already begun)."
+        )
 
 
 
@@ -361,6 +472,7 @@ class ReceivingService:
         self.po_item_repo = PurchaseOrderItemRepository(session)
         self.gr_repo = GoodsReceiptRepository(session)
         self.gr_counter_repo = GRCounterRepository(session)
+        self.payable_repo = SupplierPayableRepository(session)
         self.audit = AuditService(session)
         self.inv_service = InventoryService(session)
         self.product_repo = ProductRepository(session)
@@ -435,9 +547,16 @@ class ReceivingService:
         await self.session.refresh(receipt)
 
         # Process each item: create receipt item + inventory movement
+        payable_variance = Decimal("0")
         for item_data in data.items:
             poi = po_items_by_id[item_data.purchase_order_item_id]
             line_total = item_data.received_quantity * item_data.unit_cost
+
+            # The supplier payable was created from the PO's quoted unit_cost. If the
+            # actual receiving cost differs (common — invoices vs. quotes), track the
+            # difference so the payable reflects what's actually owed, not the
+            # original PO estimate.
+            payable_variance += item_data.received_quantity * (item_data.unit_cost - poi.unit_cost)
 
             gr_item = GoodsReceiptItem(
                 goods_receipt_id=receipt.id,
@@ -467,7 +586,20 @@ class ReceivingService:
                 reason=f"Goods receipt {receipt_number} from PO {po.po_number}",
             )
 
-            # Update product cost price with the received unit cost
+            # Update this branch's own cost — NOT the tenant-wide Product.cost_price,
+            # which would otherwise be silently overwritten by whichever branch
+            # last received stock, corrupting COGS/valuation for every other
+            # branch still holding units bought at a different cost.
+            branch_inv = await self.inv_service.inv_repo.get_or_create_locked(
+                tenant_id=tenant_id,
+                branch_id=data.branch_id,
+                product_id=poi.product_id,
+                variant_id=poi.variant_id,
+            )
+            branch_inv.cost_price = item_data.unit_cost
+
+            # Still update Product.cost_price as a tenant-wide fallback/default
+            # for branches that haven't received their own stock yet.
             product = await self.product_repo.get_active_by_id_and_tenant(
                 poi.product_id, tenant_id
             )
@@ -475,6 +607,42 @@ class ReceivingService:
                 await self.product_repo.update(product, cost_price=item_data.unit_cost)
 
         await self.session.flush()
+
+        # Reconcile the supplier payable to the actual received cost
+        if payable_variance != Decimal("0"):
+            payable = await self.payable_repo.get_by_po(po.id)
+            if payable:
+                payable = await self.payable_repo.get_locked(payable.id)
+            if payable:
+                before_total = payable.total_amount
+                payable.total_amount += payable_variance
+                payable.remaining_amount += payable_variance
+                if payable.remaining_amount <= Decimal("0"):
+                    payable.remaining_amount = Decimal("0")
+                    payable.status = SupplierPayableStatus.PAID
+                elif payable.status == SupplierPayableStatus.PAID:
+                    # Variance re-opened a previously fully-paid payable
+                    payable.status = (
+                        SupplierPayableStatus.PARTIAL
+                        if payable.paid_amount > Decimal("0")
+                        else SupplierPayableStatus.OPEN
+                    )
+                await self.session.flush()
+
+                await self.audit.log(
+                    action=AuditAction.PAYABLE_ADJUSTED,
+                    actor_user_id=actor_id,
+                    tenant_id=tenant_id,
+                    entity_type=EntityType.SUPPLIER_PAYABLE,
+                    entity_id=payable.id,
+                    before_state={"total_amount": str(before_total)},
+                    after_state={
+                        "total_amount": str(payable.total_amount),
+                        "variance": str(payable_variance),
+                        "reason": f"Receiving cost variance on {receipt_number}",
+                    },
+                    request_id=request_id,
+                )
 
         # Update PO status based on received totals
         all_items = await self.po_item_repo.get_by_po(po.id)
@@ -503,6 +671,25 @@ class ReceivingService:
             },
             request_id=request_id,
         )
+
+        try:
+            from app.events.base import DomainEvent
+            from app.events.publisher import event_publisher
+            from app.events.types import EventType
+            await event_publisher.publish(DomainEvent(
+                event_type=EventType.GOODS_RECEIPT_CREATED,
+                tenant_id=tenant_id,
+                actor_id=actor_id,
+                payload={
+                    "goods_receipt_id": str(receipt.id),
+                    "receipt_number": receipt_number,
+                    "purchase_order_id": str(po.id),
+                    "po_number": po.po_number,
+                    "branch_id": str(receipt.branch_id),
+                },
+            ))
+        except Exception as exc:
+            logger.warning("goods_receipt_created_event_failed", error=str(exc))
 
         return await self.gr_repo.get_with_items(receipt.id)  # type: ignore[return-value]
 
@@ -554,6 +741,7 @@ class SupplierPayableService:
         page_size: int = 20,
         supplier_id: uuid.UUID | None = None,
         status: str | None = None,
+        branch_id: uuid.UUID | None = None,
     ) -> tuple[list[SupplierPayable], int]:
         offset = (page - 1) * page_size
         return await self.payable_repo.get_by_tenant(
@@ -562,6 +750,7 @@ class SupplierPayableService:
             limit=page_size,
             supplier_id=supplier_id,
             status=status,
+            branch_id=branch_id,
         )
 
     async def record_payment(
@@ -629,7 +818,7 @@ class SupplierPayableService:
         return payment
 
     async def supplier_balance(
-        self, supplier_id: uuid.UUID, tenant_id: uuid.UUID
+        self, supplier_id: uuid.UUID, tenant_id: uuid.UUID, branch_id: uuid.UUID | None = None
     ) -> dict[str, Any]:
         from app.models.supplier import Supplier
         from sqlalchemy import select as _select
@@ -645,7 +834,9 @@ class SupplierPayableService:
         if not supplier:
             raise NotFoundError("Supplier", supplier_id)
 
-        open_payables = await self.payable_repo.get_open_by_supplier(supplier_id, tenant_id)
+        open_payables = await self.payable_repo.get_open_by_supplier(
+            supplier_id, tenant_id, branch_id=branch_id
+        )
 
         total_payable = sum(p.total_amount for p in open_payables)
         total_paid = sum(p.paid_amount for p in open_payables)

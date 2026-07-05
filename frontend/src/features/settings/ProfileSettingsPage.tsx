@@ -12,11 +12,12 @@ import { usersService } from '@/services/users/users.service'
 import { authService } from '@/services/auth/auth.service'
 import { useAuthStore } from '@/store/auth.store'
 
-function inputCls(err = false) {
+function inputCls(err = false, disabled = false) {
   return cn(
     'w-full bg-zinc-950 border rounded-xl text-zinc-100 placeholder-zinc-600 text-sm',
     'focus:outline-none focus:ring-1 focus:ring-amber-500/20 transition-all py-2.5 px-3',
     err ? 'border-red-500' : 'border-zinc-700 focus:border-amber-500',
+    disabled && 'border-zinc-800 text-zinc-500 cursor-not-allowed opacity-70',
   )
 }
 
@@ -47,10 +48,18 @@ const passwordSchema = z.object({
 })
 type PasswordForm = z.infer<typeof passwordSchema>
 
+const emailSchema = z.object({
+  new_email: z.string().min(1, 'Required').email('Enter a valid email address'),
+  current_password: z.string().min(1, 'Required'),
+})
+type EmailForm = z.infer<typeof emailSchema>
+
 export default function ProfileSettingsPage() {
   const user = useAuthStore(s => s.user)
   const qc   = useQueryClient()
   const [showPassword, setShowPassword] = useState(false)
+  const [showEmail, setShowEmail] = useState(false)
+  const [isEditingProfile, setIsEditingProfile] = useState(false)
 
   const profileForm = useForm<ProfileForm>({
     resolver: zodResolver(profileSchema),
@@ -66,11 +75,17 @@ export default function ProfileSettingsPage() {
     defaultValues: { current_password: '', new_password: '', confirm_password: '' },
   })
 
+  const emailForm = useForm<EmailForm>({
+    resolver: zodResolver(emailSchema),
+    defaultValues: { new_email: '', current_password: '' },
+  })
+
   const profileMutation = useMutation({
     mutationFn: (data: ProfileForm) => usersService.update(user!.id, data),
     onSuccess: () => {
       toast.success('Profile updated')
       qc.invalidateQueries({ queryKey: ['auth', 'me'] })
+      setIsEditingProfile(false)
     },
     onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to update profile'),
   })
@@ -84,6 +99,16 @@ export default function ProfileSettingsPage() {
       setShowPassword(false)
     },
     onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to change password'),
+  })
+
+  const emailMutation = useMutation({
+    mutationFn: (data: EmailForm) => authService.requestEmailChange(data.new_email, data.current_password),
+    onSuccess: (res) => {
+      toast.success(res.message ?? 'Check your new email for a confirmation link.')
+      emailForm.reset()
+      setShowEmail(false)
+    },
+    onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to request email change'),
   })
 
   if (!user) return null
@@ -128,13 +153,15 @@ export default function ProfileSettingsPage() {
             <FormField label="First Name" error={profileForm.formState.errors.first_name?.message}>
               <input
                 {...profileForm.register('first_name')}
-                className={inputCls(!!profileForm.formState.errors.first_name)}
+                disabled={!isEditingProfile}
+                className={inputCls(!!profileForm.formState.errors.first_name, !isEditingProfile)}
               />
             </FormField>
             <FormField label="Last Name" error={profileForm.formState.errors.last_name?.message}>
               <input
                 {...profileForm.register('last_name')}
-                className={inputCls(!!profileForm.formState.errors.last_name)}
+                disabled={!isEditingProfile}
+                className={inputCls(!!profileForm.formState.errors.last_name, !isEditingProfile)}
               />
             </FormField>
           </div>
@@ -145,13 +172,27 @@ export default function ProfileSettingsPage() {
               inputMode="tel"
               autoComplete="tel"
               placeholder="e.g. +1 234 567 8900"
-              className={inputCls(!!profileForm.formState.errors.phone)}
+              disabled={!isEditingProfile}
+              className={inputCls(!!profileForm.formState.errors.phone, !isEditingProfile)}
             />
           </FormField>
-          <div className="flex justify-end pt-1">
-            <Btn type="submit" disabled={profileMutation.isPending}>
-              {profileMutation.isPending ? <><Spinner size={14} /> Saving…</> : 'Save Changes'}
-            </Btn>
+          <div className="flex justify-end gap-3 pt-1">
+            {!isEditingProfile ? (
+              <Btn type="button" onClick={() => setIsEditingProfile(true)}>Edit</Btn>
+            ) : (
+              <>
+                <Btn
+                  type="button"
+                  variant="secondary"
+                  onClick={() => { profileForm.reset(); setIsEditingProfile(false) }}
+                >
+                  Cancel
+                </Btn>
+                <Btn type="submit" disabled={profileMutation.isPending}>
+                  {profileMutation.isPending ? <><Spinner size={14} /> Saving…</> : 'Save Changes'}
+                </Btn>
+              </>
+            )}
           </div>
         </form>
       </div>
@@ -202,6 +243,57 @@ export default function ProfileSettingsPage() {
               </Btn>
               <Btn type="submit" disabled={passwordMutation.isPending}>
                 {passwordMutation.isPending ? <><Spinner size={14} /> Changing…</> : 'Change Password'}
+              </Btn>
+            </div>
+          </form>
+        )}
+      </div>
+
+      {/* Change Email */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
+        <button
+          className="w-full flex items-center justify-between px-5 py-3.5 border-b border-zinc-800 text-left hover:bg-zinc-800/40 transition-colors"
+          onClick={() => setShowEmail(p => !p)}
+        >
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-100">Change Email</h3>
+            <p className="text-xs text-zinc-500 mt-0.5">Update the email address used to sign in</p>
+          </div>
+          <span className="text-zinc-500 text-sm">{showEmail ? '▲' : '▼'}</span>
+        </button>
+
+        {showEmail && (
+          <form
+            onSubmit={emailForm.handleSubmit(d => emailMutation.mutate(d))}
+            className="p-5 space-y-4"
+          >
+            <p className="text-xs text-zinc-500 -mt-1">
+              We'll send a confirmation link to the new address — your email won't change until
+              you click it. Current: <span className="text-zinc-300">{user.email}</span>
+            </p>
+            <FormField label="New Email" error={emailForm.formState.errors.new_email?.message}>
+              <input
+                {...emailForm.register('new_email')}
+                type="email"
+                autoComplete="email"
+                placeholder="you@example.com"
+                className={inputCls(!!emailForm.formState.errors.new_email)}
+              />
+            </FormField>
+            <Divider />
+            <FormField label="Current Password" error={emailForm.formState.errors.current_password?.message}>
+              <PasswordInput
+                {...emailForm.register('current_password')}
+                placeholder="Confirm it's you"
+                inputClassName={inputCls(!!emailForm.formState.errors.current_password)}
+              />
+            </FormField>
+            <div className="flex gap-3 justify-end pt-1">
+              <Btn type="button" variant="secondary" onClick={() => { setShowEmail(false); emailForm.reset() }}>
+                Cancel
+              </Btn>
+              <Btn type="submit" disabled={emailMutation.isPending}>
+                {emailMutation.isPending ? <><Spinner size={14} /> Sending…</> : 'Send Confirmation'}
               </Btn>
             </div>
           </form>

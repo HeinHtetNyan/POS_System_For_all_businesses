@@ -10,7 +10,7 @@ export class POSDatabase extends Dexie {
   sessions!: Table<Session & { startTime: string; endTime?: string }, string>
 
   constructor() {
-    super('nexuspos')
+    super('sawyunpos')
     this.version(1).stores({
       products:   'id, sku, barcode, category, name',
       categories: 'id',
@@ -57,6 +57,19 @@ export async function getPendingSyncOps(): Promise<SyncOperation[]> {
   return db.syncQueue.where('status').equals('pending').toArray()
 }
 
+export async function getFailedSyncOps(): Promise<SyncOperation[]> {
+  return db.syncQueue.where('status').equals('failed').toArray()
+}
+
+export async function getAllSyncOps(): Promise<SyncOperation[]> {
+  return db.syncQueue.toArray()
+}
+
 export async function removeSyncOp(id: string) {
   await db.syncQueue.delete(id)
+}
+
+/** Resets a failed op back to pending so the next sync pass retries it. */
+export async function retrySyncOp(id: string) {
+  await db.syncQueue.update(id, { status: 'pending', retries: 0, lastError: undefined })
 }

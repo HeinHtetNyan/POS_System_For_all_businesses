@@ -147,23 +147,24 @@ class PayoutService:
         try:
             super_admin_ids = await self.payout_repo.get_super_admin_ids()
             if super_admin_ids:
-                await self.notif_svc.notify_users(
-                    tenant_id=None,
-                    type=NotificationType.SYSTEM,
-                    priority=NotificationPriority.HIGH,
-                    title="Payout Request Received",
-                    message=(
-                        f"Reseller {reseller_id} has requested a payout of "
-                        f"{amount} {wallet.currency_code}. "
-                        f"Request ID: {payout.id}."
-                    ),
-                    user_ids=super_admin_ids,
-                    metadata={
-                        "payout_id": str(payout.id),
-                        "reseller_id": str(reseller_id),
-                        "amount": str(amount),
-                    },
-                )
+                async with self.session.begin_nested():
+                    await self.notif_svc.notify_users(
+                        tenant_id=None,
+                        type=NotificationType.SYSTEM,
+                        priority=NotificationPriority.HIGH,
+                        title="Payout Request Received",
+                        message=(
+                            f"Reseller {reseller_id} has requested a payout of "
+                            f"{amount} {wallet.currency_code}. "
+                            f"Request ID: {payout.id}."
+                        ),
+                        user_ids=super_admin_ids,
+                        metadata={
+                            "payout_id": str(payout.id),
+                            "reseller_id": str(reseller_id),
+                            "amount": str(amount),
+                        },
+                    )
         except Exception as notif_exc:  # noqa: BLE001
             logger.warning(
                 "payout_request_notification_failed",
@@ -331,19 +332,20 @@ class PayoutService:
         reseller_user_id = await self.payout_repo.get_reseller_user_id(payout.reseller_id)
         if reseller_user_id is not None:
             try:
-                await self.notif_svc.notify_users(
-                    tenant_id=None,
-                    type=NotificationType.SYSTEM,
-                    priority=NotificationPriority.HIGH,
-                    title="Payout Request Rejected",
-                    message=(
-                        f"Your payout request of {payout.amount} {payout.currency_code} "
-                        f"has been rejected. Reason: {reason or 'No reason provided'}. "
-                        "Your funds have been returned to your available balance."
-                    ),
-                    user_ids=[reseller_user_id],
-                    metadata={"payout_id": str(payout_id), "reason": reason},
-                )
+                async with self.session.begin_nested():
+                    await self.notif_svc.notify_users(
+                        tenant_id=None,
+                        type=NotificationType.SYSTEM,
+                        priority=NotificationPriority.HIGH,
+                        title="Payout Request Rejected",
+                        message=(
+                            f"Your payout request of {payout.amount} {payout.currency_code} "
+                            f"has been rejected. Reason: {reason or 'No reason provided'}. "
+                            "Your funds have been returned to your available balance."
+                        ),
+                        user_ids=[reseller_user_id],
+                        metadata={"payout_id": str(payout_id), "reason": reason},
+                    )
             except Exception as notif_exc:  # noqa: BLE001
                 logger.warning(
                     "payout_rejection_notification_failed",
@@ -422,22 +424,23 @@ class PayoutService:
         reseller_user_id = await self.payout_repo.get_reseller_user_id(payout.reseller_id)
         if reseller_user_id is not None:
             try:
-                await self.notif_svc.notify_users(
-                    tenant_id=None,
-                    type=NotificationType.SYSTEM,
-                    priority=NotificationPriority.HIGH,
-                    title="Payout Processed",
-                    message=(
-                        f"Your payout of {payout.amount} {payout.currency_code} "
-                        "has been processed and paid."
-                    ),
-                    user_ids=[reseller_user_id],
-                    metadata={
-                        "payout_id": str(payout_id),
-                        "amount": str(payout.amount),
-                        "payout_method": payout_method,
-                    },
-                )
+                async with self.session.begin_nested():
+                    await self.notif_svc.notify_users(
+                        tenant_id=None,
+                        type=NotificationType.SYSTEM,
+                        priority=NotificationPriority.HIGH,
+                        title="Payout Processed",
+                        message=(
+                            f"Your payout of {payout.amount} {payout.currency_code} "
+                            "has been processed and paid."
+                        ),
+                        user_ids=[reseller_user_id],
+                        metadata={
+                            "payout_id": str(payout_id),
+                            "amount": str(payout.amount),
+                            "payout_method": payout_method,
+                        },
+                    )
             except Exception as notif_exc:  # noqa: BLE001
                 logger.warning(
                     "payout_paid_notification_failed",
@@ -523,23 +526,24 @@ class PayoutService:
         reseller_user_id = await self.payout_repo.get_reseller_user_id(reseller_id)
         if reseller_user_id is not None:
             try:
-                await self.notif_svc.notify_users(
-                    tenant_id=None,
-                    type=NotificationType.SYSTEM,
-                    priority=NotificationPriority.HIGH,
-                    title="Payout Created by Admin",
-                    message=(
-                        f"An admin has created a payout of {amount} {wallet.currency_code} "
-                        f"on your behalf. It has been approved and is ready for disbursement."
-                        f"{(' Reason: ' + reason) if reason else ''}"
-                    ),
-                    user_ids=[reseller_user_id],
-                    metadata={
-                        "payout_id": str(payout.id),
-                        "amount": str(amount),
-                        "currency_code": wallet.currency_code,
-                    },
-                )
+                async with self.session.begin_nested():
+                    await self.notif_svc.notify_users(
+                        tenant_id=None,
+                        type=NotificationType.SYSTEM,
+                        priority=NotificationPriority.HIGH,
+                        title="Payout Created by Admin",
+                        message=(
+                            f"An admin has created a payout of {amount} {wallet.currency_code} "
+                            f"on your behalf. It has been approved and is ready for disbursement."
+                            f"{(' Reason: ' + reason) if reason else ''}"
+                        ),
+                        user_ids=[reseller_user_id],
+                        metadata={
+                            "payout_id": str(payout.id),
+                            "amount": str(amount),
+                            "currency_code": wallet.currency_code,
+                        },
+                    )
             except Exception as notif_exc:  # noqa: BLE001
                 logger.warning(
                     "admin_payout_notification_failed",

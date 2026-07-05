@@ -5,13 +5,18 @@ import { ROLE_HOME } from '@/shared/constants/rbac'
 
 interface AuthLayoutProps {
   children: ReactNode
+  // Pages like /verify-email are meaningful to visit even while logged in
+  // (e.g. a business owner clicking the emailed link without ever logging
+  // out after registering) — set this to skip the normal "already signed
+  // in, redirect to my dashboard" behavior used by login/register/etc.
+  allowAuthenticated?: boolean
 }
 
-export default function AuthLayout({ children }: AuthLayoutProps) {
+export default function AuthLayout({ children, allowAuthenticated = false }: AuthLayoutProps) {
   const { user, isAuthenticated } = useAuthStore()
 
   // Already authenticated — redirect to role home
-  if (isAuthenticated && user) {
+  if (isAuthenticated && user && !allowAuthenticated) {
     const home = ROLE_HOME[user.role] ?? '/app/pos'
     return <Navigate to={home} replace />
   }

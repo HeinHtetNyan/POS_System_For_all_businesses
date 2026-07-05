@@ -9,8 +9,8 @@ from pydantic import BaseModel as _BaseModel
 from app.api.deps import (
     CurrentUser,
     DbSession,
-    EffectiveTenantId,
     RequestId,
+    SubscriptionScopedTenantId,
     require_manager_or_above,
     require_super_admin,
     require_tenant_admin,
@@ -107,7 +107,7 @@ async def update_plan(
 async def get_subscription_status(
     db: DbSession,
     current_user: Annotated[User, Depends(require_manager_or_above)],
-    tenant_id: EffectiveTenantId,
+    tenant_id: SubscriptionScopedTenantId,
 ) -> TrialStatusResponse:
     svc = TrialStatusService(db)
     return await svc.get_status(tenant_id=tenant_id)
@@ -117,7 +117,7 @@ async def get_subscription_status(
 async def get_my_subscription(
     db: DbSession,
     current_user: Annotated[User, Depends(require_manager_or_above)],
-    tenant_id: EffectiveTenantId,
+    tenant_id: SubscriptionScopedTenantId,
 ) -> SubscriptionResponse:
     svc = SubscriptionService(db)
     sub = await svc.get_subscription(tenant_id)
@@ -128,7 +128,7 @@ async def get_my_subscription(
 async def get_my_effective_entitlements(
     db: DbSession,
     current_user: Annotated[User, Depends(require_manager_or_above)],
-    tenant_id: EffectiveTenantId,
+    tenant_id: SubscriptionScopedTenantId,
 ) -> list[EffectiveEntitlementResponse]:
     svc = EntitlementService(db)
     entitlements = await svc.get_all_effective_entitlements(tenant_id)
@@ -147,7 +147,7 @@ async def get_my_effective_entitlements(
 async def activate_subscription(
     db: DbSession,
     current_user: Annotated[User, Depends(require_super_admin)],
-    tenant_id: EffectiveTenantId,
+    tenant_id: SubscriptionScopedTenantId,
     request_id: RequestId,
     data: ActivateSubscriptionRequest,
 ) -> SubscriptionResponse:
@@ -167,7 +167,7 @@ async def activate_subscription(
 async def downgrade_subscription(
     db: DbSession,
     current_user: Annotated[User, Depends(require_tenant_admin)],
-    tenant_id: EffectiveTenantId,
+    tenant_id: SubscriptionScopedTenantId,
     request_id: RequestId,
     data: ChangePlanRequest,
 ) -> DowngradeScheduledResponse:
@@ -186,7 +186,7 @@ async def downgrade_subscription(
 async def cancel_pending_downgrade(
     db: DbSession,
     current_user: Annotated[User, Depends(require_tenant_admin)],
-    tenant_id: EffectiveTenantId,
+    tenant_id: SubscriptionScopedTenantId,
     request_id: RequestId,
 ) -> MessageResponse:
     svc = SubscriptionService(db)
@@ -200,7 +200,7 @@ async def cancel_pending_downgrade(
 async def cancel_subscription(
     db: DbSession,
     current_user: Annotated[User, Depends(require_tenant_admin)],
-    tenant_id: EffectiveTenantId,
+    tenant_id: SubscriptionScopedTenantId,
     request_id: RequestId,
 ) -> SubscriptionResponse:
     svc = SubscriptionService(db)
@@ -214,7 +214,7 @@ async def cancel_subscription(
 async def suspend_subscription(
     db: DbSession,
     current_user: Annotated[User, Depends(require_super_admin)],
-    tenant_id: EffectiveTenantId,
+    tenant_id: SubscriptionScopedTenantId,
     request_id: RequestId,
 ) -> SubscriptionResponse:
     svc = SubscriptionService(db)
@@ -228,7 +228,7 @@ async def suspend_subscription(
 async def expire_subscription(
     db: DbSession,
     current_user: Annotated[User, Depends(require_super_admin)],
-    tenant_id: EffectiveTenantId,
+    tenant_id: SubscriptionScopedTenantId,
     request_id: RequestId,
 ) -> SubscriptionResponse:
     svc = SubscriptionService(db)
@@ -243,7 +243,7 @@ async def expire_subscription(
 async def list_subscription_history(
     db: DbSession,
     current_user: Annotated[User, Depends(require_manager_or_above)],
-    tenant_id: EffectiveTenantId,
+    tenant_id: SubscriptionScopedTenantId,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=500),
 ) -> PaginatedSubscriptionHistory:
@@ -270,7 +270,7 @@ class _UploadResponse(_BaseModel):
 )
 async def upload_payment_proof_file(
     current_user: Annotated[User, Depends(require_tenant_admin)],
-    tenant_id: EffectiveTenantId,
+    tenant_id: SubscriptionScopedTenantId,
     file: UploadFile = File(..., description="Payment receipt (jpg/png/pdf)"),
 ) -> _UploadResponse:
     from app.core.upload import save_payment_proof
@@ -282,7 +282,7 @@ async def upload_payment_proof_file(
 async def submit_payment_proof(
     db: DbSession,
     current_user: Annotated[User, Depends(require_tenant_admin)],
-    tenant_id: EffectiveTenantId,
+    tenant_id: SubscriptionScopedTenantId,
     request_id: RequestId,
     data: PaymentProofCreateRequest,
 ) -> PaymentProofResponse:
@@ -297,7 +297,7 @@ async def submit_payment_proof(
 async def list_payment_proofs(
     db: DbSession,
     current_user: Annotated[User, Depends(require_manager_or_above)],
-    tenant_id: EffectiveTenantId,
+    tenant_id: SubscriptionScopedTenantId,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=500),
 ) -> PaginatedPaymentProofs:

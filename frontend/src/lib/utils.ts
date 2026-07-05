@@ -15,8 +15,16 @@ export function displayCurrency(code: string | undefined): string {
   return code
 }
 
-export function fmt(amount: number | string | undefined): string {
-  const { currency, locale } = getFormatterConfig()
+/**
+ * `currencyOverride` is the currency snapshotted on the specific order/receipt
+ * being rendered, if any. Historical records predate the snapshot column and
+ * pass undefined/null, falling back to the tenant's current currency — but a
+ * record that DOES have one must always use it, even if the tenant later
+ * changes their currency setting.
+ */
+export function fmt(amount: number | string | undefined, currencyOverride?: string | null): string {
+  const { locale } = getFormatterConfig()
+  const currency = currencyOverride ? displayCurrency(currencyOverride) : getFormatterConfig().currency
   return `${Number(amount ?? 0).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`
 }
 

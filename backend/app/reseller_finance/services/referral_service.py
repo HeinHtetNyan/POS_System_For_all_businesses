@@ -372,7 +372,7 @@ class ReferralService:
         if row is None or row.reseller_id != reseller_id:
             raise NotFoundError("ResellerReferralCode", code_id)
 
-        base_url = getattr(settings, "APP_BASE_URL", "https://app.nexuspos.com")
+        base_url = settings.FRONTEND_BASE_URL.rstrip('/')
         referral_url = f"{base_url}/register?ref={row.code}"
         return ReferralLinkResponse(code=row.code, referral_url=referral_url)
 

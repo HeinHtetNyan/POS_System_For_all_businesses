@@ -9,6 +9,7 @@ from app.notifications.schemas import (
     NotificationListResponse,
     NotificationPreferenceResponse,
     NotificationPreferenceUpdateRequest,
+    NotificationSummaryResponse,
     UnreadCountResponse,
 )
 from app.notifications.services import NotificationService
@@ -143,3 +144,17 @@ async def update_preferences(
         request_id=request_id,
     )
     return NotificationPreferenceResponse.model_validate(pref)
+
+
+@router.get(
+    "/{notification_id}",
+    response_model=NotificationSummaryResponse,
+    summary="Get a single notification for current user",
+)
+async def get_notification(
+    notification_id: uuid.UUID,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> NotificationSummaryResponse:
+    svc = NotificationService(db)
+    return await svc.get_notification(notification_id, current_user.id)

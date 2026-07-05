@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.analytics.repositories import AnalyticsRepository
 from app.analytics.schemas import DashboardResponse
 from app.core.constants import AuditAction, EntityType
+from app.core.timezone import resolve_zone
 from app.services.audit_service import AuditService
 
 
@@ -26,11 +27,23 @@ class DashboardService:
         request_id: str | None = None,
     ) -> DashboardResponse:
         now = datetime.now(timezone.utc)
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        tomorrow = today_start + timedelta(days=1)
-        yesterday_start = today_start - timedelta(days=1)
-        week_start = today_start - timedelta(days=today_start.weekday())
-        month_start = today_start.replace(day=1)
+
+        # "Today"/"this week"/"this month" must reflect the tenant's own calendar,
+        # not UTC's — otherwise orders near local midnight land in the wrong bucket.
+        tz_name = await self.repo.get_tenant_timezone(tenant_id)
+        zone = resolve_zone(tz_name)
+        now_local = now.astimezone(zone)
+        today_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+        tomorrow_local = today_start_local + timedelta(days=1)
+        yesterday_start_local = today_start_local - timedelta(days=1)
+        week_start_local = today_start_local - timedelta(days=today_start_local.weekday())
+        month_start_local = today_start_local.replace(day=1)
+
+        today_start = today_start_local.astimezone(timezone.utc)
+        tomorrow = tomorrow_local.astimezone(timezone.utc)
+        yesterday_start = yesterday_start_local.astimezone(timezone.utc)
+        week_start = week_start_local.astimezone(timezone.utc)
+        month_start = month_start_local.astimezone(timezone.utc)
 
         today_stats = await self.repo.get_order_stats_in_range(
             tenant_id, today_start, tomorrow, branch_id, cashier_user_id

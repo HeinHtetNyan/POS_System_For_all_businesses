@@ -8,7 +8,7 @@ import { productsService } from '@/services/products/products.service'
 import { inventoryService } from '@/services/inventory/inventory.service'
 import { useSessionStore } from '@/store/session.store'
 import { useTenantStore } from '@/store/tenant.store'
-import { fmt, cn } from '@/lib/utils'
+import { fmt, cn, genId } from '@/lib/utils'
 import { Btn, Spinner } from '@/components/ui'
 import { IconSearch, IconPlus, IconMinus, IconTrash } from '@/components/icons'
 import type { Product } from '@/shared/types'
@@ -200,12 +200,15 @@ export default function CustomerSaleFormPage() {
           : [],
         customer_id: id,
         notes: notes || undefined,
+        idempotency_key: genId('chk'),
       })
     },
     onSuccess: order => {
       toast.success(`Order #${order.order_number} created`)
       qc.invalidateQueries({ queryKey: ['customer', id] })
       qc.invalidateQueries({ queryKey: ['customer-ledger', id] })
+      qc.invalidateQueries({ queryKey: ['customer-statement', id] })
+      qc.invalidateQueries({ queryKey: ['customers'] })
       qc.invalidateQueries({ queryKey: ['inventory', branchId] })
       navigate(`/app/customers/${id}`)
     },

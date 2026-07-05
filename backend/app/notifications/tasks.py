@@ -234,6 +234,7 @@ async def _check_payables_overdue_async() -> dict[str, Any]:
                             "total_amount": str(payable.total_amount),
                             "remaining_amount": str(payable.remaining_amount),
                             "order_date": po.order_date.isoformat(),
+                            "branch_id": str(po.branch_id),
                         },
                     )
                 )

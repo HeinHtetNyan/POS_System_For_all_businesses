@@ -18,8 +18,6 @@ const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'danger' | 'default
   PENDING_VERIFICATION: 'default',
 }
 
-const CREDIT_TYPES = new Set(['COMMISSION', 'CREDIT', 'ADJUSTMENT_CREDIT', 'REFERRAL_BONUS'])
-
 export default function ResellerDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -304,7 +302,13 @@ export default function ResellerDetailPage() {
                   ) : (
                     <div className="divide-y divide-zinc-800">
                       {(transactionsQuery.data?.items ?? []).map(tx => {
-                        const isCredit = CREDIT_TYPES.has(tx.transaction_type)
+                        // `amount` is always a positive magnitude — the only
+                        // reliable signal for credit vs debit is whether the
+                        // balance actually went up or down, not the
+                        // transaction_type string (these values — COMMISSION,
+                        // CREDIT, etc. — don't match the real backend enum at
+                        // all, so this always evaluated to false before).
+                        const isCredit = Number(tx.balance_after) >= Number(tx.balance_before)
                         return (
                           <div key={tx.id} className="flex items-center gap-3 px-4 py-3">
                             <div className="flex-1 min-w-0">
@@ -312,7 +316,7 @@ export default function ResellerDetailPage() {
                                 {tx.transaction_type.replace(/_/g, ' ').toLowerCase()}
                               </p>
                               <p className="text-xs text-zinc-500 mt-0.5">{fmtDate(tx.created_at)}</p>
-                              {tx.note && <p className="text-xs text-zinc-600 mt-0.5 italic">{tx.note}</p>}
+                              {tx.notes && <p className="text-xs text-zinc-600 mt-0.5 italic">{tx.notes}</p>}
                             </div>
                             <p className={cn('text-sm font-medium flex-shrink-0', isCredit ? 'text-green-400' : 'text-red-400')}>
                               {isCredit ? '+' : '-'}{Number(tx.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {tx.currency_code === 'MMK' ? 'Kyats' : tx.currency_code}

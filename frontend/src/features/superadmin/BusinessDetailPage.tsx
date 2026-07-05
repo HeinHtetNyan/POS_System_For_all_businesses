@@ -545,7 +545,7 @@ const HISTORY_VARIANT: Record<string, 'success' | 'warning' | 'danger' | 'info' 
 }
 
 async function openProofFile(url: string) {
-  const token = localStorage.getItem('nexuspos_access_token') ?? ''
+  const token = localStorage.getItem('sawyunpos_access_token') ?? ''
   try {
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -697,9 +697,14 @@ function BillingTab({ tenantId }: { tenantId: string }) {
                 <div className="flex-1 min-w-0 space-y-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <Badge variant={PROOF_VARIANT[proof.status] ?? 'default'} size="xs">{proof.status}</Badge>
-                    <Badge variant={proof.action_type === 'UPGRADE' ? 'warning' : proof.action_type === 'RENEWAL' ? 'info' : 'default'} size="xs">
-                      {proof.action_type === 'INITIAL_ACTIVATION' ? 'New Activation'
-                        : proof.action_type === 'RENEWAL' ? 'Renewal' : 'Plan Upgrade'}
+                    <Badge variant={
+                      proof.action_type === 'UPGRADE' ? 'warning'
+                        : proof.action_type === 'DOWNGRADE' ? 'default'
+                        : proof.action_type === 'RENEWAL' ? 'info' : 'default'
+                    } size="xs">
+                      {proof.action_type === 'RENEWAL' ? 'Renewal'
+                        : proof.action_type === 'UPGRADE' ? 'Plan Upgrade'
+                        : proof.action_type === 'DOWNGRADE' ? 'Plan Downgrade' : 'New Activation'}
                     </Badge>
                   </div>
                   {proof.target_plan_name && (

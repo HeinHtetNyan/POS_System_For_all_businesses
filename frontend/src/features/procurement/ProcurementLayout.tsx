@@ -6,7 +6,7 @@ const ALL_TABS = [
   { to: '/app/procurement/dashboard',       label: 'Overview',        managerOnly: false },
   { to: '/app/procurement/suppliers',       label: 'Suppliers',       managerOnly: false },
   { to: '/app/procurement/purchase-orders', label: 'Purchase Orders', managerOnly: false },
-  { to: '/app/procurement/payments',        label: 'Payments',        managerOnly: false },
+  { to: '/app/procurement/payments',        label: 'Payments',        managerOnly: true },
 ]
 
 export default function ProcurementLayout() {

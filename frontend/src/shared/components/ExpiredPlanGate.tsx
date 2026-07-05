@@ -33,7 +33,7 @@ function UpgradeModal({ onClose, isTrial }: { onClose: () => void; isTrial: bool
         </h2>
         <p className="text-zinc-400 text-sm text-center mb-6">
           {isTrial
-            ? 'Your free trial has ended. Upgrade to a paid plan to continue using NexusPOS and keep all your data.'
+            ? 'Your free trial has ended. Upgrade to a paid plan to continue using SawYunPos and keep all your data.'
             : 'Your subscription has expired. Submit your payment proof to reactivate your plan, or switch to a different plan.'}
         </p>
 

@@ -1,20 +1,25 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { cn } from '@/shared/utils'
 import { useAuthStore } from '@/store/auth.store'
 import { useUIStore } from '@/store/ui.store'
 import { usePreferencesStore } from '@/store/preferences.store'
+import { useSessionStore } from '@/store/session.store'
 import { useLocaleStore } from '@/i18n/localeStore'
 import { canAccess, ROLE_LABELS, ROLE_BADGE_STYLES } from '@/shared/constants/rbac'
 import BranchSelector from '@/shared/components/BranchSelector'
 import NotificationBell from '@/shared/components/NotificationBell'
+import SyncBadge from '@/layouts/SyncBadge'
 import GlobalSearch from '@/shared/components/GlobalSearch'
 import TrialBanner from '@/shared/components/TrialBanner'
+import VerifyEmailBanner from '@/shared/components/VerifyEmailBanner'
 import ExpiredPlanGate from '@/shared/components/ExpiredPlanGate'
 import { TenantFormatterSync } from '@/components/TenantFormatterSync'
 import { notificationsService } from '@/services/notifications/notifications.service'
 import { tenantService } from '@/services/tenant/tenant.service'
+import { sessionService } from '@/services/sales/sales.service'
 import {
   IconMenu, IconX, IconPOS, IconProducts, IconInventory,
   IconSales, IconLogout,
@@ -98,7 +103,7 @@ function SidebarContent({ navGroup, onClose, onSearch }: { navGroup: string; onC
   const { data: unreadData } = useQuery({
     queryKey: ['notifications', 'unread-count'],
     queryFn: notificationsService.getUnreadCount,
-    enabled: !!user && navGroup === 'app',
+    enabled: !!user && navGroup === 'app' && canAccess(user.role, 'notifications'),
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,
   })
@@ -115,6 +120,27 @@ function SidebarContent({ navGroup, onClose, onSearch }: { navGroup: string; onC
   const filtered = navItems.filter(item => canAccess(user.role, item.section))
 
   async function handleLogout() {
+    const rolesWithSessions = ['BUSINESS_OWNER', 'MANAGER', 'CASHIER', 'SUPER_ADMIN']
+    if (navGroup === 'app' && user && rolesWithSessions.includes(user.role)) {
+      try {
+        const openSessions = await sessionService.getMyOpenSessions()
+        if (openSessions.length === 1) {
+          useSessionStore.getState().setActiveSession(openSessions[0])
+          toast.error('Please close your open cash register session before signing out.')
+          navigate('/app/session-close')
+          return
+        }
+        if (openSessions.length > 1) {
+          toast.error(
+            `You have ${openSessions.length} open cash register sessions across different branches. Please close them all before signing out.`,
+          )
+          return
+        }
+      } catch {
+        // If the check itself fails (network error, etc.), don't block logout —
+        // fail open rather than trap a user who genuinely wants to leave.
+      }
+    }
     await logout()
     navigate('/login')
   }
@@ -124,11 +150,9 @@ function SidebarContent({ navGroup, onClose, onSearch }: { navGroup: string; onC
       {/* Logo */}
       <div className="px-4 py-5 border-b border-zinc-800 flex-shrink-0">
         <Link to="/" className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-amber-500 flex items-center justify-center text-black font-black text-lg flex-shrink-0 shadow-lg shadow-amber-900/40">
-            N
-          </div>
+          <img src="/logo-icon.png" alt="SawYunPos" className="w-9 h-9 rounded-xl flex-shrink-0 shadow-lg shadow-blue-900/40" />
           <div>
-            <p className="font-bold text-zinc-100 text-sm leading-tight">NexusPOS</p>
+            <p className="font-bold text-zinc-100 text-sm leading-tight">SawYunPos</p>
             <p className="text-zinc-500 text-[10px] leading-tight tracking-wider uppercase">Enterprise</p>
           </div>
         </Link>
@@ -188,6 +212,11 @@ function SidebarContent({ navGroup, onClose, onSearch }: { navGroup: string; onC
       {/* Footer */}
       <div className="px-3 pb-4 pt-3 border-t border-zinc-800 flex-shrink-0 space-y-3">
         {navGroup === 'app' && (
+          <div className="flex flex-wrap gap-1.5">
+            <SyncBadge />
+          </div>
+        )}
+        {navGroup === 'app' && (
           <div className="px-2.5 py-2 rounded-xl bg-zinc-900 border border-zinc-800">
             <div className="flex items-center justify-between">
               <span className="font-mono text-xs font-semibold text-zinc-200">{clock}</span>
@@ -230,6 +259,7 @@ function SidebarContent({ navGroup, onClose, onSearch }: { navGroup: string; onC
 
 export default function DashboardLayout({ navGroup = 'app' }: DashboardLayoutProps) {
   const { sidebarOpen, closeSidebar, toggleSidebar, isOnline, posFocusMode } = useUIStore()
+  const { user } = useAuthStore()
   const [searchOpen, setSearchOpen] = useState(false)
   const t = useLocaleStore(s => s.t)
   const location = useLocation()
@@ -284,8 +314,8 @@ export default function DashboardLayout({ navGroup = 'app' }: DashboardLayoutPro
         )}>
           <div className="flex items-center justify-between px-4 py-3 bg-zinc-950 border-b border-zinc-800 flex-shrink-0">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-amber-500 flex items-center justify-center text-black font-black text-sm">N</div>
-              <span className="font-bold text-zinc-100 text-sm">NexusPOS</span>
+              <img src="/logo-icon.png" alt="SawYunPos" className="w-7 h-7 rounded-lg" />
+              <span className="font-bold text-zinc-100 text-sm">SawYunPos</span>
             </div>
             <button onClick={closeSidebar} aria-label={t('common.close_menu')} className="w-8 h-8 flex items-center justify-center rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800">
               <IconX width="16" height="16" />
@@ -310,6 +340,7 @@ export default function DashboardLayout({ navGroup = 'app' }: DashboardLayoutPro
           </div>
         )}
         {navGroup === 'app' && <TrialBanner />}
+        {navGroup === 'app' && <VerifyEmailBanner />}
         {/* Mobile top bar — hidden in POS focus mode */}
         {!posFocusMode && (
           <header className="lg:hidden flex items-center gap-3 px-4 py-2.5 border-b border-zinc-800 bg-zinc-950 flex-shrink-0">
@@ -317,10 +348,8 @@ export default function DashboardLayout({ navGroup = 'app' }: DashboardLayoutPro
               <IconMenu width="16" height="16" />
             </button>
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-md bg-amber-500 flex items-center justify-center flex-shrink-0">
-                <span className="text-black font-black text-xs">N</span>
-              </div>
-              <span className="text-xs font-semibold text-zinc-400">NexusPOS</span>
+              <img src="/logo-icon.png" alt="SawYunPos" className="w-6 h-6 rounded-md flex-shrink-0" />
+              <span className="text-xs font-semibold text-zinc-400">SawYunPos</span>
             </div>
             <div className="flex-1" />
             {navGroup === 'app' && (
@@ -335,7 +364,7 @@ export default function DashboardLayout({ navGroup = 'app' }: DashboardLayoutPro
                 </svg>
               </button>
             )}
-            <NotificationBell />
+            {(navGroup !== 'app' || (!!user && canAccess(user.role, 'notifications'))) && <NotificationBell />}
           </header>
         )}
         {/* Child route renders here — relative wrapper so the expired gate overlay positions correctly */}

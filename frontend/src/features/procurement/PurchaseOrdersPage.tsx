@@ -11,6 +11,8 @@ const PAGE_SIZE = 30
 
 const STATUS_FILTERS = [
   { label: 'All',             value: undefined            },
+  { label: 'Draft',           value: 'DRAFT'              },
+  { label: 'Pending Approval', value: 'SUBMITTED'         },
   { label: 'Ordered',         value: 'APPROVED'           },
   { label: 'Partial Receipt', value: 'PARTIALLY_RECEIVED' },
   { label: 'Received',        value: 'RECEIVED'           },

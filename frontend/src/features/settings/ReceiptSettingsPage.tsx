@@ -222,7 +222,7 @@ export default function ReceiptSettingsPage() {
             <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Header Text</label>
             <input
               {...register('receipt_header')}
-              placeholder="e.g. Welcome to NexusPOS!"
+              placeholder="e.g. Welcome to SawYunPos!"
               className={inputCls()}
             />
             <p className="text-xs text-zinc-600">Shown at the top of every printed receipt.</p>

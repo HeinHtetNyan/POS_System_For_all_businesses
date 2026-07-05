@@ -10,6 +10,7 @@ from app.api.deps import (
     RequestId,
     require_manager_or_above,
     require_tenant_admin,
+    scope_branch_filter,
 )
 from app.subscriptions.entitlements import EntitlementService, TenantSubscriptionValidator
 from app.schemas.branch import (
@@ -90,8 +91,15 @@ async def list_branches(
     page_size: int = Query(default=20, ge=1, le=500),
 ) -> PaginatedResponse[BranchResponse]:
     _assert_tenant_access(current_user, tenant_id)
+    # Branch-scoped staff (MANAGER/CASHIER/INVENTORY_STAFF) only get their own
+    # assigned branch back — otherwise every branch picker in the app would
+    # offer branches they aren't allowed to act on (create_purchase_order,
+    # cashier session open, etc. already reject those branch_ids server-side).
+    branch_id = scope_branch_filter(current_user, None)
     service = BranchService(db)
-    branches, total = await service.list_branches(tenant_id=tenant_id, page=page, page_size=page_size)
+    branches, total = await service.list_branches(
+        tenant_id=tenant_id, page=page, page_size=page_size, branch_id=branch_id
+    )
     return PaginatedResponse.create(
         items=[BranchResponse.model_validate(b) for b in branches],
         total=total,

@@ -4,7 +4,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, Query
 
-from app.api.deps import CurrentUser, DbSession, EffectiveTenantId, RequestId, require_cashier_or_above, require_manager_or_above, require_tenant_admin
+from app.api.deps import CurrentUser, DbSession, EffectiveTenantId, RequestId, require_cashier_or_above, require_inventory_access, require_manager_or_above, require_tenant_admin
 from app.schemas.common import PaginatedResponse, SuccessResponse
 from app.schemas.product import CategoryCreateRequest, CategoryResponse, CategoryUpdateRequest
 from app.services.product_service import CategoryService
@@ -17,7 +17,7 @@ router = APIRouter()
     response_model=CategoryResponse,
     status_code=201,
     summary="Create category",
-    dependencies=[Depends(require_manager_or_above)],
+    dependencies=[Depends(require_inventory_access)],
 )
 async def create_category(
     payload: CategoryCreateRequest,
@@ -86,7 +86,7 @@ async def get_category(
     "/{category_id}",
     response_model=CategoryResponse,
     summary="Update category",
-    dependencies=[Depends(require_manager_or_above)],
+    dependencies=[Depends(require_inventory_access)],
 )
 async def update_category(
     category_id: uuid.UUID,

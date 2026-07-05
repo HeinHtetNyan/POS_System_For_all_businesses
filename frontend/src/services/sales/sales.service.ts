@@ -54,7 +54,7 @@ export const refundService = {
   create: (payload: RefundRequest) =>
     apiClient.post<RefundRecord>('/payments/refunds', payload).then(r => r.data),
 
-  list: (params?: { order_id?: string; page?: number; page_size?: number }) =>
+  list: (params?: { order_id?: string; branch_id?: string; page?: number; page_size?: number }) =>
     apiClient.get<PaginatedResponse<RefundRecord>>('/payments/refunds', { params }).then(r => r.data),
 }
 
@@ -71,4 +71,7 @@ export const sessionService = {
 
   list: (params?: { branch_id?: string; status?: string; page?: number }) =>
     apiClient.get<PaginatedResponse<CashierSession>>('/cashier-sessions', { params }).then(r => r.data),
+
+  getMyOpenSessions: () =>
+    apiClient.get<CashierSession[]>('/cashier-sessions/mine/open').then(r => r.data),
 }

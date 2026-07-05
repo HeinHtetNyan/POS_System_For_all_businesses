@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui'
 type BadgeVariant = 'default' | 'success' | 'danger' | 'warning' | 'info' | 'purple' | 'orange'
 
 const PO_STATUS_MAP: Record<string, { variant: BadgeVariant; label: string }> = {
+  DRAFT:              { variant: 'default', label: 'Draft'            },
+  SUBMITTED:          { variant: 'purple',  label: 'Pending Approval' },
   APPROVED:           { variant: 'info',    label: 'Ordered'          },
   PARTIALLY_RECEIVED: { variant: 'warning', label: 'Partial Receipt'  },
   RECEIVED:           { variant: 'success', label: 'Received'         },

@@ -27,6 +27,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cashiers.models import CashierSession
@@ -43,7 +44,7 @@ from app.core.constants import (
 from app.core.exceptions import BusinessRuleError, NotFoundError, ValidationError
 from app.core.logging import get_logger
 from app.events.base import DomainEvent
-from app.events.publisher import EventPublisher
+from app.events.publisher import event_publisher
 from app.events.types import EventType
 from app.models.product import Product, ProductVariant
 from app.payments.models import Payment
@@ -85,7 +86,7 @@ class CheckoutItemInput:
 
 
 class CheckoutPaymentInput:
-    __slots__ = ("payment_method", "amount", "reference_number", "notes")
+    __slots__ = ("payment_method", "amount", "reference_number", "notes", "tendered_amount")
 
     def __init__(
         self,
@@ -93,17 +94,19 @@ class CheckoutPaymentInput:
         amount: Decimal,
         reference_number: str | None = None,
         notes: str | None = None,
+        tendered_amount: Decimal | None = None,
     ) -> None:
         self.payment_method = payment_method
         self.amount = amount
         self.reference_number = reference_number
         self.notes = notes
+        self.tendered_amount = tendered_amount
 
 
 class CheckoutInput:
     __slots__ = (
         "cashier_session_id", "items", "payments",
-        "customer_id", "order_discount_amount", "notes",
+        "customer_id", "order_discount_amount", "notes", "idempotency_key",
     )
 
     def __init__(
@@ -114,6 +117,7 @@ class CheckoutInput:
         customer_id: uuid.UUID | None = None,
         order_discount_amount: Decimal = Decimal("0"),
         notes: str | None = None,
+        idempotency_key: str | None = None,
     ) -> None:
         self.cashier_session_id = cashier_session_id
         self.items = items
@@ -121,6 +125,7 @@ class CheckoutInput:
         self.customer_id = customer_id
         self.order_discount_amount = order_discount_amount
         self.notes = notes
+        self.idempotency_key = idempotency_key
 
 
 def _compute_order_totals(
@@ -186,7 +191,6 @@ class CheckoutService:
         self.product_repo = ProductRepository(session)
         self.inventory_svc = InventoryService(session)
         self.audit = AuditService(session)
-        self.publisher = EventPublisher()
 
     async def checkout(
         self,
@@ -200,6 +204,28 @@ class CheckoutService:
 
         Returns the completed Order with items, payments, and receipt loaded.
         """
+        # 0. Idempotency check — a retried submission (e.g. an offline POS device
+        # replaying its sync queue after a dropped connection) carries the same
+        # key as its original attempt. If that attempt already succeeded, return
+        # the existing order instead of creating a duplicate sale.
+        if data.idempotency_key:
+            existing = await self.order_repo.get_by_idempotency_key(
+                tenant_id, data.idempotency_key
+            )
+            if existing:
+                if existing.order_status == OrderStatus.VOIDED:
+                    # The original sale was voided in the gap between this
+                    # attempt and its retry (e.g. an offline device's first
+                    # submission landed, staff voided it as a mistake, then the
+                    # device's retry arrives). Silently returning it would look
+                    # like a successful sale to the caller — surface it instead.
+                    raise BusinessRuleError(
+                        f"This sale (order {existing.order_number}) was voided "
+                        "after it was originally submitted. It was not recreated — "
+                        "start a new sale if this was unintended."
+                    )
+                return existing
+
         now = datetime.now(timezone.utc)
 
         # 1. Validate cashier session
@@ -223,8 +249,25 @@ class CheckoutService:
         for pmt in data.payments:
             if pmt.amount <= Decimal("0"):
                 raise ValidationError("Payment amount must be positive")
+        for item in data.items:
+            item_subtotal = item.unit_price * item.quantity
+            if item.discount_amount > item_subtotal:
+                raise ValidationError(
+                    f"Item discount ({item.discount_amount}) cannot exceed its subtotal "
+                    f"({item_subtotal})"
+                )
 
         branch_id = cashier_session.branch_id
+
+        # Snapshot the branch's currency now — it must never be re-derived from
+        # the branch's *current* setting later, or a currency change would
+        # retroactively repaint this order's historical amounts.
+        from app.models.branch import Branch as _Branch
+        from sqlalchemy import select as _select
+        branch_currency_result = await self.session.execute(
+            _select(_Branch.currency).where(_Branch.id == branch_id)
+        )
+        branch_currency = branch_currency_result.scalar_one_or_none() or "MMK"
 
         # 3. Load & validate products (also lock branch inventory rows)
         enriched_items = await self._validate_and_load_items(
@@ -237,6 +280,16 @@ class CheckoutService:
         totals = _compute_order_totals(data.items, data.order_discount_amount)
         total_amount = totals["total_amount"]
         amount_paid = sum((p.amount for p in data.payments), Decimal("0")).quantize(Decimal("0.0001"))
+
+        # Underpayment is only legitimate when a customer is attached — the
+        # shortfall becomes tracked debt on their ledger (step 8b below).
+        # Without a customer there is nowhere for the remainder to go, so it
+        # would simply vanish; reject instead of silently completing the sale.
+        if not data.customer_id and amount_paid < total_amount:
+            raise ValidationError(
+                f"Payments ({amount_paid}) do not cover the order total ({total_amount}). "
+                "Assign a customer for an on-account/partial sale, or collect the full amount."
+            )
 
         # 5. Generate order number (uses locked counter row)
         branch_code = str(branch_id).replace("-", "")[:8].upper()
@@ -256,12 +309,34 @@ class CheckoutService:
             discount_amount=totals["discount_amount"],
             total_amount=total_amount,
             refunded_amount=Decimal("0"),
+            currency=branch_currency,
             notes=data.notes,
             completed_at=now,
             created_by=actor_user_id,
+            idempotency_key=data.idempotency_key,
         )
-        self.session.add(order)
-        await self.session.flush()
+        # Two genuinely concurrent requests carrying the same idempotency_key can
+        # both pass the SELECT at the top of this method (neither has committed
+        # yet) and both reach this insert. A SAVEPOINT lets the loser fall back
+        # to fetching the winner's row instead of surfacing a raw IntegrityError
+        # as an opaque 500.
+        try:
+            async with self.session.begin_nested():
+                self.session.add(order)
+                await self.session.flush()
+        except IntegrityError:
+            if not data.idempotency_key:
+                raise
+            existing = await self.order_repo.get_by_idempotency_key(tenant_id, data.idempotency_key)
+            if not existing:
+                raise
+            if existing.order_status == OrderStatus.VOIDED:
+                raise BusinessRuleError(
+                    f"This sale (order {existing.order_number}) was voided "
+                    "after it was originally submitted. It was not recreated — "
+                    "start a new sale if this was unintended."
+                )
+            return existing
         await self.session.refresh(order)
 
         # 7. Create OrderItems + SALE StockMovements
@@ -324,7 +399,26 @@ class CheckoutService:
 
         await self.session.flush()
 
-        # 10. Audit
+        # 10. Audit — always record the order, and call out any discretionary
+        # discounting explicitly so an owner reviewing the audit log doesn't
+        # have to cross-reference every order to spot discounted sales.
+        item_discounts = [
+            {
+                "product_name": oi.product_name,
+                "discount_amount": str(oi.discount_amount),
+            }
+            for oi in order_items
+            if oi.discount_amount > Decimal("0")
+        ]
+        after_state: dict[str, Any] = {
+            "order_number": order_number,
+            "total_amount": str(total_amount),
+            "payment_status": order.payment_status,
+            "items_count": len(order_items),
+        }
+        if order.discount_amount > Decimal("0") or item_discounts:
+            after_state["order_discount_amount"] = str(order.discount_amount)
+            after_state["item_discounts"] = item_discounts
         await self.audit.log(
             action=AuditAction.ORDER_CREATED,
             actor_user_id=actor_user_id,
@@ -332,17 +426,12 @@ class CheckoutService:
             branch_id=branch_id,
             entity_type=EntityType.ORDER,
             entity_id=order.id,
-            after_state={
-                "order_number": order_number,
-                "total_amount": str(total_amount),
-                "payment_status": order.payment_status,
-                "items_count": len(order_items),
-            },
+            after_state=after_state,
             request_id=request_id,
         )
 
         # 11. Publish events
-        await self.publisher.publish(DomainEvent(
+        await event_publisher.publish(DomainEvent(
             event_type=EventType.ORDER_CREATED,
             payload={
                 "order_id": str(order.id),
@@ -354,14 +443,14 @@ class CheckoutService:
             tenant_id=tenant_id,
             actor_id=actor_user_id,
         ))
-        await self.publisher.publish(DomainEvent(
+        await event_publisher.publish(DomainEvent(
             event_type=EventType.ORDER_COMPLETED,
             payload={"order_id": str(order.id), "order_number": order_number},
             tenant_id=tenant_id,
             actor_id=actor_user_id,
         ))
         for pmt in payments:
-            await self.publisher.publish(DomainEvent(
+            await event_publisher.publish(DomainEvent(
                 event_type=EventType.PAYMENT_RECEIVED,
                 payload={
                     "order_id": str(order.id),
@@ -443,11 +532,35 @@ class CheckoutService:
                     },
                 )
 
+            # The client only ever needs to send unit_price so the cart/receipt
+            # can render before the request round-trips — it must match the
+            # catalog price. Without this check a cashier could submit any
+            # price for real merchandise (a full-blown till-fraud vector).
+            # Legitimate reductions belong in discount_amount, which is
+            # separately capped and audit-logged below.
+            catalog_price = (
+                variant.selling_price if variant and variant.selling_price is not None
+                else product.selling_price
+            )
+            if catalog_price is not None and (item.unit_price - catalog_price).copy_abs() > Decimal("0.01"):
+                raise BusinessRuleError(
+                    f"Price for '{product.name}' does not match the catalog price. "
+                    "Refresh the product list and try again.",
+                    details={
+                        "product_id": str(item.product_id),
+                        "submitted_unit_price": str(item.unit_price),
+                        "catalog_price": str(catalog_price),
+                    },
+                )
+
             enriched.append({
                 "item": item,
                 "product": product,
                 "variant": variant,
-                "unit_cost_snapshot": product.cost_price,
+                # Branch-specific cost takes precedence — falls back to the
+                # tenant-wide default only if this branch hasn't received its
+                # own stock (and cost) for this product yet.
+                "unit_cost_snapshot": inv.cost_price if inv.cost_price is not None else product.cost_price,
             })
 
         return enriched
@@ -511,7 +624,7 @@ class CheckoutService:
                 inv_after.reorder_point is not None
                 and inv_after.quantity_on_hand <= inv_after.reorder_point
             ):
-                await self.publisher.publish(
+                await event_publisher.publish(
                     DomainEvent(
                         event_type=EventType.LOW_STOCK,
                         tenant_id=tenant_id,
@@ -549,6 +662,7 @@ class CheckoutService:
                 notes=pmt_input.notes,
                 paid_at=now,
                 processed_by=actor_user_id,
+                tendered_amount=pmt_input.tendered_amount,
             )
             self.session.add(payment)
             payments.append(payment)
@@ -571,7 +685,15 @@ class CheckoutService:
         branch_code = str(branch_id).replace("-", "")[:8].upper()
         receipt_number = await self.counter_repo.next_receipt_number(branch_id, branch_code)
 
-        change_amount = max(amount_paid - total_amount, Decimal("0")).quantize(Decimal("0.0001"))
+        # Change is based on what was actually tendered (e.g. a 500 note for a
+        # 47.50 sale), not `amount_paid` — that's the amount APPLIED to the
+        # order, which by definition never exceeds the total, so it can never
+        # produce a nonzero change on its own. Falls back to `amount` per
+        # payment when no tendered_amount was recorded (e.g. non-cash methods).
+        total_tendered = sum(
+            (p.tendered_amount if p.tendered_amount is not None else p.amount) for p in payments
+        )
+        change_amount = max(total_tendered - total_amount, Decimal("0")).quantize(Decimal("0.0001"))
 
         # Fetch branch/tenant names for denormalized snapshot
         from app.models.branch import Branch
@@ -613,6 +735,7 @@ class CheckoutService:
             {
                 "method": p.payment_method,
                 "amount": str(p.amount),
+                "tendered_amount": str(p.tendered_amount) if p.tendered_amount is not None else None,
                 "reference_number": p.reference_number,
                 "notes": p.notes,
             }
@@ -633,6 +756,7 @@ class CheckoutService:
             cashier_name=f"{cashier.first_name} {cashier.last_name}" if cashier else "Unknown",
             branch_name=branch.name if branch else "Unknown",
             tenant_name=tenant.name if tenant else "Unknown",
+            currency=order.currency,
             payment_methods=payment_methods_snapshot,
             items_snapshot=items_snapshot,
             issued_at=now,
@@ -653,7 +777,7 @@ class CheckoutService:
         Void a COMPLETED order. Creates REFUND stock movements for all items.
         Can only void orders that have no existing refunds.
         """
-        order = await self.order_repo.get_with_details(order_id)
+        order = await self.order_repo.get_with_details_locked(order_id)
         if not order or order.tenant_id != tenant_id:
             raise NotFoundError("Order", order_id)
 
@@ -667,6 +791,7 @@ class CheckoutService:
             )
 
         now = datetime.now(timezone.utc)
+        original_status = order.order_status
 
         # Restore inventory: create REFUND movements for each item
         for item in order.items:
@@ -686,6 +811,31 @@ class CheckoutService:
 
         order.order_status = OrderStatus.VOIDED
         order.voided_at = now
+        order.payment_status = PaymentStatus.REFUNDED
+        # Cash-session reconciliation sums Payment rows by payment_status alone, with
+        # no join back to order_status — without this, a voided order's cash stays
+        # counted as received at session close.
+        for payment in order.payments:
+            if payment.payment_status in (PaymentStatus.PAID, PaymentStatus.PARTIAL):
+                payment.payment_status = PaymentStatus.REFUNDED
+
+        # On-account order: credit back whatever this order still added to the
+        # customer's outstanding balance (the total minus whatever was actually
+        # paid at checkout — the rest was only ever tracked as ledger debt).
+        if order.customer_id:
+            amount_paid_at_checkout = sum((p.amount for p in order.payments), Decimal("0"))
+            net_debt = order.total_amount - amount_paid_at_checkout
+            if net_debt > Decimal("0"):
+                from app.customers.services import CustomerService
+                customer_svc = CustomerService(self.session)
+                await customer_svc.create_refund_credit(
+                    customer_id=order.customer_id,
+                    tenant_id=tenant_id,
+                    amount=net_debt,
+                    actor_id=actor_user_id,
+                    refund_id=f"void:{order.id}",
+                )
+
         await self.session.flush()
 
         await self.audit.log(
@@ -695,12 +845,12 @@ class CheckoutService:
             branch_id=order.branch_id,
             entity_type=EntityType.ORDER,
             entity_id=order_id,
-            before_state={"order_status": OrderStatus.COMPLETED},
+            before_state={"order_status": original_status},
             after_state={"order_status": OrderStatus.VOIDED, "reason": reason},
             request_id=request_id,
         )
 
-        await self.publisher.publish(DomainEvent(
+        await event_publisher.publish(DomainEvent(
             event_type=EventType.ORDER_VOIDED,
             payload={
                 "order_id": str(order_id),
@@ -711,5 +861,11 @@ class CheckoutService:
             actor_id=actor_user_id,
         ))
 
-        await self.session.refresh(order, attribute_names=["items", "payments", "refunds"])
+        # refresh(attribute_names=...) expires every OTHER attribute on the instance
+        # too, not just the ones named — updated_at (onupdate=func.now(), so its
+        # in-memory value is stale after this row's UPDATE) must be listed
+        # explicitly or it's left expired and fails to lazy-load once this
+        # function returns and OrderResponse serialization runs outside the
+        # session's async context.
+        await self.session.refresh(order, attribute_names=["items", "payments", "refunds", "updated_at"])
         return order

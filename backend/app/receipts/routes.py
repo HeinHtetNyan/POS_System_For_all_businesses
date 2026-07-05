@@ -10,8 +10,10 @@ from app.api.deps import (
     CurrentUser,
     DbSession,
     EffectiveTenantId,
+    assert_branch_access,
     get_effective_tenant_id,
     require_roles,
+    scope_branch_filter,
 )
 from app.core.constants import UserRole
 from app.receipts.schemas import ReceiptListResponse, ReceiptResponse
@@ -45,6 +47,7 @@ async def list_receipts(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=500),
 ) -> ReceiptListResponse:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = ReceiptService(db)
     items, total = await svc.list_receipts(
         tenant_id=tenant_id,
@@ -73,6 +76,7 @@ async def get_receipt(
 ) -> ReceiptResponse:
     svc = ReceiptService(db)
     receipt = await svc.get_receipt(receipt_id, tenant_id)
+    assert_branch_access(current_user, receipt.branch_id)
     return ReceiptResponse.model_validate(receipt)
 
 
@@ -89,6 +93,7 @@ async def get_receipt_by_number(
 ) -> ReceiptResponse:
     svc = ReceiptService(db)
     receipt = await svc.get_receipt_by_number(receipt_number, tenant_id)
+    assert_branch_access(current_user, receipt.branch_id)
     return ReceiptResponse.model_validate(receipt)
 
 
@@ -105,4 +110,5 @@ async def get_receipt_by_order(
 ) -> ReceiptResponse:
     svc = ReceiptService(db)
     receipt = await svc.get_receipt_by_order(order_id, tenant_id)
+    assert_branch_access(current_user, receipt.branch_id)
     return ReceiptResponse.model_validate(receipt)

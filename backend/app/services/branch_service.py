@@ -63,10 +63,16 @@ class BranchService:
         return branch
 
     async def list_branches(
-        self, tenant_id: uuid.UUID, page: int = 1, page_size: int = 20
+        self,
+        tenant_id: uuid.UUID,
+        page: int = 1,
+        page_size: int = 20,
+        branch_id: uuid.UUID | None = None,
     ) -> tuple[list[Branch], int]:
         offset = (page - 1) * page_size
-        return await self.branch_repo.get_by_tenant(tenant_id, offset=offset, limit=page_size)
+        return await self.branch_repo.get_by_tenant(
+            tenant_id, offset=offset, limit=page_size, branch_id=branch_id
+        )
 
     async def update_branch(
         self,

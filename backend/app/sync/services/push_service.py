@@ -225,6 +225,7 @@ class SyncPushService:
                 "device_id": str(data.device_id),
                 "processed": processed_count,
                 "failed": failed_count,
+                "branch_id": str(data.branch_id),
             },
         ))
 

@@ -17,44 +17,37 @@ from app.events.types import EventType
 logger = get_logger(__name__)
 
 
-async def _get_tenant_user_ids(session, tenant_id) -> list:  # type: ignore[no-untyped-def]
-    """Return all active user IDs for a tenant (manager+)."""
-    from sqlalchemy import select
+async def _get_tenant_user_ids(session, tenant_id, branch_id=None) -> list:  # type: ignore[no-untyped-def]
+    """Return active BUSINESS_OWNER + MANAGER user IDs for a tenant.
+
+    BUSINESS_OWNER always sees every branch's events. When branch_id is given,
+    MANAGER is filtered to only those assigned to that branch (or with no
+    branch assigned at all, treated as tenant-wide — consistent with how
+    assert_branch_access treats an unset primary_branch_id everywhere else),
+    so a manager doesn't get paged for another branch's purchase order.
+    """
+    from sqlalchemy import or_, select
 
     from app.core.constants import UserRole, UserStatus
     from app.models.user import User
 
-    result = await session.execute(
-        select(User.id).where(
-            User.tenant_id == tenant_id,
-            User.status == UserStatus.ACTIVE,
-            User.role.in_([
-                UserRole.BUSINESS_OWNER.value,
-                UserRole.MANAGER.value,
-            ]),
+    conditions = [
+        User.tenant_id == tenant_id,
+        User.status == UserStatus.ACTIVE,
+        User.role.in_([
+            UserRole.BUSINESS_OWNER.value,
+            UserRole.MANAGER.value,
+        ]),
+    ]
+    if branch_id:
+        conditions.append(
+            or_(
+                User.role == UserRole.BUSINESS_OWNER.value,
+                User.primary_branch_id.is_(None),
+                User.primary_branch_id == branch_id,
+            )
         )
-    )
-    return list(result.scalars().all())
-
-
-async def _get_inventory_alert_ids(session, tenant_id) -> list:  # type: ignore[no-untyped-def]
-    """Return active user IDs for inventory alerts: owner + manager + inventory staff."""
-    from sqlalchemy import select
-
-    from app.core.constants import UserRole, UserStatus
-    from app.models.user import User
-
-    result = await session.execute(
-        select(User.id).where(
-            User.tenant_id == tenant_id,
-            User.status == UserStatus.ACTIVE,
-            User.role.in_([
-                UserRole.BUSINESS_OWNER.value,
-                UserRole.MANAGER.value,
-                UserRole.INVENTORY_STAFF.value,
-            ]),
-        )
-    )
+    result = await session.execute(select(User.id).where(*conditions))
     return list(result.scalars().all())
 
 
@@ -90,6 +83,18 @@ async def _get_super_admin_ids(session) -> list:  # type: ignore[no-untyped-def]
     return list(result.scalars().all())
 
 
+async def _get_branch_name(session, branch_id: str | None) -> str | None:  # type: ignore[no-untyped-def]
+    """Resolve a branch_id (as it appears in an event payload) to its display name."""
+    if not branch_id:
+        return None
+    from sqlalchemy import select
+
+    from app.models.branch import Branch
+
+    result = await session.execute(select(Branch.name).where(Branch.id == branch_id))
+    return result.scalar_one_or_none()
+
+
 
 @event_publisher.on(EventType.LOW_STOCK)
 async def handle_low_stock(event: DomainEvent) -> None:
@@ -103,9 +108,16 @@ async def handle_low_stock(event: DomainEvent) -> None:
 
     async with AsyncSessionLocal() as session:
         try:
-            recipient_ids = await _get_inventory_alert_ids(session, event.tenant_id)
+            # Owner + Manager only — Inventory Staff and Cashier have no access to
+            # the notifications feature (hidden from their nav) and already see
+            # low-stock status directly on the Products/Inventory screens.
+            branch_id = event.payload.get("branch_id")
+            recipient_ids = await _get_tenant_user_ids(session, event.tenant_id, branch_id=branch_id)
             if not recipient_ids:
                 return
+
+            branch_name = await _get_branch_name(session, branch_id)
+            branch_suffix = f" at {branch_name}" if branch_name else ""
 
             svc = NotificationService(session)
             await svc.notify_users(
@@ -114,17 +126,60 @@ async def handle_low_stock(event: DomainEvent) -> None:
                 priority=NotificationPriority.HIGH,
                 title=f"Low Stock Alert: {product_name}",
                 message=(
-                    f"{product_name} (SKU: {sku}) is below reorder level. "
+                    f"{product_name} (SKU: {sku}) is below reorder level{branch_suffix}. "
                     f"Current stock: {current_stock}, reorder at: {reorder_level}."
                 ),
                 user_ids=recipient_ids,
-                metadata=event.payload,
+                metadata={**event.payload, "branch_name": branch_name} if branch_name else event.payload,
             )
             await session.commit()
 
         except Exception:
             await session.rollback()
             logger.exception("handle_low_stock_error", tenant_id=str(event.tenant_id))
+
+
+
+@event_publisher.on(EventType.PURCHASE_ORDER_SUBMITTED)
+async def handle_purchase_order_submitted(event: DomainEvent) -> None:
+    """Notify Owner + Manager that a PO needs their approval."""
+    from app.db.session import AsyncSessionLocal
+    from app.notifications.services import NotificationService
+
+    po_number = event.payload.get("po_number", "")
+    supplier_name = event.payload.get("supplier_name", "")
+    total_amount = event.payload.get("total_amount", "")
+    currency = event.payload.get("currency", "MMK")
+    submitted_by_name = event.payload.get("submitted_by_name", "")
+
+    async with AsyncSessionLocal() as session:
+        try:
+            branch_id = event.payload.get("branch_id")
+            recipient_ids = await _get_tenant_user_ids(session, event.tenant_id, branch_id=branch_id)
+            if not recipient_ids:
+                return
+
+            branch_name = await _get_branch_name(session, branch_id)
+            branch_suffix = f" ({branch_name})" if branch_name else ""
+
+            svc = NotificationService(session)
+            await svc.notify_users(
+                tenant_id=event.tenant_id,
+                type=NotificationType.PROCUREMENT,
+                priority=NotificationPriority.MEDIUM,
+                title=f"Purchase Order {po_number} Needs Approval",
+                message=(
+                    f"PO {po_number} from {supplier_name}{branch_suffix} ({total_amount} {currency}) "
+                    f"was submitted by {submitted_by_name} and is awaiting your approval."
+                ),
+                user_ids=recipient_ids,
+                metadata={**event.payload, "branch_name": branch_name} if branch_name else event.payload,
+            )
+            await session.commit()
+
+        except Exception:
+            await session.rollback()
+            logger.exception("handle_po_submitted_error", tenant_id=str(event.tenant_id))
 
 
 
@@ -141,9 +196,13 @@ async def handle_purchase_order_approved(event: DomainEvent) -> None:
 
     async with AsyncSessionLocal() as session:
         try:
-            recipient_ids = await _get_tenant_user_ids(session, event.tenant_id)
+            branch_id = event.payload.get("branch_id")
+            recipient_ids = await _get_tenant_user_ids(session, event.tenant_id, branch_id=branch_id)
             if not recipient_ids:
                 return
+
+            branch_name = await _get_branch_name(session, branch_id)
+            branch_suffix = f" ({branch_name})" if branch_name else ""
 
             svc = NotificationService(session)
             await svc.notify_users(
@@ -152,11 +211,11 @@ async def handle_purchase_order_approved(event: DomainEvent) -> None:
                 priority=NotificationPriority.MEDIUM,
                 title=f"Purchase Order {po_number} Approved",
                 message=(
-                    f"PO {po_number} from {supplier_name} has been approved. "
+                    f"PO {po_number} from {supplier_name}{branch_suffix} has been approved. "
                     f"Total: {total_amount} {currency}."
                 ),
                 user_ids=recipient_ids,
-                metadata=event.payload,
+                metadata={**event.payload, "branch_name": branch_name} if branch_name else event.payload,
             )
             await session.commit()
 
@@ -176,9 +235,13 @@ async def handle_goods_receipt_created(event: DomainEvent) -> None:
 
     async with AsyncSessionLocal() as session:
         try:
-            recipient_ids = await _get_tenant_user_ids(session, event.tenant_id)
+            branch_id = event.payload.get("branch_id")
+            recipient_ids = await _get_tenant_user_ids(session, event.tenant_id, branch_id=branch_id)
             if not recipient_ids:
                 return
+
+            branch_name = await _get_branch_name(session, branch_id)
+            branch_suffix = f" at {branch_name}" if branch_name else ""
 
             svc = NotificationService(session)
             await svc.notify_users(
@@ -186,9 +249,9 @@ async def handle_goods_receipt_created(event: DomainEvent) -> None:
                 type=NotificationType.PROCUREMENT,
                 priority=NotificationPriority.LOW,
                 title=f"Goods Receipt {receipt_number} Created",
-                message=f"Goods receipt {receipt_number} for PO {po_number} has been recorded.",
+                message=f"Goods receipt {receipt_number} for PO {po_number} has been recorded{branch_suffix}.",
                 user_ids=recipient_ids,
-                metadata=event.payload,
+                metadata={**event.payload, "branch_name": branch_name} if branch_name else event.payload,
             )
             await session.commit()
         except Exception:
@@ -208,9 +271,13 @@ async def handle_payable_overdue(event: DomainEvent) -> None:
 
     async with AsyncSessionLocal() as session:
         try:
-            recipient_ids = await _get_tenant_user_ids(session, event.tenant_id)
+            branch_id = event.payload.get("branch_id")
+            recipient_ids = await _get_tenant_user_ids(session, event.tenant_id, branch_id=branch_id)
             if not recipient_ids:
                 return
+
+            branch_name = await _get_branch_name(session, branch_id)
+            branch_suffix = f" ({branch_name})" if branch_name else ""
 
             svc = NotificationService(session)
             await svc.notify_users(
@@ -219,11 +286,11 @@ async def handle_payable_overdue(event: DomainEvent) -> None:
                 priority=NotificationPriority.HIGH,
                 title=f"Overdue Payable: {supplier_name}",
                 message=(
-                    f"Supplier payable for PO {po_number} ({supplier_name}) "
+                    f"Supplier payable for PO {po_number} ({supplier_name}){branch_suffix} "
                     f"is overdue. Outstanding: {amount}."
                 ),
                 user_ids=recipient_ids,
-                metadata=event.payload,
+                metadata={**event.payload, "branch_name": branch_name} if branch_name else event.payload,
             )
             await session.commit()
         except Exception:
@@ -279,7 +346,10 @@ async def handle_trial_expiring(event: DomainEvent) -> None:
 
     async with AsyncSessionLocal() as session:
         try:
-            recipient_ids = await _get_tenant_user_ids(session, event.tenant_id)
+            # Billing/subscription notifications are Owner-only — Managers can't
+            # even open the Subscription page, so they'd get a notification
+            # linking somewhere they can't go.
+            recipient_ids = await _get_tenant_owner_ids(session, event.tenant_id)
             if not recipient_ids:
                 return
 
@@ -330,7 +400,8 @@ async def handle_subscription_expiring(event: DomainEvent) -> None:
 
     async with AsyncSessionLocal() as session:
         try:
-            recipient_ids = await _get_tenant_user_ids(session, event.tenant_id)
+            # Owner-only — see handle_trial_expiring for rationale.
+            recipient_ids = await _get_tenant_owner_ids(session, event.tenant_id)
             if not recipient_ids:
                 return
 
@@ -378,7 +449,8 @@ async def handle_subscription_expired(event: DomainEvent) -> None:
 
     async with AsyncSessionLocal() as session:
         try:
-            recipient_ids = await _get_tenant_user_ids(session, event.tenant_id)
+            # Owner-only — see handle_trial_expiring for rationale.
+            recipient_ids = await _get_tenant_owner_ids(session, event.tenant_id)
             if not recipient_ids:
                 return
 
@@ -429,7 +501,10 @@ async def handle_payment_proof_submitted(event: DomainEvent) -> None:
                     f"{amount} {currency} for subscription renewal. Review required."
                 ),
                 user_ids=super_admin_ids,
-                metadata=event.payload,
+                # tenant_id lets PlatformNotificationsPage link straight to the
+                # tenant's billing tab — event.tenant_id is the originating
+                # tenant even though this notification itself is platform-wide.
+                metadata={**event.payload, "tenant_id": str(event.tenant_id)} if event.tenant_id else event.payload,
             )
             await session.commit()
         except Exception:
@@ -451,7 +526,8 @@ async def handle_payment_proof_approved(event: DomainEvent) -> None:
 
     async with AsyncSessionLocal() as session:
         try:
-            recipient_ids = await _get_tenant_user_ids(session, event.tenant_id)
+            # Owner-only — see handle_trial_expiring for rationale.
+            recipient_ids = await _get_tenant_owner_ids(session, event.tenant_id)
             if not recipient_ids:
                 return
 
@@ -501,9 +577,13 @@ async def handle_sync_failed(event: DomainEvent) -> None:
 
     async with AsyncSessionLocal() as session:
         try:
-            recipient_ids = await _get_tenant_user_ids(session, event.tenant_id)
+            branch_id = event.payload.get("branch_id")
+            recipient_ids = await _get_tenant_user_ids(session, event.tenant_id, branch_id=branch_id)
             if not recipient_ids:
                 return
+
+            branch_name = await _get_branch_name(session, branch_id)
+            branch_suffix = f" at {branch_name}" if branch_name else ""
 
             svc = NotificationService(session)
             await svc.notify_users(
@@ -511,9 +591,9 @@ async def handle_sync_failed(event: DomainEvent) -> None:
                 type=NotificationType.SYSTEM,
                 priority=NotificationPriority.HIGH,
                 title="Sync Failed",
-                message=f"Offline sync failed for device {device_id}. Error: {error}",
+                message=f"Offline sync failed for device {device_id}{branch_suffix}. Error: {error}",
                 user_ids=recipient_ids,
-                metadata=event.payload,
+                metadata={**event.payload, "branch_name": branch_name} if branch_name else event.payload,
             )
             await session.commit()
         except Exception:
@@ -551,7 +631,7 @@ async def handle_business_registered(event: DomainEvent) -> None:
                     f"on a {trial_days}-day {plan_name} trial."
                 ),
                 user_ids=super_admin_ids,
-                metadata=event.payload,
+                metadata={**event.payload, "tenant_id": str(event.tenant_id)} if event.tenant_id else event.payload,
             )
             await session.commit()
         except Exception:
@@ -592,7 +672,7 @@ async def handle_subscription_activated(event: DomainEvent) -> None:
                     f"Active until {expires_at[:10]}."
                 ),
                 user_ids=super_admin_ids,
-                metadata=event.payload,
+                metadata={**event.payload, "tenant_id": str(event.tenant_id)} if event.tenant_id else event.payload,
             )
             await session.commit()
         except Exception:
@@ -633,7 +713,7 @@ async def handle_subscription_renewed(event: DomainEvent) -> None:
                     f"New expiry: {expires_at[:10]}."
                 ),
                 user_ids=super_admin_ids,
-                metadata=event.payload,
+                metadata={**event.payload, "tenant_id": str(event.tenant_id)} if event.tenant_id else event.payload,
             )
             await session.commit()
         except Exception:
@@ -671,7 +751,7 @@ async def handle_subscription_upgraded(event: DomainEvent) -> None:
                     title=f"Plan Upgraded: {tenant_name}",
                     message=f"'{tenant_name}' upgraded from '{old_plan}' to '{new_plan}'.",
                     user_ids=super_admin_ids,
-                    metadata=event.payload,
+                    metadata={**event.payload, "tenant_id": str(event.tenant_id)} if event.tenant_id else event.payload,
                 )
 
             # Notify the tenant's business owner only (not managers)
@@ -724,7 +804,7 @@ async def handle_subscription_downgraded(event: DomainEvent) -> None:
                     title=f"Plan Downgraded: {tenant_name}",
                     message=f"'{tenant_name}' downgraded from '{old_plan}' to '{new_plan}'.",
                     user_ids=super_admin_ids,
-                    metadata=event.payload,
+                    metadata={**event.payload, "tenant_id": str(event.tenant_id)} if event.tenant_id else event.payload,
                 )
 
             # Notify the tenant's business owner only (not managers)

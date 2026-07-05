@@ -9,7 +9,10 @@ export default function TrialExpiredPage() {
   const { user, logout } = useAuthStore()
 
   const { data: sub, isLoading: subLoading } = useQuery({
-    queryKey: ['subscription-me'],
+    // Must match the key used everywhere else (['subscription', 'current'])
+    // so a reactivation elsewhere invalidates this page's cache too — a
+    // standalone 'subscription-me' key never got invalidated by anything.
+    queryKey: ['subscription', 'current'],
     queryFn: subscriptionsService.getMySubscription,
     retry: 1,
   })
@@ -52,7 +55,7 @@ export default function TrialExpiredPage() {
           <p className="text-zinc-400 text-sm max-w-md mx-auto">
             {sub?.status === 'SUSPENDED'
               ? 'Your account has been suspended. Contact support to resolve this.'
-              : 'Your free trial has expired. Activate a subscription to continue using NexusPOS.'}
+              : 'Your free trial has expired. Activate a subscription to continue using SawYunPos.'}
           </p>
         </div>
 
@@ -142,7 +145,7 @@ export default function TrialExpiredPage() {
             Log out
           </button>
           <span>·</span>
-          <a href="mailto:support@nexuspos.com" className="hover:text-zinc-400 transition-colors">
+          <a href="mailto:support@sawyunpos.com" className="hover:text-zinc-400 transition-colors">
             Contact Support
           </a>
         </div>

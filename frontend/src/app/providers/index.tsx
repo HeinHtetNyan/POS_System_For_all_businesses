@@ -44,6 +44,17 @@ function HealthPinger() {
       if (cancelled) return
       setOnline(alive)
 
+      // Refresh the failed-ops count regardless of connectivity — those rows
+      // sit in IndexedDB from a past sync attempt and don't depend on the
+      // current ping result, so the badge should reflect them even offline
+      // or right after a page reload before any new sync pass has run.
+      try {
+        const { getFailedSyncOps } = await import('@/offline/db')
+        useUIStore.getState().setFailedSyncCount((await getFailedSyncOps()).length)
+      } catch {
+        // Best-effort — will retry on next ping interval
+      }
+
       // On every successful ping, process any queued sales (handles both
       // offline→online transitions and blink scenarios where we never
       // truly went "offline" but a checkout request failed mid-flight).

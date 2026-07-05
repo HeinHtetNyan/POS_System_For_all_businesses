@@ -65,6 +65,9 @@ class Receipt(Base):
     cashier_name: Mapped[str] = mapped_column(String(200), nullable=False)
     branch_name: Mapped[str] = mapped_column(String(200), nullable=False)
     tenant_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    # Currency snapshot — same rationale as Order.currency: a later change to the
+    # branch's/tenant's currency setting must not repaint a historical receipt.
+    currency: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
     # Full snapshot of payment methods used (JSON array)
     payment_methods: Mapped[dict] = mapped_column(JSONB, nullable=False, default=list)

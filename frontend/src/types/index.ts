@@ -154,6 +154,8 @@ export interface SyncOperation {
   status: 'pending' | 'failed'
   createdAt: Date
   retries: number
+  lastError?: string
+  updatedAt?: Date
 }
 // Checkout flow
 

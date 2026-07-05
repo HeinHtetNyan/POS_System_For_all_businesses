@@ -44,6 +44,12 @@ class Payment(Base):
     )
     payment_method: Mapped[str] = mapped_column(String(50), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    # Cash tendered by the customer, when it differs from `amount` (the amount
+    # actually applied/charged toward the order). NULL for non-cash methods or
+    # when the cashier didn't record a tendered figure — `amount` always stays
+    # the source of truth for accounting; this is purely for change calculation
+    # and receipt/till-reconciliation display.
+    tendered_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
     payment_status: Mapped[str] = mapped_column(
         String(50), nullable=False, default=PaymentStatus.PAID
     )
@@ -105,6 +111,19 @@ class Refund(Base):
         nullable=False,
     )
     processed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    # The cashier session open when the refund was actually processed — NOT
+    # necessarily the session that made the original sale (that could have
+    # been a prior shift, already closed). Cash-session reconciliation must
+    # subtract cash refunds from the session whose drawer the money actually
+    # came out of. Nullable: a refund processed by someone with no open
+    # session at that branch (e.g. a manager without their own register)
+    # simply isn't attributed to any session's reconciliation.
+    cashier_session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cashier_sessions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     order: Mapped[Order] = relationship("Order", back_populates="refunds")
     items: Mapped[list[RefundItem]] = relationship(

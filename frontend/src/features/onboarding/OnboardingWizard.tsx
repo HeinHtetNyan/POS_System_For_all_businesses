@@ -38,7 +38,7 @@ export default function OnboardingWizard() {
   const [branchPhone, setBranchPhone] = useState('')
 
   function completeOnboarding() {
-    localStorage.removeItem('nexuspos_onboarding_pending')
+    localStorage.removeItem('sawyunpos_onboarding_pending')
     const home = user ? (ROLE_HOME[user.role] ?? '/app/dashboard') : '/app/dashboard'
     navigate(home, { replace: true })
   }
@@ -111,10 +111,8 @@ export default function OnboardingWizard() {
       <div className="min-h-full flex items-center justify-center p-4 py-8">
       <div className="w-full max-w-lg">
         <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-amber-500 shadow-2xl shadow-amber-900/50 mb-3">
-            <span className="text-black font-black text-2xl">N</span>
-          </div>
-          <h1 className="text-xl font-bold text-zinc-100">Welcome to NexusPOS</h1>
+          <img src="/logo-icon.png" alt="SawYunPos" className="inline-block w-14 h-14 rounded-2xl shadow-2xl shadow-blue-900/50 mb-3" />
+          <h1 className="text-xl font-bold text-zinc-100">Welcome to SawYunPos</h1>
           <p className="text-zinc-500 text-sm mt-1">Let's get your business set up</p>
         </div>
 

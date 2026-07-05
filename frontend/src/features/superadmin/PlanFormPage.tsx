@@ -183,7 +183,10 @@ export default function PlanFormPage() {
   }
 
   const isPending = createMutation.isPending || updateMutation.isPending
-  const canSubmit = form.name.trim() && form.code.trim() && form.price && !isPending
+  // The number input's min="0" only blocks the spinner arrows / native form
+  // constraint validation — this button isn't a native submit, so a typed
+  // negative value would otherwise sail through.
+  const canSubmit = form.name.trim() && form.code.trim() && form.price && Number(form.price) >= 0 && !isPending
 
   if (isEdit && planLoading) {
     return <div className="flex items-center justify-center h-full"><Spinner size={28} /></div>

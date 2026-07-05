@@ -46,7 +46,7 @@ export const useTenantStore = create<TenantState>()(
       }),
     }),
     {
-      name: 'nexuspos-tenant',
+      name: 'sawyunpos-tenant',
       partialize: (s) => ({
         selectedBusiness: s.selectedBusiness,
         selectedBranch: s.selectedBranch,

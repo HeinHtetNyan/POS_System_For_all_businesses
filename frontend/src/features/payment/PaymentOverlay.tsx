@@ -10,6 +10,7 @@ import { tenantService } from '@/services/tenant/tenant.service'
 import { fmt, cn, extractApiMsg, genId } from '@/lib/utils'
 import { OfflineError } from '@/app/lib/axios'
 import { enqueueSyncOp } from '@/offline/db'
+import { invalidateSalesMutationQueries } from '@/lib/salesQueryInvalidation'
 import { IconX, IconCash, IconCard, IconSplit } from '@/components/icons'
 import { Spinner } from '@/components/ui'
 import type { PaymentMethod } from '@/types'
@@ -86,7 +87,14 @@ export default function PaymentOverlay() {
     // Build the checkout payload once — reused in both the primary call
     // and the offline blink queue so there is no duplicated logic.
     const tenantTaxRate  = totals.taxEnabled ? totals.taxRate / 100 : 0
-    const orderDiscountAmt = totals.orderDiscAmt
+    // totals.orderDiscAmt is computed against the GROSS (inclusive) cart total
+    // (see useCartTotals) — the backend's discount math operates on NET
+    // (pre-tax) amounts, same as unit_price below. Sending the gross figure
+    // unconverted understates the backend's computed total_amount versus what
+    // the cart displayed, by roughly the tax rate's share of the discount.
+    const orderDiscountAmt = totals.taxEnabled && totals.taxInclusive
+      ? totals.orderDiscAmt / (1 + tenantTaxRate)
+      : totals.orderDiscAmt
     const checkoutItems = items.map(item => {
       // For inclusive pricing, send the pre-tax unit price so the backend
       // formula (price * tax_rate) still yields the correct tax extracted amount.
@@ -107,25 +115,47 @@ export default function PaymentOverlay() {
     // but only the actual charged amount should be stored in finance records.
     const normalizedSplits = (() => {
       const splitTotal = splitPayments.reduce((s, p) => s + p.amount, 0)
-      const excess = splitTotal - totals.total
+      let excess = splitTotal - totals.total
       if (excess <= 0) return splitPayments
-      // Trim the excess from the last payment in the list
-      return splitPayments.map((sp, i) =>
-        i === splitPayments.length - 1
-          ? { ...sp, amount: Math.max(0, sp.amount - excess) }
-          : sp
-      )
+      // Trim from the end backwards, consuming as much excess as each leg
+      // can absorb — a single leg (even the last one) might not cover all of
+      // it, e.g. an earlier leg entered alone already exceeds the total.
+      // Walking back potentially zeroes out several legs instead of assuming
+      // only the last one needs adjusting.
+      const result = [...splitPayments]
+      for (let i = result.length - 1; i >= 0 && excess > 0; i--) {
+        const reduceBy = Math.min(result[i].amount, excess)
+        result[i] = { ...result[i], amount: result[i].amount - reduceBy }
+        excess -= reduceBy
+      }
+      return result
     })()
-    const payments: { payment_method: string; amount: string; notes?: string }[] =
+    const payments: { payment_method: string; amount: string; notes?: string; tendered_amount?: string }[] =
       paymentMethod === 'split'
-        ? normalizedSplits.map(sp => ({
-            payment_method: toBackendMethod(sp.method),
-            amount: sp.amount.toFixed(2),
-            notes: sp.notes || undefined,
-          }))
+        ? normalizedSplits
+            .map((sp, i) => {
+              // splitPayments[i].amount is what the cashier actually entered for
+              // this leg, before the excess-trim above reduced the stored amount
+              // to what's actually charged — preserve it as the tendered figure.
+              const original = splitPayments[i]
+              const isCash = toBackendMethod(sp.method) === 'CASH'
+              return {
+                payment_method: toBackendMethod(sp.method),
+                amount: sp.amount.toFixed(2),
+                notes: sp.notes || undefined,
+                tendered_amount: isCash ? original.amount.toFixed(2) : undefined,
+              }
+            })
+            // A leg trimmed down to 0 (fully absorbed by the excess) must be
+            // dropped entirely — the backend requires every payment's amount
+            // to be > 0.
+            .filter(p => parseFloat(p.amount) > 0)
         : [{
             payment_method: paymentMethod === 'card' ? cardSubMethod : toBackendMethod(paymentMethod),
             amount: totals.total.toFixed(2),
+            tendered_amount: paymentMethod === 'cash' && paymentAmount
+              ? parseFloat(paymentAmount).toFixed(2)
+              : undefined,
             notes: (paymentMethod === 'card' && cardSubMethod === 'BANK_TRANSFER' && bankTransferBank)
               ? bankTransferBank
               : undefined,
@@ -137,6 +167,11 @@ export default function PaymentOverlay() {
       payments,
       discount_amount:    orderDiscountAmt > 0 ? orderDiscountAmt.toFixed(2) : undefined,
       notes:              note || undefined,
+      // Generated once per checkout attempt — reused for every retry (the initial
+      // network-dropped attempt and any subsequent offline sync-queue replays) so
+      // the backend can recognize a resubmission and return the original sale
+      // instead of creating a duplicate.
+      idempotency_key:    genId('chk'),
     }
 
     setIsProcessing(true)
@@ -145,12 +180,7 @@ export default function PaymentOverlay() {
     try {
       const order = await checkoutService.checkout(checkoutPayload)
 
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: ['products'] }),
-        qc.invalidateQueries({ queryKey: ['inventory'] }),
-        qc.invalidateQueries({ queryKey: ['orders'] }),
-        qc.invalidateQueries({ queryKey: ['session-orders'] }),
-      ])
+      await invalidateSalesMutationQueries(qc)
 
       completeOrder(order.id)
     } catch (err: unknown) {

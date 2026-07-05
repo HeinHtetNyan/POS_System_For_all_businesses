@@ -20,6 +20,7 @@ class PaymentResponse(BaseModel):
     tenant_id: uuid.UUID
     payment_method: str
     amount: Decimal
+    tendered_amount: Decimal | None = None
     payment_status: str
     reference_number: str | None
     notes: str | None

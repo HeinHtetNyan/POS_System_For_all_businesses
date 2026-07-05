@@ -64,7 +64,7 @@ class ReferralStatsResponse(BaseSchema):
 
 class ReferralLinkResponse(BaseSchema):
     code: str
-    referral_url: str           # e.g. "https://app.nexuspos.com/register?ref=CODE"
+    referral_url: str           # e.g. "https://app.sawyunpos.com/register?ref=CODE"
 
 
 # Paginated type aliases

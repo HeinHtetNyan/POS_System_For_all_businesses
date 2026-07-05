@@ -8,14 +8,7 @@ import { useLocaleStore } from '@/i18n/localeStore'
 import { usePreferencesStore } from '@/store/preferences.store'
 import { tenantService } from '@/services/tenant/tenant.service'
 import type { TenantUpdateRequest } from '@/shared/types'
-
-const TIMEZONES = [
-  'UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
-  'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Asia/Yangon', 'Asia/Bangkok',
-  'Asia/Kolkata', 'Asia/Singapore', 'Asia/Tokyo', 'Asia/Shanghai', 'Australia/Sydney',
-]
-
-const CURRENCIES = ['MMK', 'USD', 'EUR', 'GBP', 'JPY', 'CNY', 'SGD', 'INR', 'THB', 'AUD', 'CAD']
+import { TIMEZONES, CURRENCIES } from '@/shared/constants/localization'
 
 const LANGUAGE_OPTIONS = [
   { value: 'en-US', label: 'English (US)' },
@@ -37,6 +30,7 @@ export default function BusinessSettingsPage() {
   const canEdit = user?.role === 'BUSINESS_OWNER' || user?.role === 'SUPER_ADMIN'
 
   const [form, setForm] = useState<TenantUpdateRequest>({})
+  const [isEditing, setIsEditing] = useState(false)
 
   const { data: tenant, isLoading } = useQuery({
     queryKey: ['tenant', tenantId],
@@ -44,20 +38,24 @@ export default function BusinessSettingsPage() {
     enabled: !!tenantId,
   })
 
+  function resetFormFromTenant() {
+    if (!tenant) return
+    setForm({
+      name:     tenant.name,
+      email:    tenant.email ?? '',
+      phone:    tenant.phone ?? '',
+      address:  tenant.address ?? '',
+      country:  tenant.country ?? '',
+      city:     tenant.city ?? '',
+      timezone: tenant.timezone,
+      currency: tenant.currency,
+      locale:   tenant.locale,
+    })
+  }
+
   useEffect(() => {
-    if (tenant) {
-      setForm({
-        name:     tenant.name,
-        email:    tenant.email ?? '',
-        phone:    tenant.phone ?? '',
-        address:  tenant.address ?? '',
-        country:  tenant.country ?? '',
-        city:     tenant.city ?? '',
-        timezone: tenant.timezone,
-        currency: tenant.currency,
-        locale:   tenant.locale,
-      })
-    }
+    resetFormFromTenant()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenant])
 
   const mutation = useMutation({
@@ -65,14 +63,32 @@ export default function BusinessSettingsPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tenant', tenantId] })
       toast.success('Business settings saved')
+      setIsEditing(false)
     },
     onError: err => toast.error(extractApiMsg(err) ?? 'Failed to save'),
   })
+
+  function handleSave() {
+    // Email/phone are never editable through this form — never send them,
+    // regardless of what's sitting in local state, so a stale/tampered value
+    // can't silently overwrite the business's contact info.
+    const { email: _email, phone: _phone, ...payload } = form
+    mutation.mutate(payload)
+  }
+
+  function handleCancel() {
+    resetFormFromTenant()
+    setIsEditing(false)
+  }
 
   function set(field: keyof TenantUpdateRequest) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
       setForm(prev => ({ ...prev, [field]: e.target.value }))
   }
+
+  // Editable fields are locked until "Edit" is clicked; email/phone stay
+  // permanently locked (see settings.email_locked_hint below).
+  const fieldsDisabled = !canEdit || !isEditing
 
   const inputCls = (disabled: boolean) =>
     `w-full bg-zinc-800 border ${disabled ? 'border-zinc-800 text-zinc-500 cursor-not-allowed' : 'border-zinc-700 text-zinc-100'} rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-amber-500`
@@ -102,33 +118,37 @@ export default function BusinessSettingsPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
               <label className="block text-xs text-zinc-400 mb-1">{t('settings.business_name')}</label>
-              <input disabled={!canEdit} value={form.name ?? ''} onChange={set('name')} className={inputCls(!canEdit)} />
+              <input disabled={fieldsDisabled} value={form.name ?? ''} onChange={set('name')} className={inputCls(fieldsDisabled)} />
             </div>
             <div>
-              <label className="block text-xs text-zinc-400 mb-1">{t('settings.email')}</label>
-              <input type="email" disabled={!canEdit} value={form.email ?? ''} onChange={set('email')} className={inputCls(!canEdit)} />
+              <label className="block text-xs text-zinc-400 mb-1">
+                {t('settings.email')} <span className="text-zinc-600">· {t('settings.email_locked_hint')}</span>
+              </label>
+              <input type="email" disabled value={form.email ?? ''} className={inputCls(true)} />
             </div>
             <div>
-              <label className="block text-xs text-zinc-400 mb-1">{t('settings.phone')}</label>
-              <input type="tel" inputMode="tel" autoComplete="tel" disabled={!canEdit} value={form.phone ?? ''} onChange={set('phone')} className={inputCls(!canEdit)} />
+              <label className="block text-xs text-zinc-400 mb-1">
+                {t('settings.phone')} <span className="text-zinc-600">· {t('settings.phone_locked_hint')}</span>
+              </label>
+              <input type="tel" inputMode="tel" autoComplete="tel" disabled value={form.phone ?? ''} className={inputCls(true)} />
             </div>
             <div className="sm:col-span-2">
               <label className="block text-xs text-zinc-400 mb-1">{t('settings.address')}</label>
               <textarea
-                disabled={!canEdit}
+                disabled={fieldsDisabled}
                 value={form.address ?? ''}
                 onChange={set('address')}
                 rows={2}
-                className={inputCls(!canEdit) + ' resize-none'}
+                className={inputCls(fieldsDisabled) + ' resize-none'}
               />
             </div>
             <div>
               <label className="block text-xs text-zinc-400 mb-1">{t('settings.city')}</label>
-              <input disabled={!canEdit} value={form.city ?? ''} onChange={set('city')} className={inputCls(!canEdit)} />
+              <input disabled={fieldsDisabled} value={form.city ?? ''} onChange={set('city')} className={inputCls(fieldsDisabled)} />
             </div>
             <div>
               <label className="block text-xs text-zinc-400 mb-1">{t('settings.country')}</label>
-              <input disabled={!canEdit} value={form.country ?? ''} onChange={set('country')} className={inputCls(!canEdit)} />
+              <input disabled={fieldsDisabled} value={form.country ?? ''} onChange={set('country')} className={inputCls(fieldsDisabled)} />
             </div>
           </div>
         </div>
@@ -139,19 +159,19 @@ export default function BusinessSettingsPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs text-zinc-400 mb-1">{t('settings.timezone')}</label>
-              <select disabled={!canEdit} value={form.timezone ?? ''} onChange={set('timezone')} className={inputCls(!canEdit)}>
+              <select disabled={fieldsDisabled} value={form.timezone ?? ''} onChange={set('timezone')} className={inputCls(fieldsDisabled)}>
                 {TIMEZONES.map(tz => <option key={tz} value={tz}>{tz}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-xs text-zinc-400 mb-1">{t('settings.currency')}</label>
-              <select disabled={!canEdit} value={form.currency ?? ''} onChange={set('currency')} className={inputCls(!canEdit)}>
+              <select disabled={fieldsDisabled} value={form.currency ?? ''} onChange={set('currency')} className={inputCls(fieldsDisabled)}>
                 {CURRENCIES.map(c => <option key={c} value={c}>{c === 'MMK' ? `${t('currency.mmk')} (MMK)` : c}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-xs text-zinc-400 mb-1">{t('settings.language')}</label>
-              <select disabled={!canEdit} value={form.locale ?? ''} onChange={set('locale')} className={inputCls(!canEdit)}>
+              <select disabled={fieldsDisabled} value={form.locale ?? ''} onChange={set('locale')} className={inputCls(fieldsDisabled)}>
                 {LANGUAGE_OPTIONS.map(l => (
                   <option key={l.value} value={l.value}>{l.label}</option>
                 ))}
@@ -236,9 +256,18 @@ export default function BusinessSettingsPage() {
           </div>
         )}
 
-        {canEdit && (
+        {canEdit && !isEditing && (
           <div className="flex justify-end">
-            <Btn onClick={() => mutation.mutate(form)} disabled={mutation.isPending}>
+            <Btn onClick={() => setIsEditing(true)}>{t('common.edit')}</Btn>
+          </div>
+        )}
+
+        {canEdit && isEditing && (
+          <div className="flex justify-end gap-3">
+            <Btn variant="secondary" onClick={handleCancel} disabled={mutation.isPending}>
+              {t('common.cancel')}
+            </Btn>
+            <Btn onClick={handleSave} disabled={mutation.isPending}>
               {mutation.isPending ? t('settings.saving') : t('settings.save_changes')}
             </Btn>
           </div>

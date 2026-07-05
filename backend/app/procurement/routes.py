@@ -11,10 +11,13 @@ from app.api.deps import (
     DbSession,
     EffectiveTenantId,
     RequestId,
+    assert_branch_access,
     check_reseller_access,
     require_inventory_access,
     require_manager_or_above,
+    scope_branch_filter,
 )
+from app.core.constants import UserRole
 from app.procurement.schemas import (
     GoodsReceiptCreate,
     GoodsReceiptDetail,
@@ -76,6 +79,7 @@ async def create_purchase_order(
     request_id: RequestId,
     data: PurchaseOrderCreate,
 ) -> PurchaseOrderDetail:
+    assert_branch_access(current_user, data.branch_id)
     svc = PurchaseOrderService(db)
     po = await svc.create_po(
         tenant_id=tenant_id,
@@ -101,6 +105,7 @@ async def list_purchase_orders(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=500),
 ) -> PaginatedPurchaseOrders:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = PurchaseOrderService(db)
     items, total = await svc.list_pos(
         tenant_id=tenant_id,
@@ -142,6 +147,7 @@ async def get_purchase_order(
 ) -> PurchaseOrderDetail:
     svc = PurchaseOrderService(db)
     po = await svc.get_po(po_id, tenant_id)
+    assert_branch_access(current_user, po.branch_id)
     actor_ids = {po.created_by} | ({po.approved_by} if po.approved_by else set())
     names = await _user_names(db, actor_ids)
 
@@ -157,28 +163,41 @@ async def get_purchase_order(
     })
 
 
-@router.patch("/purchase-orders/{po_id}", response_model=PurchaseOrderDetail)
+@router.patch(
+    "/purchase-orders/{po_id}",
+    response_model=PurchaseOrderDetail,
+    dependencies=[check_reseller_access("procurement:create", check_branch=False)],
+)
 async def update_purchase_order(
     po_id: uuid.UUID,
     db: DbSession,
-    current_user: Annotated[User, Depends(require_manager_or_above)],
+    current_user: Annotated[User, Depends(require_inventory_access)],
     tenant_id: EffectiveTenantId,
     data: PurchaseOrderUpdate,
+    request_id: RequestId,
 ) -> PurchaseOrderDetail:
     svc = PurchaseOrderService(db)
-    po = await svc.update_po(po_id, tenant_id, data, current_user.id)
+    existing = await svc.get_po(po_id, tenant_id)
+    assert_branch_access(current_user, existing.branch_id)
+    po = await svc.update_po(po_id, tenant_id, data, current_user.id, request_id=request_id)
     return PurchaseOrderDetail.model_validate(po)
 
 
-@router.post("/purchase-orders/{po_id}/submit", response_model=PurchaseOrderDetail)
+@router.post(
+    "/purchase-orders/{po_id}/submit",
+    response_model=PurchaseOrderDetail,
+    dependencies=[check_reseller_access("procurement:create", check_branch=False)],
+)
 async def submit_purchase_order(
     po_id: uuid.UUID,
     db: DbSession,
-    current_user: Annotated[User, Depends(require_manager_or_above)],
+    current_user: Annotated[User, Depends(require_inventory_access)],
     tenant_id: EffectiveTenantId,
     request_id: RequestId,
 ) -> PurchaseOrderDetail:
     svc = PurchaseOrderService(db)
+    existing = await svc.get_po(po_id, tenant_id)
+    assert_branch_access(current_user, existing.branch_id)
     po = await svc.submit_po(po_id, tenant_id, current_user.id, request_id)
     return PurchaseOrderDetail.model_validate(po)
 
@@ -196,11 +215,17 @@ async def approve_purchase_order(
     request_id: RequestId,
 ) -> PurchaseOrderDetail:
     svc = PurchaseOrderService(db)
+    existing = await svc.get_po(po_id, tenant_id)
+    assert_branch_access(current_user, existing.branch_id)
     po = await svc.approve_po(po_id, tenant_id, current_user.id, request_id)
     return PurchaseOrderDetail.model_validate(po)
 
 
-@router.post("/purchase-orders/{po_id}/cancel", response_model=PurchaseOrderDetail)
+@router.post(
+    "/purchase-orders/{po_id}/cancel",
+    response_model=PurchaseOrderDetail,
+    dependencies=[check_reseller_access("procurement:approve", check_branch=False)],
+)
 async def cancel_purchase_order(
     po_id: uuid.UUID,
     db: DbSession,
@@ -209,12 +234,19 @@ async def cancel_purchase_order(
     request_id: RequestId,
 ) -> PurchaseOrderDetail:
     svc = PurchaseOrderService(db)
+    existing = await svc.get_po(po_id, tenant_id)
+    assert_branch_access(current_user, existing.branch_id)
     po = await svc.cancel_po(po_id, tenant_id, current_user.id, request_id)
     return PurchaseOrderDetail.model_validate(po)
 
 
 
-@router.post("/receipts", response_model=GoodsReceiptDetail, status_code=201)
+@router.post(
+    "/receipts",
+    response_model=GoodsReceiptDetail,
+    status_code=201,
+    dependencies=[check_reseller_access("procurement:create", check_branch=False)],
+)
 async def create_goods_receipt(
     db: DbSession,
     current_user: Annotated[User, Depends(require_inventory_access)],
@@ -222,6 +254,7 @@ async def create_goods_receipt(
     request_id: RequestId,
     data: GoodsReceiptCreate,
 ) -> GoodsReceiptDetail:
+    assert_branch_access(current_user, data.branch_id)
     svc = ReceivingService(db)
     receipt = await svc.create_goods_receipt(
         tenant_id=tenant_id,
@@ -246,6 +279,7 @@ async def list_goods_receipts(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=500),
 ) -> PaginatedGoodsReceipts:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = ReceivingService(db)
     items, total = await svc.list_receipts(
         tenant_id=tenant_id,
@@ -268,7 +302,11 @@ async def list_goods_receipts(
     )
 
 
-@router.get("/receipts/{receipt_id}", response_model=GoodsReceiptDetail)
+@router.get(
+    "/receipts/{receipt_id}",
+    response_model=GoodsReceiptDetail,
+    dependencies=[check_reseller_access("procurement:view", check_branch=False)],
+)
 async def get_goods_receipt(
     receipt_id: uuid.UUID,
     db: DbSession,
@@ -277,6 +315,7 @@ async def get_goods_receipt(
 ) -> GoodsReceiptDetail:
     svc = ReceivingService(db)
     receipt = await svc.get_receipt(receipt_id, tenant_id)
+    assert_branch_access(current_user, receipt.branch_id)
     names = await _user_names(db, {receipt.received_by} if receipt.received_by else set())
     return GoodsReceiptDetail.model_validate(receipt).model_copy(update={
         "received_by_name": names.get(receipt.received_by),
@@ -294,16 +333,22 @@ async def get_goods_receipt(
 
 
 
-@router.get("/payables", response_model=PaginatedSupplierPayables)
+@router.get(
+    "/payables",
+    response_model=PaginatedSupplierPayables,
+    dependencies=[check_reseller_access("procurement:view", check_branch=False)],
+)
 async def list_payables(
     db: DbSession,
     current_user: Annotated[User, Depends(require_inventory_access)],
     tenant_id: EffectiveTenantId,
     supplier_id: uuid.UUID | None = Query(default=None),
     status: str | None = Query(default=None),
+    branch_id: uuid.UUID | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=500),
 ) -> PaginatedSupplierPayables:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = SupplierPayableService(db)
     items, total = await svc.list_payables(
         tenant_id=tenant_id,
@@ -311,6 +356,7 @@ async def list_payables(
         page_size=page_size,
         supplier_id=supplier_id,
         status=status,
+        branch_id=branch_id,
     )
     sup_ids = {p.supplier_id for p in items}
     sup_names = await _supplier_names(db, sup_ids)
@@ -327,7 +373,11 @@ async def list_payables(
     )
 
 
-@router.get("/payables/{payable_id}", response_model=SupplierPayableDetail)
+@router.get(
+    "/payables/{payable_id}",
+    response_model=SupplierPayableDetail,
+    dependencies=[check_reseller_access("procurement:view", check_branch=False)],
+)
 async def get_payable(
     payable_id: uuid.UUID,
     db: DbSession,
@@ -336,6 +386,7 @@ async def get_payable(
 ) -> SupplierPayableDetail:
     svc = SupplierPayableService(db)
     payable = await svc.get_payable(payable_id, tenant_id)
+    assert_branch_access(current_user, payable.purchase_order.branch_id)
     payment_actor_ids = {p.recorded_by for p in payable.payments if p.recorded_by}
     names = await _user_names(db, payment_actor_ids)
     detail = SupplierPayableDetail.model_validate(payable)
@@ -350,19 +401,30 @@ async def get_payable(
     return detail
 
 
-@router.get("/suppliers/{supplier_id}/balance", response_model=SupplierBalance)
+@router.get(
+    "/suppliers/{supplier_id}/balance",
+    response_model=SupplierBalance,
+    dependencies=[check_reseller_access("procurement:view", check_branch=False)],
+)
 async def get_supplier_balance(
     supplier_id: uuid.UUID,
     db: DbSession,
     current_user: Annotated[User, Depends(require_inventory_access)],
     tenant_id: EffectiveTenantId,
+    branch_id: uuid.UUID | None = Query(default=None),
 ) -> SupplierBalance:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = SupplierPayableService(db)
-    balance = await svc.supplier_balance(supplier_id, tenant_id)
+    balance = await svc.supplier_balance(supplier_id, tenant_id, branch_id=branch_id)
     return SupplierBalance.model_validate(balance)
 
 
-@router.post("/payables/{payable_id}/payments", response_model=SupplierPaymentResponse, status_code=201)
+@router.post(
+    "/payables/{payable_id}/payments",
+    response_model=SupplierPaymentResponse,
+    status_code=201,
+    dependencies=[check_reseller_access("procurement:payment", check_branch=False)],
+)
 async def record_supplier_payment(
     payable_id: uuid.UUID,
     db: DbSession,
@@ -372,6 +434,8 @@ async def record_supplier_payment(
     data: SupplierPaymentCreate,
 ) -> SupplierPaymentResponse:
     svc = SupplierPayableService(db)
+    existing = await svc.get_payable(payable_id, tenant_id)
+    assert_branch_access(current_user, existing.purchase_order.branch_id)
     payment = await svc.record_payment(
         payable_id=payable_id,
         tenant_id=tenant_id,

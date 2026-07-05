@@ -53,6 +53,10 @@ export default function BusinessDashboardPage() {
   const isStaff = role === 'CASHIER' || role === 'INVENTORY_STAFF'
   const canProcure = canAccess(role, 'procurement')
   const canSwitchBranches = isOwner || isManager
+  // Only the owner may aggregate across every branch — a manager is scoped to
+  // their own assigned branch server-side, so offering "All Branches" to them
+  // would silently fall back to their one branch while the label lies about it.
+  const canViewAllBranches = isOwner
 
   // Branch switcher state: null = selectedBranch (default), '__overall__' = no filter
   const [dashBranchId, setDashBranchId] = useState<string | null>(
@@ -162,18 +166,20 @@ export default function BusinessDashboardPage() {
           </div>
 
           {/* Branch switcher (owner/manager only) */}
-          {canSwitchBranches && availableBranches.length >= 1 && (
+          {canSwitchBranches && (canViewAllBranches || availableBranches.length > 1) && (
             <div className="flex items-center gap-1.5 flex-wrap">
-              <button
-                onClick={() => setDashBranchId(OVERALL)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
-                  dashBranchId === OVERALL
-                    ? 'bg-amber-500/15 border-amber-500/30 text-amber-400'
-                    : 'border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-600 bg-zinc-900'
-                }`}
-              >
-                All Branches
-              </button>
+              {canViewAllBranches && (
+                <button
+                  onClick={() => setDashBranchId(OVERALL)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                    dashBranchId === OVERALL
+                      ? 'bg-amber-500/15 border-amber-500/30 text-amber-400'
+                      : 'border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-600 bg-zinc-900'
+                  }`}
+                >
+                  All Branches
+                </button>
+              )}
               {availableBranches.map(b => (
                 <button
                   key={b.id}

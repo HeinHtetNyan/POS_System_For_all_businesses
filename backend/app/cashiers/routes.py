@@ -9,7 +9,9 @@ from app.api.deps import (
     DbSession,
     EffectiveTenantId,
     RequestId,
+    assert_branch_access,
     require_roles,
+    scope_branch_filter,
 )
 from app.cashiers.schemas import (
     CashierSessionListResponse,
@@ -49,6 +51,7 @@ async def open_session(
     tenant_id: EffectiveTenantId = None,
     request_id: RequestId = None,
 ) -> CashierSessionResponse:
+    assert_branch_access(current_user, data.branch_id)
     svc = CashierSessionService(db)
     session = await svc.open_session(
         tenant_id=tenant_id,
@@ -60,6 +63,20 @@ async def open_session(
         request_id=request_id,
     )
     return CashierSessionResponse.model_validate(session)
+
+
+@router.get(
+    "/mine/open",
+    response_model=list[CashierSessionResponse],
+    summary="List the current user's own open cashier sessions (any branch)",
+)
+async def get_my_open_sessions(
+    db: DbSession,
+    current_user: User = _cashier_access,
+) -> list[CashierSessionResponse]:
+    svc = CashierSessionService(db)
+    sessions = await svc.get_my_open_sessions(current_user.id)
+    return [CashierSessionResponse.model_validate(s) for s in sessions]
 
 
 @router.post(
@@ -76,6 +93,8 @@ async def close_session(
     request_id: RequestId = None,
 ) -> CashierSessionResponse:
     svc = CashierSessionService(db)
+    existing = await svc.get_session(session_id, tenant_id)
+    assert_branch_access(current_user, existing.branch_id)
     session = await svc.close_session(
         session_id=session_id,
         tenant_id=tenant_id,
@@ -100,6 +119,7 @@ async def get_session(
 ) -> CashierSessionResponse:
     svc = CashierSessionService(db)
     session = await svc.get_session(session_id, tenant_id)
+    assert_branch_access(current_user, session.branch_id)
     return CashierSessionResponse.model_validate(session)
 
 
@@ -118,6 +138,7 @@ async def list_sessions(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=500),
 ) -> CashierSessionListResponse:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = CashierSessionService(db)
     items, total = await svc.list_sessions(
         tenant_id=tenant_id,

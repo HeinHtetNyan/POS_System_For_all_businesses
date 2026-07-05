@@ -1,9 +1,16 @@
 import axios from 'axios'
 import { toast } from 'sonner'
-import { getPendingSyncOps, removeSyncOp, db } from '@/offline/db'
+import { getPendingSyncOps, getFailedSyncOps, removeSyncOp, db } from '@/offline/db'
 import { checkoutService } from '@/services/sales/sales.service'
 import { useUIStore } from '@/store/ui.store'
 import type { CheckoutRequest } from '@/shared/types'
+
+function extractErrorMessage(err: unknown): string {
+  if (axios.isAxiosError(err)) {
+    return err.response?.data?.error?.message ?? err.response?.data?.detail ?? err.message
+  }
+  return err instanceof Error ? err.message : 'Unknown error'
+}
 
 let isProcessing = false
 
@@ -34,18 +41,23 @@ export async function processSyncQueue(): Promise<void> {
         await removeSyncOp(op.id)
         successCount++
       } catch (err: unknown) {
+        const lastError = extractErrorMessage(err)
         // API error (4xx/5xx) — the server rejected the payload; retrying won't help.
         if (axios.isAxiosError(err) && err.response) {
-          await db.syncQueue.update(op.id, { status: 'failed', retries: (op.retries ?? 0) + 1 })
+          await db.syncQueue.update(op.id, {
+            status: 'failed', retries: (op.retries ?? 0) + 1, lastError, updatedAt: new Date(),
+          })
           failCount++
         } else {
           // Network error — retry up to 3 times before giving up.
           const newRetries = (op.retries ?? 0) + 1
           if (newRetries >= 3) {
-            await db.syncQueue.update(op.id, { status: 'failed', retries: newRetries })
+            await db.syncQueue.update(op.id, {
+              status: 'failed', retries: newRetries, lastError, updatedAt: new Date(),
+            })
             failCount++
           } else {
-            await db.syncQueue.update(op.id, { retries: newRetries })
+            await db.syncQueue.update(op.id, { retries: newRetries, lastError, updatedAt: new Date() })
           }
         }
       }
@@ -53,6 +65,8 @@ export async function processSyncQueue(): Promise<void> {
 
     const remaining = await getPendingSyncOps()
     setPendingSyncCount(remaining.length)
+    const { setFailedSyncCount } = useUIStore.getState()
+    setFailedSyncCount((await getFailedSyncOps()).length)
 
     if (successCount > 0 && failCount === 0) {
       toast.success(`${successCount} transaction${successCount > 1 ? 's' : ''} synced successfully.`)

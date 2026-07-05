@@ -6,7 +6,7 @@ import { cn, timeAgo, extractApiMsg } from '@/lib/utils'
 import { Btn, Empty, Spinner, SectionHeader } from '@/components/ui'
 import { IconChevLeft, IconChevRight } from '@/components/icons'
 import { notificationsService } from '@/services/notifications/notifications.service'
-import { NotificationTypeBadge, NotificationPriorityBadge } from './notificationHelpers'
+import { NotificationTypeBadge, NotificationPriorityBadge, NotificationBranchBadge } from './notificationHelpers'
 import type { Notification } from '@/shared/types'
 
 const PAGE_SIZE = 20
@@ -172,6 +172,7 @@ export default function NotificationsPage() {
                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                       <NotificationTypeBadge type={n.type} />
                       <NotificationPriorityBadge priority={n.priority} />
+                      <NotificationBranchBadge metadata={n.metadata} />
                       <span className="text-xs text-zinc-600">{timeAgo(n.created_at)}</span>
                     </div>
                   </div>

@@ -6,7 +6,10 @@ import { fmt, fmtDate, fmtDateTime, extractApiMsg } from '@/lib/utils'
 import { Btn, Table, Th, Td, Spinner, SectionHeader, Badge } from '@/components/ui'
 import { procurementService } from '@/services/procurement/procurement.service'
 import { POStatusBadge, PayableStatusBadge, inputCls } from './procurementHelpers'
+import { useAuthStore } from '@/store/auth.store'
 import type { PurchaseOrderItem } from '@/shared/types'
+
+const MANAGER_ROLES = ['MANAGER', 'BUSINESS_OWNER', 'RESELLER', 'SUPER_ADMIN']
 
 
 function ReceiveGoodsModal({
@@ -20,8 +23,13 @@ function ReceiveGoodsModal({
   const qc = useQueryClient()
   const [receiveDate, setReceiveDate] = useState(new Date().toISOString().split('T')[0])
   const [notes, setNotes] = useState('')
+  // Default to what's still outstanding, not the full ordered quantity — a
+  // partially-received PO would otherwise pre-fill (and allow submitting)
+  // more than what's actually left to receive.
+  const remaining = (item: PurchaseOrderItem) =>
+    Math.max(0, parseFloat(item.ordered_quantity) - parseFloat(item.received_quantity)).toString()
   const [quantities, setQuantities] = useState<Record<string, string>>(
-    Object.fromEntries(items.map(i => [i.id, i.ordered_quantity]))
+    Object.fromEntries(items.map(i => [i.id, remaining(i)]))
   )
   const [unitCosts, setUnitCosts] = useState<Record<string, string>>(
     Object.fromEntries(items.map(i => [i.id, i.unit_cost]))
@@ -46,14 +54,24 @@ function ReceiveGoodsModal({
       qc.invalidateQueries({ queryKey: ['purchase-order', poId] })
       qc.invalidateQueries({ queryKey: ['purchase-orders'] })
       qc.invalidateQueries({ queryKey: ['goods-receipts'] })
+      // PurchaseOrdersPage joins receipt numbers/dates onto the PO table
+      // via a separately-keyed query — a plain 'goods-receipts' invalidation
+      // doesn't match it.
+      qc.invalidateQueries({ queryKey: ['goods-receipts-all'] })
       qc.invalidateQueries({ queryKey: ['inventory'] })
       qc.invalidateQueries({ queryKey: ['products'] })
+      // Receiving can adjust the supplier payable via cost variance.
+      qc.invalidateQueries({ queryKey: ['supplier-payables'] })
+      qc.invalidateQueries({ queryKey: ['supplier-balance'] })
       onClose()
     },
     onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to create receipt'),
   })
 
   const hasItems = items.some(i => parseFloat(quantities[i.id] ?? '0') > 0)
+  // The HTML max attribute alone doesn't stop submission — this button isn't
+  // a native form-submit, so enforce the same limit in JS.
+  const overReceiving = items.some(i => parseFloat(quantities[i.id] ?? '0') > parseFloat(remaining(i)))
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
@@ -104,6 +122,9 @@ function ReceiveGoodsModal({
                 </div>
                 <div className="text-right">
                   <span className="text-sm font-mono text-zinc-400">{item.ordered_quantity}</span>
+                  {parseFloat(item.received_quantity) > 0 && (
+                    <p className="text-[10px] text-zinc-600">{item.received_quantity} received</p>
+                  )}
                 </div>
                 <input
                   type="number"
@@ -116,7 +137,7 @@ function ReceiveGoodsModal({
                 <input
                   type="number"
                   min="0"
-                  max={item.ordered_quantity}
+                  max={remaining(item)}
                   step="any"
                   value={quantities[item.id] ?? ''}
                   onChange={e => setQuantities(prev => ({ ...prev, [item.id]: e.target.value }))}
@@ -131,7 +152,7 @@ function ReceiveGoodsModal({
           <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
           <Btn
             onClick={() => mutation.mutate()}
-            disabled={mutation.isPending || !hasItems}
+            disabled={mutation.isPending || !hasItems || overReceiving}
             fullWidth
           >
             {mutation.isPending ? <Spinner size={16} /> : 'Confirm Receipt'}
@@ -196,6 +217,8 @@ export default function PurchaseOrderDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const qc = useQueryClient()
+  const user = useAuthStore(s => s.user)
+  const isManager = !!user && MANAGER_ROLES.includes(user.role)
   const [showReceive, setShowReceive] = useState(false)
   const [showCancel, setShowCancel] = useState(false)
 
@@ -203,6 +226,31 @@ export default function PurchaseOrderDetailPage() {
     queryKey: ['purchase-order', id],
     queryFn: () => procurementService.getOrder(id!),
     enabled: !!id,
+  })
+
+  const { data: receiptsData } = useQuery({
+    queryKey: ['goods-receipts', { purchase_order_id: id }],
+    queryFn: () => procurementService.listReceipts({ purchase_order_id: id!, page_size: 100 }),
+    enabled: !!id,
+  })
+  const receipts = receiptsData?.items ?? []
+
+  const invalidatePO = () => {
+    qc.invalidateQueries({ queryKey: ['purchase-order', id] })
+    qc.invalidateQueries({ queryKey: ['purchase-orders'] })
+    qc.invalidateQueries({ queryKey: ['goods-receipts', { purchase_order_id: id }] })
+  }
+
+  const submitMutation = useMutation({
+    mutationFn: () => procurementService.submitOrder(id!),
+    onSuccess: () => { toast.success('Submitted for approval'); invalidatePO() },
+    onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to submit'),
+  })
+
+  const approveMutation = useMutation({
+    mutationFn: () => procurementService.approveOrder(id!),
+    onSuccess: () => { toast.success('Purchase order approved'); invalidatePO() },
+    onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to approve'),
   })
 
   if (isLoading) return <div className="flex items-center justify-center h-40"><Spinner size={32} /></div>
@@ -213,8 +261,10 @@ export default function PurchaseOrderDetailPage() {
     </div>
   )
 
+  const canSubmit  = po.status === 'DRAFT'
+  const canApprove = po.status === 'SUBMITTED' && isManager
   const canReceive = po.status === 'APPROVED' || po.status === 'PARTIALLY_RECEIVED'
-  const canCancel  = po.status === 'APPROVED'
+  const canCancel  = ['DRAFT', 'SUBMITTED', 'APPROVED'].includes(po.status) && isManager
 
   return (
     <>
@@ -224,6 +274,16 @@ export default function PurchaseOrderDetailPage() {
           subtitle={`Purchase Order · ${fmtDate(po.order_date)}`}
           action={
             <div className="flex gap-2 flex-wrap justify-end">
+              {canSubmit && (
+                <Btn size="sm" onClick={() => submitMutation.mutate()} disabled={submitMutation.isPending}>
+                  {submitMutation.isPending ? <Spinner size={16} /> : 'Submit for Approval'}
+                </Btn>
+              )}
+              {canApprove && (
+                <Btn size="sm" onClick={() => approveMutation.mutate()} disabled={approveMutation.isPending}>
+                  {approveMutation.isPending ? <Spinner size={16} /> : 'Approve'}
+                </Btn>
+              )}
               {canReceive && (
                 <Btn size="sm" onClick={() => setShowReceive(true)}>
                   Receive Goods
@@ -411,6 +471,45 @@ export default function PurchaseOrderDetailPage() {
               </tbody>
             </Table>
           </div>
+
+          {/* Goods Receipts */}
+          {receipts.length > 0 && (
+            <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden">
+              <div className="px-4 py-3 border-b border-zinc-800">
+                <h3 className="text-sm font-semibold text-zinc-100">Goods Receipts ({receipts.length})</h3>
+              </div>
+              <Table>
+                <thead>
+                  <tr>
+                    <Th>Receipt #</Th>
+                    <Th>Date</Th>
+                    <Th>Received By</Th>
+                    <Th>Status</Th>
+                    <Th right>&nbsp;</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {receipts.map(receipt => (
+                    <tr
+                      key={receipt.id}
+                      onClick={() => navigate(`/app/procurement/receipts/${receipt.id}`)}
+                      className="cursor-pointer hover:bg-zinc-800/40 transition-colors"
+                    >
+                      <Td><span className="font-mono text-sm text-zinc-200">{receipt.receipt_number}</span></Td>
+                      <Td><span className="text-zinc-300">{fmtDateTime(receipt.receipt_date)}</span></Td>
+                      <Td><span className="text-zinc-400">{receipt.received_by_name ?? '—'}</span></Td>
+                      <Td>
+                        <Badge variant={receipt.status === 'RECEIVED' ? 'success' : 'danger'} size="xs" dot>
+                          {receipt.status}
+                        </Badge>
+                      </Td>
+                      <Td right><span className="text-amber-400 text-xs">View →</span></Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </div>
+          )}
         </div>
       </div>
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 from typing import Any
@@ -10,23 +11,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.audit_repository import AuditRepository
 
 
+def _to_json_safe_value(v: Any) -> Any:
+    if isinstance(v, uuid.UUID):
+        return str(v)
+    elif isinstance(v, Decimal):
+        return str(v)
+    elif isinstance(v, Enum):
+        return v.value
+    elif isinstance(v, (datetime, date)):
+        return v.isoformat()
+    elif isinstance(v, dict):
+        return _to_json_safe(v)
+    elif isinstance(v, list):
+        return [_to_json_safe_value(item) for item in v]
+    return v
+
+
 def _to_json_safe(d: dict[str, Any] | None) -> dict[str, Any] | None:
     """Recursively convert non-JSON-serializable types to strings for JSONB storage."""
     if d is None:
         return None
-    result: dict[str, Any] = {}
-    for k, v in d.items():
-        if isinstance(v, uuid.UUID):
-            result[k] = str(v)
-        elif isinstance(v, Decimal):
-            result[k] = str(v)
-        elif isinstance(v, Enum):
-            result[k] = v.value
-        elif isinstance(v, dict):
-            result[k] = _to_json_safe(v)
-        else:
-            result[k] = v
-    return result
+    return {k: _to_json_safe_value(v) for k, v in d.items()}
 
 
 class AuditService:

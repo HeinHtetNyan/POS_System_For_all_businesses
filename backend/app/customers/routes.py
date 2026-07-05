@@ -42,7 +42,7 @@ router = APIRouter()
     response_model=CustomerResponse,
     status_code=201,
     summary="Create customer",
-    dependencies=[Depends(require_cashier_or_above), Depends(validate_customer_limit), check_reseller_access("customer:view", check_branch=False)],
+    dependencies=[Depends(require_manager_or_above), Depends(validate_customer_limit), check_reseller_access("customer:view", check_branch=False)],
 )
 async def create_customer(
     payload: CreateCustomerRequest,
@@ -142,7 +142,7 @@ async def get_customer(
     "/{customer_id}",
     response_model=CustomerResponse,
     summary="Update customer",
-    dependencies=[Depends(require_cashier_or_above), check_reseller_access("customer:view", check_branch=False)],
+    dependencies=[Depends(require_manager_or_above), check_reseller_access("customer:view", check_branch=False)],
 )
 async def update_customer(
     customer_id: uuid.UUID,
@@ -192,7 +192,7 @@ async def delete_customer(
     response_model=CustomerContactResponse,
     status_code=201,
     summary="Add contact to customer",
-    dependencies=[Depends(require_cashier_or_above)],
+    dependencies=[Depends(require_manager_or_above)],
 )
 async def add_contact(
     customer_id: uuid.UUID,
@@ -219,7 +219,7 @@ async def add_contact(
     response_model=CustomerNoteResponse,
     status_code=201,
     summary="Add note to customer",
-    dependencies=[Depends(require_cashier_or_above)],
+    dependencies=[Depends(require_manager_or_above)],
 )
 async def add_note(
     customer_id: uuid.UUID,
@@ -246,7 +246,7 @@ async def add_note(
     response_model=CustomerLedgerResponse,
     status_code=201,
     summary="Record a customer payment (reduces outstanding balance)",
-    dependencies=[Depends(require_cashier_or_above), check_reseller_access("customer:payment", check_branch=False)],
+    dependencies=[Depends(require_manager_or_above), check_reseller_access("customer:payment", check_branch=False)],
 )
 async def record_payment(
     customer_id: uuid.UUID,
@@ -322,7 +322,7 @@ async def get_ledger(
     "/{customer_id}/statement",
     response_model=CustomerStatementResponse,
     summary="Get full customer statement with running balance summary",
-    dependencies=[Depends(require_manager_or_above)],
+    dependencies=[Depends(require_cashier_or_above), check_reseller_access("customer:view", check_branch=False)],
 )
 async def get_statement(
     customer_id: uuid.UUID,

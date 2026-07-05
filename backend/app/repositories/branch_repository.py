@@ -20,10 +20,13 @@ class BranchRepository(BaseRepository[Branch]):
         offset: int = 0,
         limit: int = 20,
         include_deleted: bool = False,
+        branch_id: uuid.UUID | None = None,
     ) -> tuple[list[Branch], int]:
         filters = [Branch.tenant_id == tenant_id]
         if not include_deleted:
             filters.append(Branch.is_deleted.is_(False))
+        if branch_id is not None:
+            filters.append(Branch.id == branch_id)
         return await self.get_all(offset=offset, limit=limit, filters=filters)
 
     async def get_active_by_id(self, branch_id: uuid.UUID) -> Branch | None:

@@ -1,10 +1,14 @@
 import { useEffect } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { fmtDateTime } from '@/lib/utils'
+import { toast } from 'sonner'
+import { fmtDateTime, extractApiMsg } from '@/lib/utils'
 import { Btn, Spinner } from '@/components/ui'
 import { notificationsService } from '@/services/notifications/notifications.service'
-import { NotificationTypeBadge, NotificationPriorityBadge } from './notificationHelpers'
+import {
+  NotificationTypeBadge, NotificationPriorityBadge, NotificationBranchBadge,
+  formatMetadataEntries, getNotificationAction,
+} from './notificationHelpers'
 import type { Notification } from '@/shared/types'
 
 export default function NotificationDetailPage() {
@@ -17,11 +21,9 @@ export default function NotificationDetailPage() {
 
   const { data: fetchedNotification, isLoading } = useQuery({
     queryKey: ['notification', id],
-    queryFn: async () => {
-      const res = await notificationsService.list({ page_size: 100 })
-      return res.items.find(n => n.id === id) ?? null
-    },
-    enabled: !stateNotification,
+    queryFn: () => notificationsService.get(id!),
+    enabled: !stateNotification && !!id,
+    retry: false,
   })
 
   const notification = stateNotification ?? fetchedNotification
@@ -32,6 +34,7 @@ export default function NotificationDetailPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['notifications'] })
     },
+    onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to mark as read'),
   })
 
   useEffect(() => {
@@ -61,6 +64,9 @@ export default function NotificationDetailPage() {
     )
   }
 
+  const metadataEntries = formatMetadataEntries(notification.metadata)
+  const action = getNotificationAction(notification)
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
@@ -89,6 +95,7 @@ export default function NotificationDetailPage() {
           <div className="flex items-center gap-2 flex-wrap">
             <NotificationTypeBadge type={notification.type} />
             <NotificationPriorityBadge priority={notification.priority} />
+            <NotificationBranchBadge metadata={notification.metadata} />
           </div>
 
           {/* Message card */}
@@ -99,10 +106,33 @@ export default function NotificationDetailPage() {
             <p className="text-zinc-300 text-sm leading-relaxed whitespace-pre-wrap">
               {notification.message}
             </p>
+            {action && (
+              <Btn
+                size="sm"
+                className="mt-4"
+                onClick={() => navigate(action.path)}
+              >
+                {action.label} →
+              </Btn>
+            )}
           </div>
 
-          {/* Metadata */}
+          {/* Details (from notification metadata) */}
+          {metadataEntries.length > 0 && (
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 space-y-2.5 text-sm">
+              <h4 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Details</h4>
+              {metadataEntries.map(entry => (
+                <div key={entry.key} className="flex justify-between items-start gap-4">
+                  <span className="text-zinc-500 flex-shrink-0">{entry.label}</span>
+                  <span className="text-zinc-200 text-right break-words">{entry.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Notification info */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 space-y-2.5 text-sm">
+            <h4 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Notification Info</h4>
             <div className="flex justify-between items-center">
               <span className="text-zinc-500">Received</span>
               <span className="text-zinc-300 text-xs">{fmtDateTime(notification.created_at)}</span>

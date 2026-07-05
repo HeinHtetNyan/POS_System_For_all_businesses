@@ -8,19 +8,35 @@ interface KpiCardProps {
   icon?: string
   accent?: boolean
   isLoading?: boolean
+  isError?: boolean
 }
 
 function SkeletonBlock({ className }: { className?: string }) {
   return <div className={cn('rounded-lg bg-zinc-800 animate-pulse', className)} />
 }
 
-export function KpiCard({ label, value, sub, icon, accent, isLoading }: KpiCardProps) {
+export function KpiCard({ label, value, sub, icon, accent, isLoading, isError }: KpiCardProps) {
   if (isLoading) {
     return (
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
         <SkeletonBlock className="h-3 w-20 mb-3" />
         <SkeletonBlock className="h-7 w-28 mb-2" />
         <SkeletonBlock className="h-2.5 w-16" />
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <div className="bg-zinc-900 border border-red-900/40 rounded-2xl p-5">
+        {icon && (
+          <div className="mb-3 w-8 h-8 flex items-center justify-center rounded-xl bg-zinc-800 text-base">
+            {icon}
+          </div>
+        )}
+        <p className="text-xs text-zinc-500 mb-1">{label}</p>
+        <p className="text-2xl font-bold text-zinc-600 tabular-nums">—</p>
+        <p className="text-xs text-red-400/80 mt-1">Couldn't load</p>
       </div>
     )
   }

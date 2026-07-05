@@ -50,16 +50,16 @@ class PaymentRepository(BaseRepository[Payment]):
         cashier_session_id: uuid.UUID,
         tenant_id: uuid.UUID,
     ) -> Decimal:
-        """Sum of cash refunds issued for orders belonging to a cashier session."""
-        from app.sales.models import Order
+        """Sum of cash refunds actually processed during a cashier session —
+        i.e. the session open at refund time, which may differ from the
+        session that made the original sale (a return in a later shift)."""
         from app.payments.models import Refund
 
         result = await self.session.execute(
             select(func.coalesce(func.sum(Refund.amount), Decimal("0")))
-            .join(Order, Order.id == Refund.order_id)
             .where(
-                Order.cashier_session_id == cashier_session_id,
-                Order.tenant_id == tenant_id,
+                Refund.cashier_session_id == cashier_session_id,
+                Refund.tenant_id == tenant_id,
                 Refund.refund_type == "CASH",
             )
         )
@@ -111,10 +111,18 @@ class RefundRepository(BaseRepository[Refund]):
         limit: int = 20,
         order_id: uuid.UUID | None = None,
         cashier_user_id: uuid.UUID | None = None,
+        branch_id: uuid.UUID | None = None,
     ) -> tuple[list[Refund], int]:
         filters: list[Any] = [Refund.tenant_id == tenant_id]
         if order_id:
             filters.append(Refund.order_id == order_id)
+        if branch_id:
+            # Refund has no branch_id of its own — reach it through its order.
+            filters.append(
+                Refund.order_id.in_(
+                    select(Order.id).where(Order.branch_id == branch_id)
+                )
+            )
         if cashier_user_id:
             filters.append(
                 or_(

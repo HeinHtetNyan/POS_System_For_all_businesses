@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,21 +19,30 @@ from app.analytics.schemas import (
     TopProductResponse,
 )
 from app.core.constants import AuditAction, EntityType
+from app.core.timezone import local_day_end_utc, local_day_start_utc
 from app.services.audit_service import AuditService
-
-
-def _date_to_utc_start(d: date) -> datetime:
-    return datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
-
-
-def _date_to_utc_end(d: date) -> datetime:
-    return _date_to_utc_start(d) + timedelta(days=1)
 
 
 class SalesReportsService:
     def __init__(self, session: AsyncSession) -> None:
         self.repo = AnalyticsRepository(session)
         self.audit = AuditService(session)
+
+    async def _resolve_range(
+        self,
+        tenant_id: uuid.UUID,
+        start_date: date | None,
+        end_date: date | None,
+    ) -> tuple[datetime | None, datetime | None, str]:
+        """Convert tenant-local calendar dates to UTC instants using the
+        tenant's configured timezone, so day boundaries match the tenant's
+        clock rather than always being UTC midnight."""
+        tz_name = "UTC"
+        if start_date or end_date:
+            tz_name = await self.repo.get_tenant_timezone(tenant_id)
+        start_dt = local_day_start_utc(start_date, tz_name) if start_date else None
+        end_dt = local_day_end_utc(end_date, tz_name) if end_date else None
+        return start_dt, end_dt, tz_name
 
     async def get_summary(
         self,
@@ -44,8 +53,7 @@ class SalesReportsService:
         actor_id: uuid.UUID | None = None,
         request_id: str | None = None,
     ) -> SalesSummaryResponse:
-        start_dt = _date_to_utc_start(start_date) if start_date else None
-        end_dt = _date_to_utc_end(end_date) if end_date else None
+        start_dt, end_dt, _ = await self._resolve_range(tenant_id, start_date, end_date)
 
         row = await self.repo.get_sales_summary(tenant_id, start_dt, end_dt, branch_id)
 
@@ -78,11 +86,14 @@ class SalesReportsService:
     ) -> SalesTrendResponse:
         if granularity not in ("daily", "weekly", "monthly"):
             granularity = "daily"
-        start_dt = _date_to_utc_start(start_date) if start_date else None
-        end_dt = _date_to_utc_end(end_date) if end_date else None
+        # Trend bucketing always needs the tenant's timezone, regardless of
+        # whether a date-range filter was supplied.
+        tz_name = await self.repo.get_tenant_timezone(tenant_id)
+        start_dt = local_day_start_utc(start_date, tz_name) if start_date else None
+        end_dt = local_day_end_utc(end_date, tz_name) if end_date else None
 
         rows = await self.repo.get_sales_trend(
-            tenant_id, granularity, start_dt, end_dt, branch_id
+            tenant_id, granularity, start_dt, end_dt, branch_id, tz_name=tz_name
         )
         items = [
             SalesTrendItem(
@@ -105,8 +116,7 @@ class SalesReportsService:
         actor_id: uuid.UUID | None = None,
         request_id: str | None = None,
     ) -> list[TopProductResponse]:
-        start_dt = _date_to_utc_start(start_date) if start_date else None
-        end_dt = _date_to_utc_end(end_date) if end_date else None
+        start_dt, end_dt, _ = await self._resolve_range(tenant_id, start_date, end_date)
 
         rows = await self.repo.get_top_products(
             tenant_id, start_dt, end_dt, branch_id, limit
@@ -132,8 +142,7 @@ class SalesReportsService:
         actor_id: uuid.UUID | None = None,
         request_id: str | None = None,
     ) -> list[CategorySalesResponse]:
-        start_dt = _date_to_utc_start(start_date) if start_date else None
-        end_dt = _date_to_utc_end(end_date) if end_date else None
+        start_dt, end_dt, _ = await self._resolve_range(tenant_id, start_date, end_date)
 
         rows = await self.repo.get_sales_by_category(tenant_id, start_dt, end_dt, branch_id)
         return [
@@ -142,6 +151,7 @@ class SalesReportsService:
                 category_name=r.get("category_name", "Uncategorized"),
                 quantity_sold=Decimal(str(r.get("quantity_sold", 0))),
                 sales=Decimal(str(r.get("sales", 0))),
+                refunded_amount=Decimal(str(r.get("refunded_amount", 0))),
                 profit=Decimal(str(r.get("profit", 0))),
             )
             for r in rows
@@ -155,8 +165,7 @@ class SalesReportsService:
         actor_id: uuid.UUID | None = None,
         request_id: str | None = None,
     ) -> list[BranchSalesResponse]:
-        start_dt = _date_to_utc_start(start_date) if start_date else None
-        end_dt = _date_to_utc_end(end_date) if end_date else None
+        start_dt, end_dt, _ = await self._resolve_range(tenant_id, start_date, end_date)
 
         rows = await self.repo.get_sales_by_branch(tenant_id, start_dt, end_dt)
         return [
@@ -180,8 +189,7 @@ class SalesReportsService:
         actor_id: uuid.UUID | None = None,
         request_id: str | None = None,
     ) -> list[CashierSalesResponse]:
-        start_dt = _date_to_utc_start(start_date) if start_date else None
-        end_dt = _date_to_utc_end(end_date) if end_date else None
+        start_dt, end_dt, _ = await self._resolve_range(tenant_id, start_date, end_date)
 
         rows = await self.repo.get_sales_by_cashier(tenant_id, start_dt, end_dt, branch_id)
         return [
@@ -205,8 +213,7 @@ class SalesReportsService:
         actor_id: uuid.UUID | None = None,
         request_id: str | None = None,
     ) -> list[PaymentMethodResponse]:
-        start_dt = _date_to_utc_start(start_date) if start_date else None
-        end_dt = _date_to_utc_end(end_date) if end_date else None
+        start_dt, end_dt, _ = await self._resolve_range(tenant_id, start_date, end_date)
 
         rows = await self.repo.get_payment_methods_stats(
             tenant_id, start_dt, end_dt, branch_id

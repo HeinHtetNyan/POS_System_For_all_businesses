@@ -15,6 +15,6 @@ export const useSessionStore = create<SessionState>()(
       setActiveSession: (activeSession) => set({ activeSession }),
       clearSession: () => set({ activeSession: null }),
     }),
-    { name: 'nexuspos-session' },
+    { name: 'sawyunpos-session' },
   ),
 )

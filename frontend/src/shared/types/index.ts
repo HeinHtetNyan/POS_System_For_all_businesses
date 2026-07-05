@@ -10,7 +10,6 @@ export type UserRole =
 
 export interface LoginRequest {
   email?: string
-  phone?: string
   business_code?: string
   identifier?: string
   password: string
@@ -39,6 +38,7 @@ export interface User {
   tenant_id: string | null
   primary_branch_id: string | null
   last_login_at: string | null
+  email_verified_at: string | null
   is_deleted: boolean
   created_at: string
   updated_at: string
@@ -287,6 +287,9 @@ export interface CheckoutPaymentRequest {
   amount: string
   reference_number?: string
   notes?: string
+  // Cash physically handed over, when it differs from `amount` — only
+  // meaningful for CASH; `amount` is still what's applied to the order.
+  tendered_amount?: string
 }
 
 export interface CheckoutRequest {
@@ -296,6 +299,9 @@ export interface CheckoutRequest {
   customer_id?: string
   discount_amount?: string
   notes?: string
+  // Stable per-attempt key — set once when the sale is first submitted (or queued
+  // offline) so a retried submission is recognized as the same sale, not a new one.
+  idempotency_key?: string
 }
 
 
@@ -338,6 +344,7 @@ export interface Order {
   tax_amount: string
   total_amount: string
   refunded_amount?: string
+  currency?: string | null
   notes: string | null
   voided_at: string | null
   voided_by: string | null
@@ -977,6 +984,7 @@ export interface Receipt {
   cashier_name: string
   branch_name: string
   tenant_name: string
+  currency?: string | null
   payment_methods: ReceiptPayment[]
   items_snapshot: ReceiptItem[]
   issued_at: string
@@ -1059,6 +1067,7 @@ export interface CategorySales {
   category_name: string
   quantity_sold: string
   sales: string
+  refunded_amount: string
   profit: string
 }
 
@@ -1148,6 +1157,7 @@ export interface ProfitReportItem {
   dimension_id: string | null
   dimension_name: string
   revenue: string
+  refunded_amount: string
   cogs: string
   profit: string
   margin_pct: string

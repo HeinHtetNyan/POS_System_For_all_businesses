@@ -11,6 +11,39 @@ import { Btn, Spinner, Input } from '@/components/ui'
 import { RawScannerModal, ScannerInputCapture, lookupProductByBarcode } from '@/scanner'
 import type { Product as BackendProduct } from '@/shared/types'
 
+// <input type="datetime-local"> reads/writes timezone-naive wall-clock strings, but
+// the backend stores/returns real UTC instants — without this conversion, a merchant's
+// "10:00" gets saved as 10:00 UTC (hours off from their actual local 10:00) and, on
+// re-open, the raw UTC value gets displayed as if it were already local time.
+function toLocalDatetimeInput(isoUtc: string | null | undefined): string {
+  if (!isoUtc) return ''
+  const d = new Date(isoUtc)
+  const offsetMs = d.getTimezoneOffset() * 60_000
+  return new Date(d.getTime() - offsetMs).toISOString().slice(0, 16)
+}
+
+function fromLocalDatetimeInput(local: string): string | undefined {
+  if (!local) return undefined
+  return new Date(local).toISOString()
+}
+
+// Splits into separate <input type="date"> / <input type="time"> values — the combined
+// datetime-local widget's time segment is fiddly to fill via keyboard on some browsers,
+// silently leaving the whole field empty if any sub-part (hour/minute/AM-PM) is skipped.
+function toLocalDateAndTime(isoUtc: string | null | undefined): { date: string; time: string } {
+  const local = toLocalDatetimeInput(isoUtc)
+  if (!local) return { date: '', time: '' }
+  const [date, time] = local.split('T')
+  return { date, time }
+}
+
+// Combines the two back into a UTC instant. A date with no time picked defaults to the
+// start (00:00) or end (23:59) of that day, whichever reads more naturally for the field.
+function fromDateAndTime(date: string, time: string, defaultTime: string): string | undefined {
+  if (!date) return undefined
+  return fromLocalDatetimeInput(`${date}T${time || defaultTime}`)
+}
+
 export function generateSKU(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
   let s = 'SKU-'
@@ -87,8 +120,10 @@ export function ProductFormModal({ product, initialBarcode, onClose, onSaved }: 
     has_discount:      !!(product?.discount_type),
     discount_type:     (product?.discount_type ?? 'PERCENTAGE') as 'PERCENTAGE' | 'AMOUNT',
     discount_value:    product?.discount_value ? parseFloat(product.discount_value).toFixed(2) : '',
-    discount_start_at: product?.discount_start_at ? product.discount_start_at.slice(0, 16) : '',
-    discount_end_at:   product?.discount_end_at   ? product.discount_end_at.slice(0, 16)   : '',
+    discount_start_date: toLocalDateAndTime(product?.discount_start_at).date,
+    discount_start_time: toLocalDateAndTime(product?.discount_start_at).time,
+    discount_end_date:   toLocalDateAndTime(product?.discount_end_at).date,
+    discount_end_time:   toLocalDateAndTime(product?.discount_end_at).time,
   })
   const [saving, setSaving]             = useState(false)
   const [error,  setError]              = useState<string | null>(null)
@@ -156,7 +191,8 @@ export function ProductFormModal({ product, initialBarcode, onClose, onSaved }: 
 
   const canSubmit =
     form.sku.trim() && form.name.trim() && form.cost_price && form.selling_price &&
-    (isEdit || !!form.category_id) && !barcodeConflict && !saving
+    (isEdit || !!form.category_id) && (!form.has_discount || form.discount_value) &&
+    !barcodeConflict && !saving
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -164,12 +200,12 @@ export function ProductFormModal({ product, initialBarcode, onClose, onSaved }: 
     setSaving(true)
     setError(null)
     try {
-      const discountPayload = form.has_discount && form.discount_value
+      const discountPayload = form.has_discount
         ? {
             discount_type:     form.discount_type,
             discount_value:    form.discount_value,
-            discount_start_at: form.discount_start_at || undefined,
-            discount_end_at:   form.discount_end_at   || undefined,
+            discount_start_at: fromDateAndTime(form.discount_start_date, form.discount_start_time, '00:00'),
+            discount_end_at:   fromDateAndTime(form.discount_end_date, form.discount_end_time, '23:59'),
           }
         : {}
       const payload = {
@@ -236,7 +272,7 @@ export function ProductFormModal({ product, initialBarcode, onClose, onSaved }: 
         />
       )}
 
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh]">
           <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 flex-shrink-0">
             <h2 className="text-base font-semibold text-zinc-100">{isEdit ? 'Edit Product' : 'New Product'}</h2>
@@ -407,7 +443,7 @@ export function ProductFormModal({ product, initialBarcode, onClose, onSaved }: 
                       </select>
                     </div>
                     <Input
-                      label={form.discount_type === 'PERCENTAGE' ? 'Discount (%)' : 'Discount (Kyats)'}
+                      label={form.discount_type === 'PERCENTAGE' ? 'Discount (%) (required)' : 'Discount (Kyats) (required)'}
                       type="number"
                       min="0"
                       step={form.discount_type === 'PERCENTAGE' ? '1' : '0.01'}
@@ -420,29 +456,52 @@ export function ProductFormModal({ product, initialBarcode, onClose, onSaved }: 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider block mb-1.5">Start Date <span className="text-zinc-600 normal-case font-normal">(optional)</span></label>
-                      <input
-                        type="datetime-local"
-                        value={form.discount_start_at}
-                        onChange={e => setForm(prev => ({ ...prev, discount_start_at: e.target.value }))}
-                        className="w-full bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 text-sm px-3 py-2 focus:outline-none focus:border-amber-500"
-                      />
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <input
+                          type="date"
+                          value={form.discount_start_date}
+                          onChange={e => setForm(prev => ({ ...prev, discount_start_date: e.target.value }))}
+                          className="w-full bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 text-sm px-3 py-2 focus:outline-none focus:border-amber-500"
+                        />
+                        <input
+                          type="time"
+                          value={form.discount_start_time}
+                          onChange={e => setForm(prev => ({ ...prev, discount_start_time: e.target.value }))}
+                          placeholder="00:00"
+                          className="w-full bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 text-sm px-3 py-2 focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
                     </div>
                     <div>
                       <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider block mb-1.5">End Date <span className="text-zinc-600 normal-case font-normal">(optional)</span></label>
-                      <input
-                        type="datetime-local"
-                        value={form.discount_end_at}
-                        onChange={e => setForm(prev => ({ ...prev, discount_end_at: e.target.value }))}
-                        className="w-full bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 text-sm px-3 py-2 focus:outline-none focus:border-amber-500"
-                      />
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <input
+                          type="date"
+                          value={form.discount_end_date}
+                          onChange={e => setForm(prev => ({ ...prev, discount_end_date: e.target.value }))}
+                          className="w-full bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 text-sm px-3 py-2 focus:outline-none focus:border-amber-500"
+                        />
+                        <input
+                          type="time"
+                          value={form.discount_end_time}
+                          onChange={e => setForm(prev => ({ ...prev, discount_end_time: e.target.value }))}
+                          placeholder="23:59"
+                          className="w-full bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 text-sm px-3 py-2 focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
                     </div>
                   </div>
+                  {(form.discount_start_date || form.discount_end_date) && (
+                    <p className="text-[10px] text-zinc-600">
+                      Leave time blank to default to start-of-day / end-of-day.
+                    </p>
+                  )}
                   {form.discount_value && (
                     <p className="text-[11px] text-amber-400">
                       {form.discount_type === 'PERCENTAGE'
                         ? `${form.discount_value}% off will be auto-applied at checkout`
                         : `${Number(form.discount_value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kyats off will be auto-applied at checkout`}
-                      {(form.discount_start_at || form.discount_end_at) && ` within the set period`}
+                      {(form.discount_start_date || form.discount_end_date) && ` within the set period`}
                     </p>
                   )}
                 </div>

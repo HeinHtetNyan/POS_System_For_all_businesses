@@ -26,10 +26,14 @@ const SECTION_ACCESS: Record<string, UserRole[]> = {
   inventory:     ['MANAGER', 'BUSINESS_OWNER', 'SUPER_ADMIN', 'INVENTORY_STAFF'],
   sales:         ['CASHIER', 'MANAGER', 'BUSINESS_OWNER', 'SUPER_ADMIN'],
   customers:     ['CASHIER', 'MANAGER', 'BUSINESS_OWNER', 'SUPER_ADMIN'],
+  // Cashiers get read-only customer lookup; creating/editing customers and
+  // starting a customer-linked (credit) sale is manager+ — matches the
+  // backend's require_manager_or_above gate on those write endpoints.
+  'customers-manage': ['MANAGER', 'BUSINESS_OWNER', 'SUPER_ADMIN'],
   procurement:              ['INVENTORY_STAFF', 'MANAGER', 'BUSINESS_OWNER', 'SUPER_ADMIN'],
   'procurement-payments':   ['MANAGER', 'BUSINESS_OWNER', 'SUPER_ADMIN'],
   analytics:     ['MANAGER', 'BUSINESS_OWNER', 'SUPER_ADMIN'],
-  notifications: ['CASHIER', 'MANAGER', 'BUSINESS_OWNER', 'SUPER_ADMIN', 'INVENTORY_STAFF'],
+  notifications: ['MANAGER', 'BUSINESS_OWNER', 'SUPER_ADMIN'],
   settings:      ['MANAGER', 'BUSINESS_OWNER', 'SUPER_ADMIN'],
   subscription:  ['BUSINESS_OWNER', 'SUPER_ADMIN'],
 }

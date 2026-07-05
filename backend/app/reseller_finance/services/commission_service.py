@@ -111,6 +111,22 @@ class CommissionService:
         # Step 3: Get or create reseller wallet (needed for idempotency check)
         wallet = await self.wallet_svc.get_or_create_wallet(reseller_id)
 
+        # Step 3.5: Guard against a currency mismatch. There's no FX conversion
+        # here, so crediting the wallet with a raw amount denominated in a
+        # different currency than the wallet's would silently misrecord the
+        # true value (e.g. a plan priced in USD credited as if it were MMK).
+        # Skip and flag for manual review rather than guess a conversion.
+        if currency_code != wallet.currency_code:
+            logger.warning(
+                "commission_skipped_currency_mismatch",
+                payment_proof_id=str(payment_proof_id),
+                tenant_id=str(tenant_id),
+                reseller_id=str(reseller_id),
+                proof_currency=currency_code,
+                wallet_currency=wallet.currency_code,
+            )
+            return None
+
         # Step 4: Idempotency check — prevent double commission on same proof
         existing_tx = await self.wallet_repo.get_transaction_by_reference(
             wallet_id=wallet.id,
@@ -202,22 +218,26 @@ class CommissionService:
         reseller_user_id = await self.referral_repo.get_reseller_user_id(reseller_id)
         if reseller_user_id is not None:
             try:
-                await self.notif_svc.notify_users(
-                    tenant_id=None,
-                    type=NotificationType.SUBSCRIPTION,
-                    priority=NotificationPriority.MEDIUM,
-                    title="Commission Earned",
-                    message=(
-                        f"You earned {commission_amount} {currency_code} commission "
-                        f"from a referred tenant's subscription payment."
-                    ),
-                    user_ids=[reseller_user_id],
-                    metadata={
-                        "commission_amount": str(commission_amount),
-                        "currency_code": currency_code,
-                        "payment_proof_id": str(payment_proof_id),
-                    },
-                )
+                # A SAVEPOINT keeps a notification-layer failure from poisoning
+                # this method's outer transaction (the commission credit above
+                # must still commit even if the notification insert fails).
+                async with self.session.begin_nested():
+                    await self.notif_svc.notify_users(
+                        tenant_id=None,
+                        type=NotificationType.SUBSCRIPTION,
+                        priority=NotificationPriority.MEDIUM,
+                        title="Commission Earned",
+                        message=(
+                            f"You earned {commission_amount} {currency_code} commission "
+                            f"from a referred tenant's subscription payment."
+                        ),
+                        user_ids=[reseller_user_id],
+                        metadata={
+                            "commission_amount": str(commission_amount),
+                            "currency_code": currency_code,
+                            "payment_proof_id": str(payment_proof_id),
+                        },
+                    )
             except Exception as notif_exc:  # noqa: BLE001
                 logger.warning(
                     "commission_notification_failed",
@@ -365,22 +385,23 @@ class CommissionService:
         reseller_user_id = await self.referral_repo.get_reseller_user_id(reseller_id)
         if reseller_user_id is not None:
             try:
-                await self.notif_svc.notify_users(
-                    tenant_id=None,
-                    type=NotificationType.SUBSCRIPTION,
-                    priority=NotificationPriority.HIGH,
-                    title="Commission Reversed",
-                    message=(
-                        f"A commission of {reversal_amount} {original_tx.currency_code} "
-                        f"has been reversed. Reason: {reversal_reason}."
-                    ),
-                    user_ids=[reseller_user_id],
-                    metadata={
-                        "reversal_amount": str(reversal_amount),
-                        "payment_proof_id": str(payment_proof_id),
-                        "reason": reversal_reason,
-                    },
-                )
+                async with self.session.begin_nested():
+                    await self.notif_svc.notify_users(
+                        tenant_id=None,
+                        type=NotificationType.SUBSCRIPTION,
+                        priority=NotificationPriority.HIGH,
+                        title="Commission Reversed",
+                        message=(
+                            f"A commission of {reversal_amount} {original_tx.currency_code} "
+                            f"has been reversed. Reason: {reversal_reason}."
+                        ),
+                        user_ids=[reseller_user_id],
+                        metadata={
+                            "reversal_amount": str(reversal_amount),
+                            "payment_proof_id": str(payment_proof_id),
+                            "reason": reversal_reason,
+                        },
+                    )
             except Exception as notif_exc:  # noqa: BLE001
                 logger.warning(
                     "commission_reversal_notification_failed",

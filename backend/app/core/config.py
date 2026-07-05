@@ -102,6 +102,8 @@ class Settings(BaseSettings):
     EMAIL_FROM_NAME: str = "POS System"         # TODO: change to your real sender name
     FRONTEND_BASE_URL: str = "http://localhost:5173"
     PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 15
+    EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours — soft gate, no rush
+    EMAIL_CHANGE_TOKEN_EXPIRE_MINUTES: int = 60
 
     # Super Admin seed
     SUPER_ADMIN_EMAIL: str = "superadmin@pos-saas.com"

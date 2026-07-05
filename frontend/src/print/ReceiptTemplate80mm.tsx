@@ -71,8 +71,8 @@ export function ReceiptTemplate80mm({ receipt, footer = 'Thank you for your purc
         <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
           <span style={{ flex: 3, fontWeight: '600', paddingRight: '4px', wordBreak: 'break-word' }}>{item.product_name}</span>
           <span style={{ flex: 1, textAlign: 'center' }}>{item.quantity}</span>
-          <span style={{ flex: 1, textAlign: 'right' }}>{fmt(parseFloat(item.unit_price))}</span>
-          <span style={{ flex: 1, textAlign: 'right' }}>{fmt(parseFloat(item.total))}</span>
+          <span style={{ flex: 1, textAlign: 'right' }}>{fmt(parseFloat(item.unit_price), receipt.currency)}</span>
+          <span style={{ flex: 1, textAlign: 'right' }}>{fmt(parseFloat(item.total), receipt.currency)}</span>
         </div>
       ))}
 
@@ -82,16 +82,16 @@ export function ReceiptTemplate80mm({ receipt, footer = 'Thank you for your purc
       <div style={{ paddingLeft: '40%' }}>
         <Row
           label="Subtotal"
-          value={fmt(parseFloat(taxInclusive ? receipt.total_amount : receipt.subtotal))}
+          value={fmt(parseFloat(taxInclusive ? receipt.total_amount : receipt.subtotal), receipt.currency)}
         />
         {parseFloat(receipt.discount_amount) > 0 && (
-          <Row label="Discount" value={`-${fmt(parseFloat(receipt.discount_amount))}`} />
+          <Row label="Discount" value={`-${fmt(parseFloat(receipt.discount_amount), receipt.currency)}`} />
         )}
         {showTaxOnReceipt && parseFloat(receipt.tax_amount) > 0 && (
-          <Row label={taxInclusive ? `${taxName} (incl.)` : taxName} value={fmt(parseFloat(receipt.tax_amount))} />
+          <Row label={taxInclusive ? `${taxName} (incl.)` : taxName} value={fmt(parseFloat(receipt.tax_amount), receipt.currency)} />
         )}
         <Divider />
-        <Row label="TOTAL" value={fmt(parseFloat(receipt.total_amount))} bold large />
+        <Row label="TOTAL" value={fmt(parseFloat(receipt.total_amount), receipt.currency)} bold large />
       </div>
 
       <Divider />
@@ -102,14 +102,14 @@ export function ReceiptTemplate80mm({ receipt, footer = 'Thank you for your purc
           <Row
             key={i}
             label={`${getPaymentMethodLabel(pm.method ?? '')}${pm.notes ? ` (${pm.notes})` : ''}`}
-            value={fmt(parseFloat(pm.amount))}
+            value={fmt(parseFloat(pm.amount), receipt.currency)}
           />
         ))}
-        {parseFloat(receipt.amount_paid) > parseFloat(receipt.total_amount) && (
+        {parseFloat(receipt.change_amount) > 0 && (
           <>
             <Divider dashed />
-            <Row label="Tendered" value={fmt(parseFloat(receipt.amount_paid))} />
-            <Row label="Change" value={fmt(parseFloat(receipt.change_amount))} bold />
+            <Row label="Tendered" value={fmt(parseFloat(receipt.total_amount) + parseFloat(receipt.change_amount), receipt.currency)} />
+            <Row label="Change" value={fmt(parseFloat(receipt.change_amount), receipt.currency)} bold />
           </>
         )}
       </div>

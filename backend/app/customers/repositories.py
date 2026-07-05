@@ -55,6 +55,20 @@ class CustomerRepository(BaseRepository[Customer]):
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_active_by_id_and_tenant_locked(
+        self, customer_id: uuid.UUID, tenant_id: uuid.UUID
+    ) -> Customer | None:
+        """Same as get_active_by_id_and_tenant, but with SELECT FOR UPDATE —
+        use before reading current_balance to mutate it, so two concurrent
+        balance-affecting requests for the same customer can't lose an update."""
+        stmt = select(Customer).where(
+            Customer.id == customer_id,
+            Customer.tenant_id == tenant_id,
+            Customer.deleted_at.is_(None),
+        ).with_for_update()
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def get_with_contacts(
         self, customer_id: uuid.UUID, tenant_id: uuid.UUID
     ) -> Customer | None:

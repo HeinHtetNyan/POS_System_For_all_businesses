@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -20,8 +20,27 @@ if TYPE_CHECKING:
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        # BUSINESS_OWNER/RESELLER/SUPER_ADMIN log in with plain email+password
+        # (no business code), so their emails must stay globally unique.
+        Index(
+            "uq_users_email_global_non_staff",
+            "email",
+            unique=True,
+            postgresql_where=text("role IN ('BUSINESS_OWNER', 'RESELLER', 'SUPER_ADMIN')"),
+        ),
+        # MANAGER/CASHIER/INVENTORY_STAFF only ever log in via business code +
+        # phone — email is just an optional label, so two different businesses
+        # may each use the same staff email without conflict.
+        Index(
+            "uq_users_email_per_tenant_staff",
+            "tenant_id", "email",
+            unique=True,
+            postgresql_where=text("role IN ('MANAGER', 'CASHIER', 'INVENTORY_STAFF')"),
+        ),
+    )
 
-    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
 
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)

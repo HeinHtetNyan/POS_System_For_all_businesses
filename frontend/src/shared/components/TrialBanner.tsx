@@ -29,7 +29,7 @@ export default function TrialBanner() {
   if (isExpired) {
     return (
       <div className="px-4 py-2 flex items-center justify-between gap-4 text-xs font-medium bg-red-950 border-b border-red-900 text-red-300 flex-shrink-0">
-        <span>Your plan has expired — upgrade to continue using NexusPOS</span>
+        <span>Your plan has expired — upgrade to continue using SawYunPos</span>
         <Link
           to="/app/subscription/current"
           className="flex-shrink-0 px-3 py-1 rounded-lg font-semibold transition-colors bg-red-600 hover:bg-red-500 text-white"

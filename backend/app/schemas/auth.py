@@ -8,10 +8,11 @@ from app.schemas.common import BaseSchema
 
 
 class LoginRequest(BaseSchema):
-    # Owner / admin / reseller login — email or phone
+    # Owner / super admin / reseller login — email only (no phone; these
+    # account types require a confirmed email, not a phone number, to sign in).
     email: str | None = Field(default=None, max_length=255)
-    phone: str | None = Field(default=None, max_length=50)
-    # Staff login: business_code + identifier (phone or email)
+    # Staff login: business_code + identifier (phone or email) — staff accounts
+    # are scoped to a business code, so phone login is fine here.
     business_code: str | None = Field(default=None, max_length=50)
     identifier: str | None = Field(default=None, max_length=255)
     # max_length=128 prevents bcrypt DoS via oversized password strings
@@ -22,8 +23,8 @@ class LoginRequest(BaseSchema):
         if self.business_code:
             if not self.identifier:
                 raise ValueError("identifier (phone or email) is required for staff login")
-        elif not self.email and not self.phone:
-            raise ValueError("email or phone is required for owner/admin/reseller login")
+        elif not self.email:
+            raise ValueError("email is required for owner/super admin/reseller login")
         return self
 
 
@@ -64,6 +65,23 @@ class TokenPayload(BaseSchema):
 
 class ForgotPasswordRequest(BaseSchema):
     email: EmailStr
+
+
+class VerifyEmailRequest(BaseSchema):
+    token: str = Field(min_length=1, max_length=256)
+
+
+class ResendVerificationRequest(BaseSchema):
+    email: EmailStr
+
+
+class RequestEmailChangeRequest(BaseSchema):
+    new_email: EmailStr
+    current_password: str = Field(min_length=1, max_length=128)
+
+
+class ConfirmEmailChangeRequest(BaseSchema):
+    token: str = Field(min_length=1, max_length=256)
 
 
 class ResetPasswordRequest(BaseSchema):

@@ -17,9 +17,11 @@ from app.api.deps import (
     EffectiveTenantId,
     RequestId,
     UserAgent,
+    assert_branch_access,
     get_effective_tenant_id,
     get_request_id,
     require_roles,
+    scope_branch_filter,
 )
 from app.cashiers.models import CashierSession
 from app.customers.models import Customer
@@ -80,6 +82,7 @@ async def create_cart(
     current_user: User = _sales_access,
     tenant_id: uuid.UUID = Depends(get_effective_tenant_id),
 ) -> CartResponse:
+    assert_branch_access(current_user, data.branch_id)
     svc = CartService(db)
     cart = await svc.create_cart(
         tenant_id=tenant_id,
@@ -107,6 +110,7 @@ async def get_cart(
 ) -> CartResponse:
     svc = CartService(db)
     cart = await svc.get_cart(cart_id, tenant_id)
+    assert_branch_access(current_user, cart.branch_id)
     totals = svc.preview_totals(cart)
     response = CartResponse.model_validate(cart)
     response.totals = CartTotalsResponse(**totals)
@@ -127,6 +131,8 @@ async def add_cart_item(
     tenant_id: uuid.UUID = Depends(get_effective_tenant_id),
 ) -> CartResponse:
     svc = CartService(db)
+    existing = await svc.get_cart(cart_id, tenant_id)
+    assert_branch_access(current_user, existing.branch_id)
     cart = await svc.add_item(
         cart_id=cart_id,
         tenant_id=tenant_id,
@@ -158,6 +164,8 @@ async def update_cart_item(
     tenant_id: uuid.UUID = Depends(get_effective_tenant_id),
 ) -> CartResponse:
     svc = CartService(db)
+    existing = await svc.get_cart(cart_id, tenant_id)
+    assert_branch_access(current_user, existing.branch_id)
     cart = await svc.update_item(
         cart_id=cart_id,
         item_id=item_id,
@@ -186,6 +194,8 @@ async def remove_cart_item(
     tenant_id: uuid.UUID = Depends(get_effective_tenant_id),
 ) -> CartResponse:
     svc = CartService(db)
+    existing = await svc.get_cart(cart_id, tenant_id)
+    assert_branch_access(current_user, existing.branch_id)
     cart = await svc.remove_item(cart_id, item_id, tenant_id)
     totals = svc.preview_totals(cart)
     response = CartResponse.model_validate(cart)
@@ -206,6 +216,8 @@ async def delete_cart(
     tenant_id: uuid.UUID = Depends(get_effective_tenant_id),
 ) -> None:
     svc = CartService(db)
+    existing = await svc.get_cart(cart_id, tenant_id)
+    assert_branch_access(current_user, existing.branch_id)
     await svc.delete_cart(cart_id, tenant_id)
 
 
@@ -228,6 +240,9 @@ async def checkout(
     tenant_id: uuid.UUID = Depends(get_effective_tenant_id),
     request_id: str = Depends(get_request_id),
 ) -> OrderResponse:
+    from app.cashiers.services import CashierSessionService
+    cashier_session = await CashierSessionService(db).get_session(data.cashier_session_id, tenant_id)
+    assert_branch_access(current_user, cashier_session.branch_id)
     svc = CheckoutService(db)
     checkout_input = CheckoutInput(
         cashier_session_id=data.cashier_session_id,
@@ -249,12 +264,14 @@ async def checkout(
                 amount=pmt.amount,
                 reference_number=pmt.reference_number,
                 notes=pmt.notes,
+                tendered_amount=pmt.tendered_amount,
             )
             for pmt in data.payments
         ],
         customer_id=data.customer_id,
         order_discount_amount=data.discount_amount,
         notes=data.notes,
+        idempotency_key=data.idempotency_key,
     )
     order = await svc.checkout(
         tenant_id=tenant_id,
@@ -287,6 +304,7 @@ async def list_orders(
 ) -> OrderListResponse:
     # Cashiers only see their own orders regardless of any other filter.
     cashier_user_id = current_user.id if current_user.role == UserRole.CASHIER.value else None
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = OrderService(db)
     items, total = await svc.list_orders(
         tenant_id=tenant_id,
@@ -367,6 +385,8 @@ async def get_order_by_number(
 ) -> OrderResponse:
     svc = OrderService(db)
     order = await svc.get_order_by_number(order_number, tenant_id)
+    if order.branch_id:
+        assert_branch_access(current_user, order.branch_id)
     resp = OrderResponse.model_validate(order)
     updates: dict = {}
     if order.customer_id:
@@ -393,6 +413,8 @@ async def get_order(
 ) -> OrderResponse:
     svc = OrderService(db)
     order = await svc.get_order(order_id, tenant_id)
+    if order.branch_id:
+        assert_branch_access(current_user, order.branch_id)
     resp = OrderResponse.model_validate(order)
     updates: dict = {}
     if order.customer_id:
@@ -420,6 +442,10 @@ async def void_order(
     tenant_id: uuid.UUID = Depends(get_effective_tenant_id),
     request_id: str = Depends(get_request_id),
 ) -> OrderResponse:
+    order_svc = OrderService(db)
+    existing = await order_svc.get_order(order_id, tenant_id)
+    if existing.branch_id:
+        assert_branch_access(current_user, existing.branch_id)
     svc = CheckoutService(db)
     order = await svc.void_order(
         order_id=order_id,

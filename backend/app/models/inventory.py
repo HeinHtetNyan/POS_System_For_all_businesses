@@ -89,6 +89,14 @@ class BranchInventory(Base):
     reorder_point: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
     reorder_quantity: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
 
+    # Per-branch cost, set from the most recent goods receipt AT THIS BRANCH.
+    # Product.cost_price is tenant-wide and used only as a fallback until a
+    # branch has received stock of its own — two branches buying the same
+    # product from different suppliers at different prices must not share one
+    # cost, or COGS/valuation for whichever branch bought it cheaper gets
+    # silently overwritten by the other branch's price.
+    cost_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
+
     # Offline sync preparation — monotonically increasing per write
     sync_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_movement_at: Mapped[datetime | None] = mapped_column(

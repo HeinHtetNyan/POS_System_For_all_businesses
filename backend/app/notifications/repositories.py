@@ -48,6 +48,26 @@ class NotificationRepository:
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_by_id_for_user(
+        self, notification_id: uuid.UUID, user_id: uuid.UUID
+    ) -> tuple[Notification, bool, datetime | None] | None:
+        """Fetch one notification, but only if `user_id` is an actual recipient —
+        prevents guessing another user's notification ID to read their data."""
+        stmt = (
+            select(Notification, NotificationRecipient.is_read, NotificationRecipient.read_at)
+            .join(
+                NotificationRecipient,
+                Notification.id == NotificationRecipient.notification_id,
+            )
+            .where(
+                Notification.id == notification_id,
+                NotificationRecipient.user_id == user_id,
+            )
+        )
+        result = await self.session.execute(stmt)
+        row = result.first()
+        return (row[0], row[1], row[2]) if row else None
+
     async def list_for_user(
         self,
         user_id: uuid.UUID,

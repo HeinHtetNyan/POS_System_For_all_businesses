@@ -16,16 +16,41 @@ class UserRepository(BaseRepository[User]):
         super().__init__(User, session)
 
     async def get_by_email(self, email: str) -> User | None:
-        stmt = select(User).where(User.email == email, User.is_deleted.is_(False))
+        # .limit(1): staff emails are only unique per-tenant now (see User model),
+        # so two different businesses' staff could share one — without this,
+        # scalar_one_or_none() would raise MultipleResultsFound. Callers that
+        # need to guarantee a non-staff match should use get_by_email_for_login.
+        stmt = select(User).where(User.email == email, User.is_deleted.is_(False)).limit(1)
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_by_email_for_login(self, email: str) -> User | None:
+        """
+        Like get_by_email, but only matches BUSINESS_OWNER/RESELLER/SUPER_ADMIN —
+        the roles that log in with plain email+password (no business code).
+        Staff emails are only unique per-tenant, so this path must never match
+        a staff row: doing so would be ambiguous (which tenant's staff member?)
+        and staff must always sign in via business code + phone instead.
+        """
+        from app.core.constants import UserRole
+
+        stmt = select(User).where(
+            User.email == email,
+            User.is_deleted.is_(False),
+            User.role.in_([UserRole.BUSINESS_OWNER, UserRole.RESELLER, UserRole.SUPER_ADMIN]),
+        ).limit(1)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
     async def get_by_phone_and_tenant(self, phone: str, tenant_id: uuid.UUID) -> User | None:
+        # .limit(1): two staff in the same tenant could already share an identical
+        # phone (pre-existing data, not something normalization creates) — without
+        # this, scalar_one_or_none() would raise MultipleResultsFound at login.
         stmt = select(User).where(
             User.phone == phone,
             User.tenant_id == tenant_id,
             User.is_deleted.is_(False),
-        )
+        ).limit(1)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -34,25 +59,10 @@ class UserRepository(BaseRepository[User]):
             User.email == email,
             User.tenant_id == tenant_id,
             User.is_deleted.is_(False),
-        )
-        result = await self.session.execute(stmt)
-        return result.scalar_one_or_none()
-
-    async def get_by_phone(self, phone: str) -> User | None:
-        """Global phone lookup for platform-level login (no business code).
-        Matches SUPER_ADMIN, RESELLER, or BUSINESS_OWNER only — not tenant staff."""
-        from app.core.constants import UserRole
-        stmt = select(User).where(
-            User.phone == phone,
-            User.is_deleted.is_(False),
-            User.role.in_([
-                UserRole.SUPER_ADMIN,
-                UserRole.RESELLER,
-                UserRole.BUSINESS_OWNER,
-            ]),
         ).limit(1)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
+
 
     async def get_by_id_active(self, user_id: uuid.UUID) -> User | None:
         stmt = select(User).where(User.id == user_id, User.is_deleted.is_(False))
@@ -94,10 +104,23 @@ class UserRepository(BaseRepository[User]):
         )
         await self.session.execute(stmt)
 
-    async def email_exists(self, email: str, exclude_id: uuid.UUID | None = None) -> bool:
+    async def email_exists(
+        self,
+        email: str,
+        exclude_id: uuid.UUID | None = None,
+        tenant_id: uuid.UUID | None = None,
+    ) -> bool:
+        """
+        Pass tenant_id to check staff-style per-tenant uniqueness (matches the
+        uq_users_email_per_tenant_staff index); omit it for the global check
+        (matches uq_users_email_global_non_staff, used for owner/reseller/admin).
+        """
         stmt = select(User.id).where(User.email == email, User.is_deleted.is_(False))
+        if tenant_id is not None:
+            stmt = stmt.where(User.tenant_id == tenant_id)
         if exclude_id:
             stmt = stmt.where(User.id != exclude_id)
+        stmt = stmt.limit(1)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none() is not None
 

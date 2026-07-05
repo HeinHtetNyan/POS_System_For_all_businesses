@@ -41,6 +41,27 @@ def _sniff_mime(data: bytes) -> str | None:
     return None
 
 
+_READ_CHUNK_SIZE = 1024 * 1024  # 1 MB
+
+
+async def _read_limited(file: UploadFile, max_bytes: int, too_large_msg: str) -> bytes:
+    """Read an UploadFile in chunks, aborting as soon as max_bytes is exceeded.
+
+    Reading the whole body before checking its size lets a client stream an
+    arbitrarily large upload straight into process memory. Bailing out mid-read
+    caps memory use at ~max_bytes regardless of how much the client sends.
+    """
+    buf = bytearray()
+    while True:
+        chunk = await file.read(_READ_CHUNK_SIZE)
+        if not chunk:
+            break
+        buf.extend(chunk)
+        if len(buf) > max_bytes:
+            raise ValidationError(too_large_msg)
+    return bytes(buf)
+
+
 def _upload_root() -> Path:
     return Path(settings.UPLOAD_DIR).resolve()
 
@@ -62,11 +83,10 @@ async def save_payment_proof(
         )
 
     max_bytes = settings.UPLOAD_MAX_FILE_SIZE_MB * 1024 * 1024
-    contents = await file.read()
-    if len(contents) > max_bytes:
-        raise ValidationError(
-            f"File too large. Maximum size is {settings.UPLOAD_MAX_FILE_SIZE_MB} MB."
-        )
+    contents = await _read_limited(
+        file, max_bytes,
+        f"File too large. Maximum size is {settings.UPLOAD_MAX_FILE_SIZE_MB} MB.",
+    )
 
     # Verify actual file bytes match the declared content-type
     actual_mime = _sniff_mime(contents)
@@ -110,9 +130,9 @@ async def save_receipt_logo(file: UploadFile, tenant_id: uuid.UUID) -> str:
         )
 
     max_bytes = _LOGO_MAX_MB * 1024 * 1024
-    contents = await file.read()
-    if len(contents) > max_bytes:
-        raise ValidationError(f"Logo too large. Maximum size is {_LOGO_MAX_MB} MB.")
+    contents = await _read_limited(
+        file, max_bytes, f"Logo too large. Maximum size is {_LOGO_MAX_MB} MB."
+    )
 
     actual_mime = _sniff_mime(contents)
     if actual_mime not in _LOGO_ALLOWED:
@@ -171,9 +191,9 @@ async def save_payment_method_icon(file: UploadFile) -> str:
         )
 
     max_bytes = _LOGO_MAX_MB * 1024 * 1024
-    contents = await file.read()
-    if len(contents) > max_bytes:
-        raise ValidationError(f"Icon too large. Maximum size is {_LOGO_MAX_MB} MB.")
+    contents = await _read_limited(
+        file, max_bytes, f"Icon too large. Maximum size is {_LOGO_MAX_MB} MB."
+    )
 
     actual_mime = _sniff_mime(contents)
     if actual_mime not in _LOGO_ALLOWED:

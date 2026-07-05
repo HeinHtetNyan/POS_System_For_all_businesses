@@ -17,6 +17,8 @@ import LoginPage from '@/modules/auth/LoginPage'
 import RegisterPage from '@/modules/auth/RegisterPage'
 import ForgotPasswordPage from '@/modules/auth/ForgotPasswordPage'
 import ResetPasswordPage from '@/modules/auth/ResetPasswordPage'
+import VerifyEmailPage from '@/modules/auth/VerifyEmailPage'
+import ConfirmEmailChangePage from '@/modules/auth/ConfirmEmailChangePage'
 const PricingPage      = lazy(() => import('@/modules/public/PricingPage'))
 const OnboardingWizard = lazy(() => import('@/features/onboarding/OnboardingWizard'))
 const TrialExpiredPage = lazy(() => import('@/features/subscription/TrialExpiredPage'))
@@ -80,13 +82,6 @@ const PlanDetailPage              = lazy(() => import('@/features/superadmin/Pla
 
 const ResellerLayout              = lazy(() => import('@/features/reseller/ResellerLayout'))
 const ResellerDashboardPage       = lazy(() => import('@/features/reseller/ResellerDashboardPage'))
-const ResellerBusinessesPage      = lazy(() => import('@/features/reseller/ResellerBusinessesPage'))
-const ResellerBusinessDetailPage  = lazy(() => import('@/features/reseller/ResellerBusinessDetailPage'))
-const ResellerAnalyticsPage       = lazy(() => import('@/features/reseller/ResellerAnalyticsPage'))
-const ResellerCustomersPage       = lazy(() => import('@/features/reseller/ResellerCustomersPage'))
-const ResellerInventoryPage       = lazy(() => import('@/features/reseller/ResellerInventoryPage'))
-const ResellerProcurementPage     = lazy(() => import('@/features/reseller/ResellerProcurementPage'))
-const ResellerSubscriptionPage    = lazy(() => import('@/features/reseller/ResellerSubscriptionPage'))
 const ResellerNotificationsPage   = lazy(() => import('@/features/reseller/ResellerNotificationsPage'))
 const ResellerProfilePage         = lazy(() => import('@/features/reseller/ResellerProfilePage'))
 const ResellerReferralPage        = lazy(() => import('@/features/reseller/ResellerReferralPage'))
@@ -196,6 +191,24 @@ export const router = createBrowserRouter([
   },
 
   {
+    path: '/verify-email',
+    element: (
+      <AuthLayout allowAuthenticated>
+        <VerifyEmailPage />
+      </AuthLayout>
+    ),
+  },
+
+  {
+    path: '/confirm-email-change',
+    element: (
+      <AuthLayout allowAuthenticated>
+        <ConfirmEmailChangePage />
+      </AuthLayout>
+    ),
+  },
+
+  {
     path: '/onboarding',
     element: <Suspense fallback={<Loading />}><OnboardingWizard /></Suspense>,
   },
@@ -239,14 +252,14 @@ export const router = createBrowserRouter([
             element: <SectionGuard section="customers"><Outlet /></SectionGuard>,
             children: [
               { index: true, element: S(CustomersScreen) },
-              { path: 'new', element: S(CustomerFormPage) },
+              { path: 'new', element: <SectionGuard section="customers-manage">{S(CustomerFormPage)}</SectionGuard> },
               {
                 path: ':id',
                 element: S(CustomerLayout),
                 children: [
                   { index: true,           element: S(CustomerDetailPage)    },
-                  { path: 'edit',          element: S(CustomerFormPage)      },
-                  { path: 'new-sale',      element: S(CustomerSaleFormPage)  },
+                  { path: 'edit',          element: <SectionGuard section="customers-manage">{S(CustomerFormPage)}</SectionGuard> },
+                  { path: 'new-sale',      element: <SectionGuard section="customers-manage">{S(CustomerSaleFormPage)}</SectionGuard> },
                   { path: 'payments',      element: S(CustomerPaymentsPage)  },
                   { path: 'statements',    element: S(CustomerStatementPage) },
                 ],
@@ -264,7 +277,10 @@ export const router = createBrowserRouter([
                   { path: 'dashboard',       element: S(ProcurementDashboardPage)  },
                   { path: 'suppliers',       element: S(SuppliersPage)             },
                   { path: 'purchase-orders', element: S(PurchaseOrdersPage)        },
-                  { path: 'payments',        element: S(SupplierPayablesPage)      },
+                  {
+                    path: 'payments',
+                    element: <SectionGuard section="procurement-payments">{S(SupplierPayablesPage)}</SectionGuard>,
+                  },
                   { path: 'suppliers/new',              element: S(SupplierFormPage)          },
                   { path: 'suppliers/:id',              element: S(SupplierDetailPage)        },
                   { path: 'suppliers/:id/edit',         element: S(SupplierFormPage)          },
@@ -413,13 +429,6 @@ export const router = createBrowserRouter([
         children: [
           { index: true,               element: <Navigate to="/reseller/dashboard" replace /> },
           { path: 'dashboard',         element: S(ResellerDashboardPage)      },
-          { path: 'businesses',        element: S(ResellerBusinessesPage)     },
-          { path: 'businesses/:id',    element: S(ResellerBusinessDetailPage) },
-          { path: 'analytics',         element: S(ResellerAnalyticsPage)      },
-          { path: 'customers',         element: S(ResellerCustomersPage)      },
-          { path: 'inventory',         element: S(ResellerInventoryPage)      },
-          { path: 'procurement',       element: S(ResellerProcurementPage)    },
-          { path: 'subscriptions',     element: S(ResellerSubscriptionPage)   },
           {
             path: 'notifications',
             children: [

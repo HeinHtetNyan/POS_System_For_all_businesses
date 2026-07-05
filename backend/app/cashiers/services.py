@@ -15,7 +15,7 @@ from app.core.constants import (
 )
 from app.core.exceptions import BusinessRuleError, NotFoundError
 from app.events.base import DomainEvent
-from app.events.publisher import EventPublisher
+from app.events.publisher import event_publisher
 from app.events.types import EventType
 from app.payments.repositories import PaymentRepository
 from app.services.audit_service import AuditService
@@ -27,7 +27,6 @@ class CashierSessionService:
         self.session_repo = CashierSessionRepository(session)
         self.payment_repo = PaymentRepository(session)
         self.audit = AuditService(session)
-        self.publisher = EventPublisher()
 
     async def open_session(
         self,
@@ -74,7 +73,7 @@ class CashierSessionService:
             request_id=request_id,
         )
 
-        await self.publisher.publish(DomainEvent(
+        await event_publisher.publish(DomainEvent(
             event_type=EventType.CASHIER_SESSION_OPENED,
             payload={
                 "session_id": str(cs.id),
@@ -148,7 +147,7 @@ class CashierSessionService:
             request_id=request_id,
         )
 
-        await self.publisher.publish(DomainEvent(
+        await event_publisher.publish(DomainEvent(
             event_type=EventType.CASHIER_SESSION_CLOSED,
             payload={
                 "session_id": str(session_id),
@@ -172,6 +171,9 @@ class CashierSessionService:
         if not cs:
             raise NotFoundError("CashierSession", session_id)
         return cs
+
+    async def get_my_open_sessions(self, cashier_user_id: uuid.UUID) -> list[CashierSession]:
+        return await self.session_repo.get_open_sessions_for_user(cashier_user_id)
 
     async def list_sessions(
         self,

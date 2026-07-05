@@ -61,6 +61,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
       isFavorite: (id) => get().favorites.some(i => i.id === id),
     }),
-    { name: 'nexuspos-workspace' },
+    { name: 'sawyunpos-workspace' },
   ),
 )

@@ -128,6 +128,8 @@ export const en: LangDict = {
   'settings.no_tenant':           'No tenant associated with your account.',
   'settings.save_changes':        'Save Changes',
   'settings.saving':              'Saving…',
+  'settings.email_locked_hint':   'change in your profile',
+  'settings.phone_locked_hint':   'change in your profile',
   // Products page
   'products.title':             'Products',
   'products.tab.products':      'Products',
@@ -299,6 +301,8 @@ export const my: LangDict = {
   'settings.no_tenant':           'သင့်အကောင့်နှင့် ဆက်စပ်သော tenant မရှိပါ။',
   'settings.save_changes':        'ပြောင်းလဲမှုများ သိမ်းဆည်း',
   'settings.saving':              'သိမ်းနေသည်…',
+  'settings.email_locked_hint':   'ကိုယ်ရေးအချက်အလက်တွင် ပြောင်းပါ',
+  'settings.phone_locked_hint':   'ကိုယ်ရေးအချက်အလက်တွင် ပြောင်းပါ',
   // Products page
   'products.title':             'ကုန်ပစ္စည်းများ',
   'products.tab.products':      'ကုန်ပစ္စည်းများ',

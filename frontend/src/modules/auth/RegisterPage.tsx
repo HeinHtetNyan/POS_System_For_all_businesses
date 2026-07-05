@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '@/store/auth.store'
 import { authService } from '@/services/auth/auth.service'
 import { tokenStorage } from '@/app/lib/axios'
@@ -33,8 +33,15 @@ const INITIAL: FormState = {
 export default function RegisterPage() {
   const navigate = useNavigate()
   const { setUser } = useAuthStore()
+  const [searchParams] = useSearchParams()
 
-  const [form, setForm] = useState<FormState>(INITIAL)
+  // Reseller promo links deep-link here as /register?ref=CODE — prefill the
+  // promo code field so following the link actually applies it, matching the
+  // reseller portal's generated referral_url format.
+  const [form, setForm] = useState<FormState>(() => ({
+    ...INITIAL,
+    referral_code: (searchParams.get('ref') ?? '').toUpperCase(),
+  }))
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -77,7 +84,7 @@ export default function RegisterPage() {
       tokenStorage.setAccess(result.access_token)
       const me = await authService.me()
       setUser(me)
-      localStorage.setItem('nexuspos_onboarding_pending', '1')
+      localStorage.setItem('sawyunpos_onboarding_pending', '1')
       navigate('/onboarding', { replace: true })
     } catch (err: unknown) {
       const e2 = err as { response?: { data?: { error?: { message?: string; details?: { errors?: { field: string; message: string }[] } }; detail?: string } }; message?: string }
@@ -101,9 +108,7 @@ export default function RegisterPage() {
   return (
     <div className="relative w-full max-w-lg">
       <div className="text-center mb-8">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-amber-500 shadow-2xl shadow-amber-900/50 mb-4">
-          <span className="text-black font-black text-3xl">N</span>
-        </div>
+        <img src="/logo-icon.png" alt="SawYunPos" className="inline-block w-16 h-16 rounded-2xl shadow-2xl shadow-blue-900/50 mb-4" />
         <h1 className="text-2xl font-bold text-zinc-100">Start your free trial</h1>
         <p className="text-zinc-500 text-sm mt-1">14 days free · No credit card required</p>
       </div>

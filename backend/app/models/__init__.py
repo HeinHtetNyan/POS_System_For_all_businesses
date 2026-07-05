@@ -2,6 +2,8 @@
 from app.models.audit import AuditLog
 from app.models.auth import RefreshToken
 from app.models.password_reset_token import PasswordResetToken
+from app.models.email_verification_token import EmailVerificationToken
+from app.models.email_change_token import EmailChangeToken
 from app.models.permission import Permission, RolePermission, UserPermission
 # Then models with relationships (resolved lazily by SQLAlchemy mapper registry)
 from app.models.tenant import Tenant, TenantSettings
@@ -66,6 +68,8 @@ __all__ = [
     "AuditLog",
     "RefreshToken",
     "PasswordResetToken",
+    "EmailVerificationToken",
+    "EmailChangeToken",
     "Permission",
     "RolePermission",
     "UserPermission",

@@ -30,7 +30,7 @@ apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 })
 
 
-const TOKEN_KEY = 'nexuspos_access_token'
+const TOKEN_KEY = 'sawyunpos_access_token'
 
 export const tokenStorage = {
   getAccess:  ()           => localStorage.getItem(TOKEN_KEY),
@@ -134,7 +134,7 @@ apiClient.interceptors.response.use(
         // If we only clear the token, the next page load rehydrates isAuthenticated=true
         // from localStorage, the RoleGuard passes, the dashboard fires requests → 401
         // → refresh → 401 → back to login: an infinite blink loop.
-        localStorage.removeItem('nexuspos-auth')
+        localStorage.removeItem('sawyunpos-auth')
         window.location.href = '/login'
         return Promise.reject(refreshErr)
       } finally {

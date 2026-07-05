@@ -13,26 +13,29 @@ import type { SupplierPayableDetail } from '@/shared/types'
 const PAGE_SIZE = 30
 
 
-const paymentSchema = z.object({
+const makePaymentSchema = (maxAmount: number) => z.object({
   payment_method:   z.string().min(1, 'Payment method required'),
-  amount:           z.string().min(1).refine(v => parseFloat(v) > 0, 'Must be > 0'),
+  amount:           z.string().min(1)
+    .refine(v => parseFloat(v) > 0, 'Must be > 0')
+    .refine(v => parseFloat(v) <= maxAmount, `Cannot exceed the remaining balance (${maxAmount.toFixed(2)})`),
   payment_date:     z.string().min(1, 'Date required'),
   reference_number: z.string(),
   notes:            z.string(),
 })
 
-type PaymentFormValues = z.infer<typeof paymentSchema>
+type PaymentFormValues = z.infer<ReturnType<typeof makePaymentSchema>>
 
 const PAYMENT_METHODS = ['CASH', 'BANK_TRANSFER', 'CHEQUE', 'CARD', 'MOBILE_PAYMENT']
 
 function RecordPaymentModal({ payable, onClose }: { payable: SupplierPayableDetail; onClose: () => void }) {
   const qc = useQueryClient()
 
+  const remainingAmount = parseFloat(payable.remaining_amount)
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<PaymentFormValues>({
-    resolver: zodResolver(paymentSchema),
+    resolver: zodResolver(makePaymentSchema(remainingAmount)),
     defaultValues: {
       payment_method:   'BANK_TRANSFER',
-      amount:           parseFloat(payable.remaining_amount).toFixed(2),
+      amount:           remainingAmount.toFixed(2),
       payment_date:     new Date().toISOString().split('T')[0],
       reference_number: '',
       notes:            '',
@@ -50,9 +53,9 @@ function RecordPaymentModal({ payable, onClose }: { payable: SupplierPayableDeta
     onSuccess: (payment) => {
       toast.success(`Payment of ${fmt(payment.amount)} recorded`)
       qc.invalidateQueries({ queryKey: ['supplier-payables'] })
+      qc.invalidateQueries({ queryKey: ['supplier-balance'] })
       qc.invalidateQueries({ queryKey: ['payable-detail', payable.id] })
       qc.invalidateQueries({ queryKey: ['purchase-order', payable.purchase_order_id] })
-      qc.invalidateQueries({ queryKey: ['procurement-dashboard'] })
       onClose()
     },
     onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to record payment'),
@@ -91,7 +94,7 @@ function RecordPaymentModal({ payable, onClose }: { payable: SupplierPayableDeta
           </FormField>
 
           <FormField label="Amount" error={errors.amount?.message} required>
-            <input {...register('amount')} type="number" min="0.01" step="0.01" className={inputCls(!!errors.amount)} />
+            <input {...register('amount')} type="number" min="0.01" max={remainingAmount} step="0.01" className={inputCls(!!errors.amount)} />
           </FormField>
 
           <FormField label="Payment Date" error={errors.payment_date?.message} required>

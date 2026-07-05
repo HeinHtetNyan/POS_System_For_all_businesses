@@ -6,12 +6,16 @@ import { fmt, fmtDateTime, timeAgo } from '@/lib/utils'
 import { Btn, StatCard, Spinner, Empty } from '@/components/ui'
 import { IconEdit, IconPlus, IconTrash, IconUser } from '@/components/icons'
 import { customersService } from '@/services/customers/customers.service'
+import { useAuthStore } from '@/store/auth.store'
 import type { LedgerEntry } from '@/shared/types'
 
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const qc = useQueryClient()
+  const user = useAuthStore(s => s.user)
+  // Cashiers get read-only lookup — see CustomersScreen.tsx for the same rule.
+  const canManageCustomers = user?.role !== 'CASHIER'
   const [note, setNote]         = useState('')
   const [isEditing, setIsEditing] = useState(false)
 
@@ -97,9 +101,11 @@ export default function CustomerDetailPage() {
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-zinc-200">Customer Info</h3>
-            <Btn variant="ghost" size="xs" onClick={() => navigate(`/app/customers/${id}/edit`)}>
-              <IconEdit width="12" height="12" /> Edit
-            </Btn>
+            {canManageCustomers && (
+              <Btn variant="ghost" size="xs" onClick={() => navigate(`/app/customers/${id}/edit`)}>
+                <IconEdit width="12" height="12" /> Edit
+              </Btn>
+            )}
           </div>
           <div className="space-y-2.5">
             <InfoRow label="Name"    value={customer.name}            />
@@ -112,7 +118,19 @@ export default function CustomerDetailPage() {
 
         {/* Note panel */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
-          {customer.notes && !isEditing ? (
+          {!canManageCustomers ? (
+            /*  Read-only lookup: show the note if one exists, no edit UI  */
+            <>
+              <h3 className="text-sm font-semibold text-zinc-200 mb-3">Note</h3>
+              {customer.notes ? (
+                <p className="text-sm text-zinc-300 whitespace-pre-wrap break-words leading-relaxed">
+                  {customer.notes}
+                </p>
+              ) : (
+                <p className="text-sm text-zinc-600">No note for this customer.</p>
+              )}
+            </>
+          ) : customer.notes && !isEditing ? (
             /*  Has a note, view mode  */
             <>
               <div className="flex items-center justify-between mb-3">

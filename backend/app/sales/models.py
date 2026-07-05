@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -143,6 +143,13 @@ class Order(Base):
         Index("ix_orders_order_status", "order_status"),
         Index("ix_orders_completed_at", "completed_at"),
         Index("ix_orders_branch_created_at", "branch_id", "created_at"),
+        Index(
+            "uq_orders_tenant_idempotency_key",
+            "tenant_id",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("idempotency_key IS NOT NULL"),
+        ),
     )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(
@@ -164,6 +171,11 @@ class Order(Base):
         UUID(as_uuid=True), nullable=True
     )
 
+    # Client-generated key (e.g. a POS device's offline sync queue entry) used to
+    # detect a retried checkout submission and return the original order instead
+    # of creating a duplicate. Unique per tenant; NULL for older/unkeyed orders.
+    idempotency_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
     order_number: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
 
     order_status: Mapped[str] = mapped_column(
@@ -184,6 +196,12 @@ class Order(Base):
     refunded_amount: Mapped[Decimal] = mapped_column(
         Numeric(12, 4), nullable=False, default=Decimal("0")
     )
+    # Snapshot of the branch's currency at sale time — nullable because existing
+    # rows predate this column and their historical currency can't be recovered.
+    # New orders always get one (see CheckoutService.checkout). Never re-derive
+    # this from the branch's *current* currency; a later currency change on the
+    # branch must not retroactively repaint old orders.
+    currency: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

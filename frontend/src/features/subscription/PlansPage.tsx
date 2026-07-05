@@ -539,6 +539,20 @@ export default function PlansPage() {
     staleTime: 300_000,
   })
 
+  const { data: latestProofData } = useQuery({
+    queryKey: ['subscription', 'proofs', 'latest'],
+    queryFn: () => subscriptionsService.listPaymentProofs({ page: 1, page_size: 1 }),
+    enabled: !!sub,
+    staleTime: 0,
+  })
+  const latestProof = latestProofData?.items[0] ?? null
+  // Once the admin approves the downgrade's payment proof, it's locked in —
+  // the tenant already paid for the new plan, so it can no longer be cancelled.
+  const downgradeProofApproved =
+    !!sub?.pending_downgrade_plan_id &&
+    latestProof?.action_type === ProofActionType.DOWNGRADE &&
+    latestProof?.status === 'APPROVED'
+
   const downgradeMutation = useMutation({
     mutationFn: (planId: string) => subscriptionsService.downgrade(planId),
     onSuccess: (data, planId) => {
@@ -642,8 +656,13 @@ export default function PlansPage() {
                   Downgrade to{' '}
                   <span className="font-semibold">{pendingPlan?.name ?? 'a lower plan'}</span>{' '}
                   is scheduled for end of your current billing period.
+                  {downgradeProofApproved && (
+                    <span className="block text-xs text-amber-400/70 mt-0.5">
+                      Already paid and approved — this can no longer be cancelled.
+                    </span>
+                  )}
                 </p>
-                {isOwner && (
+                {isOwner && !downgradeProofApproved && (
                   <Btn
                     variant="secondary" size="sm"
                     disabled={cancelDowngradeMutation.isPending}

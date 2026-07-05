@@ -6,6 +6,7 @@ import { fmt, fmtDateTime } from '@/lib/utils'
 import { Btn, Modal, Spinner, Empty, Table, Th, Td, StatCard } from '@/components/ui'
 import { IconPlus, IconCash } from '@/components/icons'
 import { customersService } from '@/services/customers/customers.service'
+import { useAuthStore } from '@/store/auth.store'
 import type { LedgerEntry } from '@/shared/types'
 
 const PAGE_SIZE = 30
@@ -13,6 +14,9 @@ const PAGE_SIZE = 30
 export default function CustomerPaymentsPage() {
   const { id } = useParams<{ id: string }>()
   const qc = useQueryClient()
+  const user = useAuthStore(s => s.user)
+  // Cashiers get read-only lookup — see CustomersScreen.tsx for the same rule.
+  const canManageCustomers = user?.role !== 'CASHIER'
 
   const [showModal, setShowModal]   = useState(false)
   const [amount, setAmount]         = useState('')
@@ -91,9 +95,11 @@ export default function CustomerPaymentsPage() {
             />
           )}
         </div>
-        <Btn onClick={() => setShowModal(true)}>
-          <IconPlus width="14" height="14" /> Record Payment
-        </Btn>
+        {canManageCustomers && (
+          <Btn onClick={() => setShowModal(true)}>
+            <IconPlus width="14" height="14" /> Record Payment
+          </Btn>
+        )}
       </div>
 
       {/* Debt payment history */}
@@ -111,11 +117,13 @@ export default function CustomerPaymentsPage() {
           <Empty
             icon={<IconCash width="40" height="40" />}
             title="No debt payments yet"
-            subtitle="Use the button above to record a payment toward the customer's outstanding balance"
+            subtitle={canManageCustomers ? "Use the button above to record a payment toward the customer's outstanding balance" : undefined}
             action={
-              <Btn size="sm" onClick={() => setShowModal(true)}>
-                <IconPlus width="14" height="14" /> Record Payment
-              </Btn>
+              canManageCustomers ? (
+                <Btn size="sm" onClick={() => setShowModal(true)}>
+                  <IconPlus width="14" height="14" /> Record Payment
+                </Btn>
+              ) : undefined
             }
           />
         ) : (

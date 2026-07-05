@@ -9,8 +9,10 @@ from fastapi import APIRouter, Depends, Query, status
 from app.api.deps import (
     DbSession,
     EffectiveTenantId,
+    assert_branch_access,
     get_effective_tenant_id,
     require_roles,
+    scope_branch_filter,
 )
 from app.core.constants import UserRole
 from app.devices.schemas import (
@@ -56,6 +58,7 @@ async def register_device(
     current_user: User = _manage_access,
     tenant_id: uuid.UUID = Depends(get_effective_tenant_id),
 ) -> DeviceResponse:
+    assert_branch_access(current_user, data.branch_id)
     svc = DeviceService(db)
     device = await svc.register_device(
         tenant_id=tenant_id,
@@ -83,6 +86,7 @@ async def list_devices(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=500),
 ) -> DeviceListResponse:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = DeviceService(db)
     items, total = await svc.list_devices(
         tenant_id=tenant_id,
@@ -112,6 +116,7 @@ async def get_device(
 ) -> DeviceResponse:
     svc = DeviceService(db)
     device = await svc.get_device(device_id, tenant_id)
+    assert_branch_access(current_user, device.branch_id)
     return DeviceResponse.model_validate(device)
 
 
@@ -128,6 +133,8 @@ async def update_device(
     tenant_id: uuid.UUID = Depends(get_effective_tenant_id),
 ) -> DeviceResponse:
     svc = DeviceService(db)
+    existing = await svc.get_device(device_id, tenant_id)
+    assert_branch_access(current_user, existing.branch_id)
     device = await svc.update_device(
         device_id=device_id,
         tenant_id=tenant_id,
@@ -150,6 +157,8 @@ async def deactivate_device(
     tenant_id: uuid.UUID = Depends(get_effective_tenant_id),
 ) -> DeviceResponse:
     svc = DeviceService(db)
+    existing = await svc.get_device(device_id, tenant_id)
+    assert_branch_access(current_user, existing.branch_id)
     device = await svc.deactivate_device(
         device_id=device_id,
         tenant_id=tenant_id,
@@ -171,4 +180,5 @@ async def device_heartbeat(
 ) -> DeviceResponse:
     svc = DeviceService(db)
     device = await svc.touch_heartbeat(device_id, tenant_id)
+    assert_branch_access(current_user, device.branch_id)
     return DeviceResponse.model_validate(device)

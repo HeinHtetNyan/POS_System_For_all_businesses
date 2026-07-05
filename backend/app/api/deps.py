@@ -7,7 +7,7 @@ from fastapi import Depends, Header, Query, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.constants import UserRole
+from app.core.constants import UserRole, UserStatus
 from app.core.exceptions import AuthenticationError, AuthorizationError, ValidationError
 from app.core.logging import get_logger
 from app.core.security import decode_access_token
@@ -51,6 +51,12 @@ async def get_current_user(
 
     if not user:
         raise AuthenticationError("User not found or deactivated")
+    # get_by_id_active only filters is_deleted — a still-valid access token issued
+    # before a staff member was suspended/deactivated would otherwise keep working
+    # for the rest of its lifetime (up to JWT_ACCESS_TOKEN_EXPIRE_MINUTES) instead
+    # of being cut off immediately, same as login/refresh already enforce.
+    if user.status != UserStatus.ACTIVE:
+        raise AuthenticationError("User account is no longer active")
 
     return user
 
@@ -66,6 +72,49 @@ def require_roles(*roles: UserRole):
             )
         return current_user
     return Depends(_checker)
+
+
+def assert_branch_access(user: User, branch_id: uuid.UUID) -> None:
+    """CASHIER/INVENTORY_STAFF/MANAGER (and any other non-owner role) are scoped
+    to their assigned branch — only BUSINESS_OWNER and SUPER_ADMIN operate
+    across all of a tenant's branches. Only enforced when the staff member
+    actually HAS a primary_branch_id set (it's optional), so tenants that never
+    assign one keep today's unrestricted behavior."""
+    if user.role in (UserRole.SUPER_ADMIN, UserRole.BUSINESS_OWNER):
+        return
+    if user.primary_branch_id is not None and user.primary_branch_id != branch_id:
+        raise AuthorizationError("You are not assigned to this branch")
+
+
+def assert_branch_access_either(
+    user: User, branch_id_a: uuid.UUID, branch_id_b: uuid.UUID
+) -> None:
+    """Like assert_branch_access, but for two-branch operations (stock transfers)
+    — passes if the user's assigned branch matches either side."""
+    if user.role in (UserRole.SUPER_ADMIN, UserRole.BUSINESS_OWNER, UserRole.RESELLER):
+        return
+    if (
+        user.primary_branch_id is not None
+        and user.primary_branch_id not in (branch_id_a, branch_id_b)
+    ):
+        raise AuthorizationError("You are not assigned to either branch in this transfer")
+
+
+def scope_branch_filter(user: User, branch_id: uuid.UUID | None) -> uuid.UUID | None:
+    """
+    For a list/report endpoint with an OPTIONAL branch_id filter: a
+    branch-scoped role (CASHIER/INVENTORY_STAFF/MANAGER) must never see every
+    branch's data just because they omitted the filter — force it to their own
+    branch. If they did pass one, assert_branch_access still rejects a mismatch.
+    """
+    if branch_id is not None:
+        assert_branch_access(user, branch_id)
+        return branch_id
+    if user.role not in (
+        UserRole.SUPER_ADMIN.value, UserRole.BUSINESS_OWNER.value,
+    ) and user.primary_branch_id is not None:
+        return user.primary_branch_id
+    return None
 
 
 async def require_super_admin(current_user: CurrentUser) -> User:
@@ -179,6 +228,37 @@ def get_effective_tenant_id(
 
 
 EffectiveTenantId = Annotated[uuid.UUID, Depends(get_effective_tenant_id)]
+
+
+async def get_subscription_scoped_tenant_id(
+    current_user: CurrentUser,
+    tenant_id: EffectiveTenantId,
+    db: DbSession,
+) -> uuid.UUID:
+    """
+    Like EffectiveTenantId, but for a RESELLER additionally requires that
+    tenant_id is one they actually referred (via TenantReferral) — a reseller
+    may fully manage their own referred tenants' subscriptions (view status,
+    submit proofs, downgrade, cancel, etc.), but must not be able to reach an
+    arbitrary tenant's billing data by passing any UUID in ?tenant_id=.
+    Regular users and SUPER_ADMIN are unaffected.
+    """
+    if current_user.role == UserRole.RESELLER.value:
+        from sqlalchemy import select
+        from app.reseller_finance.models.referral import TenantReferral
+
+        result = await db.execute(
+            select(TenantReferral).where(
+                TenantReferral.reseller_id == current_user.id,
+                TenantReferral.tenant_id == tenant_id,
+            )
+        )
+        if not result.scalar_one_or_none():
+            raise AuthorizationError("This business was not referred by you")
+    return tenant_id
+
+
+SubscriptionScopedTenantId = Annotated[uuid.UUID, Depends(get_subscription_scoped_tenant_id)]
 
 
 def get_optional_effective_tenant_id(

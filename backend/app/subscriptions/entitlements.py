@@ -123,6 +123,18 @@ class TenantSubscriptionValidator:
             raise SubscriptionExpiredException(
                 "Subscription has been cancelled. Please submit a payment proof to reactivate."
             )
+        if sub.status in (SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL):
+            # The daily Celery job is what flips status to EXPIRED, so relying
+            # on status alone gives up to 24h (or longer if beat is down) of
+            # continued access after expires_at has actually passed. Check the
+            # real clock here too, the same way the CANCELLED branch above
+            # already does, instead of trusting a possibly-stale status.
+            from datetime import datetime, timezone
+            if sub.expires_at and sub.expires_at <= datetime.now(timezone.utc):
+                expires_text = sub.expires_at.strftime("%Y-%m-%d")
+                raise SubscriptionExpiredException(
+                    f"Subscription expired on {expires_text}. Please renew to continue."
+                )
         return sub
 
     async def validate_not_expired(self, tenant_id: uuid.UUID) -> TenantSubscription:
@@ -439,7 +451,9 @@ class AdminSubscriptionService:
             raise NotFoundError("TenantSubscription", tenant_id)
 
         now = _now()
-        base = sub.expires_at if sub.expires_at > now else now
+        # expires_at is null for no-expiry plans (e.g. a free/custom plan) —
+        # comparing None > now crashed with a TypeError.
+        base = sub.expires_at if (sub.expires_at is not None and sub.expires_at > now) else now
         old_expires = sub.expires_at
         sub.expires_at = base + timedelta(days=days)
 

@@ -33,4 +33,16 @@ export const authService = {
 
   resetPassword: (token: string, new_password: string) =>
     apiClient.post<SuccessResponse>('/auth/reset-password', { token, new_password }).then(r => r.data),
+
+  verifyEmail: (token: string) =>
+    apiClient.post<SuccessResponse>('/auth/verify-email', { token }).then(r => r.data),
+
+  resendVerification: (email: string) =>
+    apiClient.post<SuccessResponse>('/auth/resend-verification', { email }).then(r => r.data),
+
+  requestEmailChange: (new_email: string, current_password: string) =>
+    apiClient.post<SuccessResponse>('/auth/request-email-change', { new_email, current_password }).then(r => r.data),
+
+  confirmEmailChange: (token: string) =>
+    apiClient.post<SuccessResponse>('/auth/confirm-email-change', { token }).then(r => r.data),
 }

@@ -14,6 +14,6 @@ export const usePreferencesStore = create<PreferencesState>()(
       timeFormat: '12h' as TimeFormat,
       setTimeFormat: (timeFormat) => set({ timeFormat }),
     }),
-    { name: 'nexuspos-prefs' },
+    { name: 'sawyunpos-prefs' },
   ),
 )

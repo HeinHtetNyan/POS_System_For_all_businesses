@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth.store'
 import { tenantService } from '@/services/tenant/tenant.service'
 import type { BranchCreatePayload } from '@/services/tenant/tenant.service'
 import { subscriptionsService } from '@/services/subscriptions/subscriptions.service'
+import { TIMEZONES, CURRENCIES } from '@/shared/constants/localization'
 import type { Branch } from '@/shared/types'
 
 function autoCode(name: string): string {
@@ -20,6 +21,9 @@ function autoCode(name: string): string {
 
 const INPUT = 'w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-amber-500 transition-colors'
 const LABEL = 'block text-xs text-zinc-400 mb-1'
+
+const TIMEZONE_OPTIONS = TIMEZONES.map(tz => ({ value: tz, label: tz }))
+const CURRENCY_OPTIONS = CURRENCIES.map(c => ({ value: c, label: c === 'MMK' ? 'Kyats (MMK)' : c }))
 
 function Field({
   label, value, onChange, required, readOnly, placeholder, type, inputMode, autoComplete,
@@ -43,6 +47,22 @@ function Field({
         onChange={e => onChange?.(e.target.value)}
         className={`${INPUT} ${readOnly ? 'opacity-50 cursor-default' : ''}`}
       />
+    </div>
+  )
+}
+
+function SelectField({
+  label, value, onChange, options,
+}: {
+  label: string; value: string; onChange: (v: string) => void
+  options: { value: string; label: string }[]
+}) {
+  return (
+    <div>
+      <label className={LABEL}>{label}</label>
+      <select value={value} onChange={e => onChange(e.target.value)} className={INPUT}>
+        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
     </div>
   )
 }
@@ -105,8 +125,8 @@ function AddBranchModal({ tenantId, onClose }: { tenantId: string; onClose: () =
           <Field label="Phone"    value={form.phone   ?? ''} onChange={v => setForm(p => ({ ...p, phone: v }))} placeholder="+1 555 000 0000" type="tel" inputMode="tel" autoComplete="tel" />
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Timezone" value={form.timezone ?? 'UTC'} onChange={v => setForm(p => ({ ...p, timezone: v }))} placeholder="UTC" />
-            <Field label="Currency" value={form.currency ?? 'MMK'} onChange={v => setForm(p => ({ ...p, currency: v }))} placeholder="Kyats" />
+            <SelectField label="Timezone" value={form.timezone ?? 'UTC'} onChange={v => setForm(p => ({ ...p, timezone: v }))} options={TIMEZONE_OPTIONS} />
+            <SelectField label="Currency" value={form.currency ?? 'MMK'} onChange={v => setForm(p => ({ ...p, currency: v }))} options={CURRENCY_OPTIONS} />
           </div>
         </div>
 
@@ -183,8 +203,8 @@ function EditBranchModal({
           <Field label="City"        value={form.city}     onChange={set('city')}     />
           <Field label="Phone"       value={form.phone}    onChange={set('phone')}    placeholder="+1 555 000 0000" type="tel" inputMode="tel" autoComplete="tel" />
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Timezone"  value={form.timezone} onChange={set('timezone')} placeholder="UTC" />
-            <Field label="Currency"  value={form.currency} onChange={set('currency')} placeholder="Kyats" />
+            <SelectField label="Timezone" value={form.timezone} onChange={set('timezone')} options={TIMEZONE_OPTIONS} />
+            <SelectField label="Currency" value={form.currency} onChange={set('currency')} options={CURRENCY_OPTIONS} />
           </div>
         </div>
 

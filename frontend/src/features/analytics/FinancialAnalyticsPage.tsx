@@ -96,6 +96,7 @@ export default function FinancialAnalyticsPage() {
             <tr>
               <Th>{profitBy[0].toUpperCase() + profitBy.slice(1)}</Th>
               <Th right>Revenue</Th>
+              <Th right>Refunded</Th>
               <Th right>COGS (Cost of Goods Sold)</Th>
               <Th right>Profit</Th>
               <Th right>Margin</Th>
@@ -108,6 +109,7 @@ export default function FinancialAnalyticsPage() {
                 <tr key={item.dimension_id ?? i} className="hover:bg-zinc-800/40 transition-colors">
                   <Td>{item.dimension_name}</Td>
                   <Td right><span className="font-mono text-amber-400">{fmt(item.revenue)}</span></Td>
+                  <Td right><span className="font-mono text-red-400">{fmt(item.refunded_amount)}</span></Td>
                   <Td right><span className="font-mono text-zinc-400">{fmt(item.cogs)}</span></Td>
                   <Td right><span className="font-mono text-green-400">{fmt(item.profit)}</span></Td>
                   <Td right>

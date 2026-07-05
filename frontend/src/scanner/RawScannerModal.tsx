@@ -25,7 +25,7 @@ const SCAN_FORMATS = [
   Html5QrcodeSupportedFormats.RSS_EXPANDED,
 ]
 
-const LAST_CAMERA_KEY = 'nexuspos_scanner_camera'
+const LAST_CAMERA_KEY = 'sawyunpos_scanner_camera'
 
 function loadLastCamera(): string | null {
   try { return localStorage.getItem(LAST_CAMERA_KEY) } catch { return null }
@@ -255,7 +255,7 @@ export function RawScannerModal({
   const showDropdown = !ios && cameras.length > 1
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-black">
+    <div className="fixed inset-0 z-[70] flex flex-col bg-black">
       <div className="flex items-center justify-between px-4 py-3 bg-zinc-950/90 backdrop-blur-sm border-b border-zinc-800">
         <span className="text-sm font-semibold text-zinc-100">{title}</span>
         <div className="flex items-center gap-2">

@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { checkoutService, refundService } from '@/services/sales/sales.service'
 import { fmt, fmtDateTime } from '@/lib/utils'
+import { invalidateSalesMutationQueries } from '@/lib/salesQueryInvalidation'
 import { Btn, Spinner } from '@/components/ui'
 import { IconX, IconSearch, IconRefund } from '@/components/icons'
 import type { Order, OrderItem } from '@/shared/types'
@@ -121,14 +122,15 @@ export default function RefundModal({ onClose, onSuccess }: Props) {
     onSuccess: (refund) => {
       const label = refundMethod === 'REPLACEMENT' ? 'Replacement' : 'Refund'
       toast.success(`${label} ${refund.refund_number} processed`)
-      qc.invalidateQueries({ queryKey: ['dashboard'] })
-      qc.invalidateQueries({ queryKey: ['orders'] })
-      qc.invalidateQueries({ queryKey: ['financial-summary'] })
-      qc.invalidateQueries({ queryKey: ['financial-profit'] })
-      qc.invalidateQueries({ queryKey: ['sales-analytics'] })
-      // Refresh inventory so POS/Inventory screens show updated quantities
-      qc.invalidateQueries({ queryKey: ['inventory'] })
-      qc.invalidateQueries({ queryKey: ['products'] })
+      invalidateSalesMutationQueries(qc)
+      // A refund on an on-account order can create store credit, changing the
+      // customer's balance — refresh every view that shows it.
+      if (order?.customer_id) {
+        qc.invalidateQueries({ queryKey: ['customer', order.customer_id] })
+        qc.invalidateQueries({ queryKey: ['customer-ledger', order.customer_id] })
+        qc.invalidateQueries({ queryKey: ['customer-statement', order.customer_id] })
+        qc.invalidateQueries({ queryKey: ['customers'] })
+      }
       onSuccess?.()
       onClose()
     },

@@ -6,7 +6,6 @@ import { useSessionStore } from '@/store/session.store'
 import { useTenantStore } from '@/store/tenant.store'
 import { useLocaleStore } from '@/i18n/localeStore'
 import { analyticsService } from '@/services/analytics/analytics.service'
-import { notificationsService } from '@/services/notifications/notifications.service'
 import { KpiCard } from './widgets/KpiCard'
 import { DashboardSection } from './widgets/DashboardSection'
 import { QuickActionGrid, type QuickAction } from './widgets/QuickActionGrid'
@@ -16,46 +15,43 @@ const CASHIER_ACTIONS: QuickAction[] = [
   { labelKey: 'qa.open_pos',      descKey: 'qa.open_pos_desc',      icon: '💰', path: '/app/pos' },
   { labelKey: 'qa.customers',     descKey: 'qa.customers_desc',     icon: '👥', path: '/app/customers' },
   { labelKey: 'qa.sales_history', descKey: 'qa.sales_history_desc', icon: '🧾', path: '/app/sales' },
-  { labelKey: 'qa.notifications', descKey: 'qa.inbox_desc',         icon: '🔔', path: '/app/notifications' },
 ]
 
 const INVENTORY_ACTIONS: QuickAction[] = [
   { labelKey: 'qa.inventory',     descKey: 'qa.inventory_desc', icon: '🏭', path: '/app/inventory' },
   { labelKey: 'qa.products',      descKey: 'qa.catalog_desc',   icon: '📦', path: '/app/products' },
-  { labelKey: 'qa.open_pos',      descKey: 'qa.open_pos_desc',  icon: '💰', path: '/app/pos' },
-  { labelKey: 'qa.notifications', descKey: 'qa.inbox_desc',     icon: '🔔', path: '/app/notifications' },
 ]
 
 export default function StaffDashboardPage() {
   const navigate = useNavigate()
   const user = useAuthStore(s => s.user)
   const { activeSession } = useSessionStore()
-  const { selectedBranch } = useTenantStore()
+  const { availableBranches } = useTenantStore()
   const t = useLocaleStore(s => s.t)
   const role = user?.role ?? 'CASHIER'
   const isInventoryStaff = role === 'INVENTORY_STAFF'
-  const branchId = selectedBranch?.id
+  // This page has no branch switcher, so it must never depend on the shared
+  // selectedBranch store (that's for switcher pages like BusinessDashboardPage
+  // and can go stale — e.g. after a branch reassignment — causing a 403 here).
+  // Omit branch_id entirely and let the backend resolve scope from the
+  // authenticated user's own primary_branch_id, which is always correct.
+  const myBranchName = availableBranches.find(b => b.id === user?.primary_branch_id)?.name
 
-  const [kpiQuery, notifQuery, lowStockQuery] = useQueries({
+  const [kpiQuery, lowStockQuery] = useQueries({
     queries: [
       {
-        queryKey: ['analytics', 'dashboard', branchId],
-        queryFn: () => analyticsService.getDashboard({ branch_id: branchId }),
+        queryKey: ['analytics', 'dashboard', 'own'],
+        queryFn: () => analyticsService.getDashboard(),
       },
       {
-        queryKey: ['notifications', 'unread-count'],
-        queryFn: notificationsService.getUnreadCount,
-      },
-      {
-        queryKey: ['analytics', 'low-stock', branchId],
-        queryFn: () => analyticsService.getLowStock({ branch_id: branchId }),
+        queryKey: ['analytics', 'low-stock', 'own'],
+        queryFn: () => analyticsService.getLowStock(),
         enabled: isInventoryStaff,
       },
     ],
   })
 
   const kpi = kpiQuery.data
-  const unread = notifQuery.data?.unread_count ?? 0
   const lowStock = lowStockQuery.data ?? []
 
   return (
@@ -66,7 +62,7 @@ export default function StaffDashboardPage() {
           Good {getGreeting()}, {user?.first_name ?? 'there'}
         </h2>
         <p className="text-xs text-zinc-500 mt-0.5">
-          {isInventoryStaff ? 'Inventory staff' : 'Cashier'}{branchId ? ` · ${selectedBranch?.name}` : ''}
+          {isInventoryStaff ? 'Inventory staff' : 'Cashier'}{myBranchName ? ` · ${myBranchName}` : ''}
         </p>
       </div>
 
@@ -93,20 +89,14 @@ export default function StaffDashboardPage() {
         {/* KPI Row */}
         <DashboardSection title="Today at a Glance">
           {isInventoryStaff ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <KpiCard
                 label="Orders Today"
                 value={kpi?.orders_today ?? '—'}
                 sub="transactions"
                 icon="🧾"
                 isLoading={kpiQuery.isLoading}
-              />
-              <KpiCard
-                label="Notifications"
-                value={unread > 0 ? unread : '0'}
-                sub={unread > 0 ? 'unread' : 'all read'}
-                icon="🔔"
-                isLoading={notifQuery.isLoading}
+                isError={kpiQuery.isError}
               />
               <KpiCard
                 label="Low Stock"
@@ -114,30 +104,18 @@ export default function StaffDashboardPage() {
                 sub={lowStock.length > 0 ? 'need restock' : 'all stocked'}
                 icon="⚠️"
                 isLoading={lowStockQuery.isLoading}
+                isError={lowStockQuery.isError}
               />
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <KpiCard
-                label="Orders Today"
-                value={kpi?.orders_today ?? '—'}
-                sub="transactions"
-                icon="🧾"
-                isLoading={kpiQuery.isLoading}
-              />
+            <div className="grid grid-cols-2 gap-3">
               <KpiCard
                 label="Sales Today"
                 value={fmt(kpi?.sales_today)}
                 icon="💰"
                 accent
                 isLoading={kpiQuery.isLoading}
-              />
-              <KpiCard
-                label="Notifications"
-                value={unread > 0 ? unread : '0'}
-                sub={unread > 0 ? 'unread' : 'all read'}
-                icon="🔔"
-                isLoading={notifQuery.isLoading}
+                isError={kpiQuery.isError}
               />
               <KpiCard
                 label="This Month"
@@ -145,6 +123,7 @@ export default function StaffDashboardPage() {
                 sub={`${kpi?.orders_this_month ?? 0} orders`}
                 icon="📅"
                 isLoading={kpiQuery.isLoading}
+                isError={kpiQuery.isError}
               />
             </div>
           )}
@@ -187,25 +166,6 @@ export default function StaffDashboardPage() {
               ))}
             </div>
           </DashboardSection>
-        )}
-
-        {/* Notification nudge */}
-        {unread > 0 && (
-          <div
-            onClick={() => navigate('/app/notifications')}
-            className="bg-zinc-900 border border-zinc-700 hover:border-zinc-600 rounded-2xl px-4 py-3.5 cursor-pointer transition-colors flex items-center justify-between gap-3"
-          >
-            <div className="flex items-center gap-3">
-              <span className="w-9 h-9 rounded-xl bg-zinc-800 flex items-center justify-center text-base flex-shrink-0">🔔</span>
-              <div>
-                <p className="text-sm font-medium text-zinc-200">
-                  {unread} unread notification{unread !== 1 ? 's' : ''}
-                </p>
-                <p className="text-xs text-zinc-500">Tap to view your inbox</p>
-              </div>
-            </div>
-            <span className="text-zinc-500 text-sm">→</span>
-          </div>
         )}
 
       </div>

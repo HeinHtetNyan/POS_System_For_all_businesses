@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { fmtDate } from '@/lib/utils'
+import { toast } from 'sonner'
+import { fmtDate, extractApiMsg } from '@/lib/utils'
 import { Badge, Btn, Spinner, Empty } from '@/components/ui'
 import { notificationsService } from '@/services/notifications/notifications.service'
 import { useState } from 'react'
@@ -35,6 +36,7 @@ export default function PlatformNotificationsPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['notifications'] })
     },
+    onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to mark all read'),
   })
 
   const markReadMutation = useMutation({
@@ -42,6 +44,7 @@ export default function PlatformNotificationsPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['notifications', 'list'] })
     },
+    onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to mark as read'),
   })
 
   const items = data?.items ?? []

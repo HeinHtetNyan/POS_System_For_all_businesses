@@ -14,6 +14,9 @@ export const notificationsService = {
   getUnreadCount: () =>
     apiClient.get<{ unread_count: number }>('/notifications/unread-count').then(r => r.data),
 
+  get: (id: string) =>
+    apiClient.get<Notification>(`/notifications/${id}`).then(r => r.data),
+
   markRead: (id: string) =>
     apiClient.post<{ message: string }>(`/notifications/${id}/read`).then(r => r.data),
 

@@ -91,6 +91,10 @@ class CheckoutPaymentRequest(BaseModel):
     amount: Decimal = Field(gt=0)
     reference_number: str | None = Field(default=None, max_length=255)
     notes: str | None = Field(default=None, max_length=500)
+    # Cash physically handed over by the customer, when it differs from
+    # `amount` — e.g. a 500 note for a 47.50 sale. Only meaningful for CASH;
+    # `amount` remains what's actually applied/charged to the order.
+    tendered_amount: Decimal | None = Field(default=None, ge=0)
 
 
 class CheckoutRequest(BaseModel):
@@ -100,6 +104,10 @@ class CheckoutRequest(BaseModel):
     customer_id: uuid.UUID | None = None
     discount_amount: Decimal = Field(default=Decimal("0"), ge=0)
     notes: str | None = Field(default=None, max_length=500)
+    # Client-generated key (e.g. an offline POS device's sync-queue entry id) —
+    # resubmitting the same key returns the original order instead of creating
+    # a duplicate, so a retried submission after a dropped connection is safe.
+    idempotency_key: str | None = Field(default=None, max_length=100)
 
     @field_validator("items")
     @classmethod
@@ -143,6 +151,7 @@ class PaymentResponse(BaseModel):
     id: uuid.UUID
     payment_method: str
     amount: Decimal
+    tendered_amount: Decimal | None = None
     reference_number: str | None
     notes: str | None
     paid_at: datetime | None
@@ -164,6 +173,7 @@ class OrderResponse(BaseModel):
     discount_amount: Decimal
     total_amount: Decimal
     refunded_amount: Decimal
+    currency: str | None = None
     notes: str | None
     completed_at: datetime | None
     voided_at: datetime | None

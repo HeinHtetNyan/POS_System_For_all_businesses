@@ -7,7 +7,7 @@ import {
 import type { CameraCapabilities, CameraDevice } from 'html5-qrcode/esm/camera/core'
 import { lookupProductBySku, lookupProductByBarcode } from './useProductScan'
 import { Spinner } from '@/components/ui'
-import { fmt } from '@/shared/utils'
+import { fmt } from '@/lib/utils'
 import type { Product } from '@/shared/types'
 
 const SCAN_FORMATS = [
@@ -28,7 +28,7 @@ const SCAN_FORMATS = [
   Html5QrcodeSupportedFormats.RSS_EXPANDED,
 ]
 
-const LAST_CAMERA_KEY = 'nexuspos_scanner_camera'
+const LAST_CAMERA_KEY = 'sawyunpos_scanner_camera'
 
 function loadLastCamera(): string | null {
   try { return localStorage.getItem(LAST_CAMERA_KEY) } catch { return null }

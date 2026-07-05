@@ -98,7 +98,7 @@ export default function ReceiptScreen() {
                     <span className="text-zinc-600"> × {item.quantity}</span>
                   </span>
                   <span className="font-mono text-zinc-200 flex-shrink-0">
-                    {fmt(parseFloat(item.total))}
+                    {fmt(parseFloat(item.total), receipt.currency)}
                   </span>
                 </div>
               ))}
@@ -110,24 +110,24 @@ export default function ReceiptScreen() {
                 <span>Subtotal</span>
                 {/* For inclusive tax, subtotal = total_amount (gross) so item lines match */}
                 <span className="font-mono">
-                  {fmt(parseFloat(taxEnabled && taxInclusive ? receipt.total_amount : receipt.subtotal))}
+                  {fmt(parseFloat(taxEnabled && taxInclusive ? receipt.total_amount : receipt.subtotal), receipt.currency)}
                 </span>
               </div>
               {parseFloat(receipt.discount_amount) > 0 && (
                 <div className="flex justify-between text-xs text-amber-500">
                   <span>Discount</span>
-                  <span className="font-mono">-{fmt(parseFloat(receipt.discount_amount))}</span>
+                  <span className="font-mono">-{fmt(parseFloat(receipt.discount_amount), receipt.currency)}</span>
                 </div>
               )}
               {taxEnabled && showTaxOnReceipt && parseFloat(receipt.tax_amount) > 0 && (
                 <div className="flex justify-between text-xs text-zinc-500">
                   <span>{taxName}{taxInclusive ? ' (incl.)' : ''}</span>
-                  <span className="font-mono">{fmt(parseFloat(receipt.tax_amount))}</span>
+                  <span className="font-mono">{fmt(parseFloat(receipt.tax_amount), receipt.currency)}</span>
                 </div>
               )}
               <div className="flex justify-between text-sm font-bold text-zinc-100 mt-1 pt-1 border-t border-zinc-800">
                 <span>Total</span>
-                <span className="font-mono text-amber-400">{fmt(parseFloat(receipt.total_amount))}</span>
+                <span className="font-mono text-amber-400">{fmt(parseFloat(receipt.total_amount), receipt.currency)}</span>
               </div>
             </div>
 
@@ -139,18 +139,20 @@ export default function ReceiptScreen() {
                     {getPaymentMethodLabel(pm.method ?? '')}
                     {pm.notes && <span className="text-zinc-600"> · {pm.notes}</span>}
                   </span>
-                  <span className="font-mono text-zinc-300">{fmt(parseFloat(pm.amount))}</span>
+                  <span className="font-mono text-zinc-300">{fmt(parseFloat(pm.amount), receipt.currency)}</span>
                 </div>
               ))}
-              {parseFloat(receipt.amount_paid) > parseFloat(receipt.total_amount) && (
+              {parseFloat(receipt.change_amount) > 0 && (
                 <>
                   <div className="flex justify-between">
                     <span>Tendered</span>
-                    <span className="font-mono text-zinc-300">{fmt(parseFloat(receipt.amount_paid))}</span>
+                    <span className="font-mono text-zinc-300">
+                      {fmt(parseFloat(receipt.total_amount) + parseFloat(receipt.change_amount), receipt.currency)}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span>Change</span>
-                    <span className="font-mono text-green-400 font-semibold">{fmt(parseFloat(receipt.change_amount))}</span>
+                    <span className="font-mono text-green-400 font-semibold">{fmt(parseFloat(receipt.change_amount), receipt.currency)}</span>
                   </div>
                 </>
               )}

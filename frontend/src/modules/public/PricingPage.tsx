@@ -99,8 +99,8 @@ export default function PricingPage() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <nav className="border-b border-zinc-900 px-6 py-4 flex items-center justify-between max-w-6xl mx-auto">
         <Link to="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-amber-500 flex items-center justify-center text-black font-black text-lg">N</div>
-          <span className="font-bold text-zinc-100">NexusPOS</span>
+          <img src="/logo-icon.png" alt="SawYunPos" className="w-8 h-8 rounded-xl" />
+          <span className="font-bold text-zinc-100">SawYunPos</span>
         </Link>
         <div className="flex items-center gap-3">
           <Link to="/login" className="text-zinc-400 hover:text-zinc-100 text-sm transition-colors">
@@ -179,7 +179,7 @@ export default function PricingPage() {
       </main>
 
       <footer className="border-t border-zinc-900 px-6 py-8 text-center text-zinc-600 text-xs max-w-6xl mx-auto">
-        <p>© 2026 NexusPOS. All rights reserved.</p>
+        <p>© 2026 SawYunPos. All rights reserved.</p>
         <div className="flex items-center justify-center gap-4 mt-2">
           <Link to="/login" className="hover:text-zinc-400">Sign In</Link>
           <Link to="/register" className="hover:text-zinc-400">Register</Link>

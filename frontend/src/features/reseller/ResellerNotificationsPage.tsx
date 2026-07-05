@@ -41,6 +41,7 @@ export default function ResellerNotificationsPage() {
   const markReadMutation = useMutation({
     mutationFn: (id: string) => notificationsService.markRead(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['reseller-notifications'] }),
+    onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to mark as read'),
   })
 
   const notifications = data?.items ?? []

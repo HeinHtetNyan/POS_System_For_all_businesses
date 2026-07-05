@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,21 +17,25 @@ from app.analytics.schemas import (
     MovementReportResponse,
 )
 from app.core.constants import AuditAction, EntityType
+from app.core.timezone import local_day_end_utc, local_day_start_utc
 from app.services.audit_service import AuditService
-
-
-def _date_to_utc_start(d: date) -> datetime:
-    return datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
-
-
-def _date_to_utc_end(d: date) -> datetime:
-    return _date_to_utc_start(d) + timedelta(days=1)
 
 
 class InventoryReportsService:
     def __init__(self, session: AsyncSession) -> None:
         self.repo = AnalyticsRepository(session)
         self.audit = AuditService(session)
+
+    async def _resolve_range(
+        self,
+        tenant_id: uuid.UUID,
+        start_date: date | None,
+        end_date: date | None,
+    ) -> tuple[datetime | None, datetime | None]:
+        tz_name = await self.repo.get_tenant_timezone(tenant_id) if (start_date or end_date) else "UTC"
+        start_dt = local_day_start_utc(start_date, tz_name) if start_date else None
+        end_dt = local_day_end_utc(end_date, tz_name) if end_date else None
+        return start_dt, end_dt
 
     async def get_valuation(
         self,
@@ -95,8 +99,7 @@ class InventoryReportsService:
         actor_id: uuid.UUID | None = None,
         request_id: str | None = None,
     ) -> list[MovementReportResponse]:
-        start_dt = _date_to_utc_start(start_date) if start_date else None
-        end_dt = _date_to_utc_end(end_date) if end_date else None
+        start_dt, end_dt = await self._resolve_range(tenant_id, start_date, end_date)
 
         rows = await self.repo.get_movement_report(
             tenant_id, start_dt, end_dt, branch_id, movement_type
@@ -120,8 +123,7 @@ class InventoryReportsService:
         actor_id: uuid.UUID | None = None,
         request_id: str | None = None,
     ) -> list[FastMovingResponse]:
-        start_dt = _date_to_utc_start(start_date) if start_date else None
-        end_dt = _date_to_utc_end(end_date) if end_date else None
+        start_dt, end_dt = await self._resolve_range(tenant_id, start_date, end_date)
 
         rows = await self.repo.get_fast_moving_products(
             tenant_id, start_dt, end_dt, branch_id, limit

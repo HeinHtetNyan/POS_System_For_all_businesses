@@ -3,11 +3,12 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import AuditAction, EntityType, UserRole, UserStatus
-from app.core.exceptions import ConflictError, NotFoundError, AuthorizationError
-from app.core.security import hash_password
+from app.core.exceptions import BusinessRuleError, ConflictError, NotFoundError, AuthorizationError
+from app.core.security import hash_password, normalize_phone
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.repositories.branch_repository import BranchRepository
@@ -31,7 +32,14 @@ class UserService:
     ) -> User:
         if data.role == UserRole.SUPER_ADMIN:
             raise AuthorizationError("Cannot create a SUPER_ADMIN user")
-        if await self.user_repo.email_exists(data.email):
+
+        # Staff (manager/cashier/inventory) only ever log in via business code +
+        # phone, so their email only needs to be unique within their own
+        # business — see uq_users_email_per_tenant_staff. Owner/reseller emails
+        # log in with plain email+password and must stay globally unique.
+        is_staff_role = data.role in (UserRole.MANAGER, UserRole.CASHIER, UserRole.INVENTORY_STAFF)
+        email_scope_tenant_id = actor_tenant_id if is_staff_role else None
+        if await self.user_repo.email_exists(data.email, tenant_id=email_scope_tenant_id):
             raise ConflictError(f"User with email '{data.email}' already exists")
 
         user = await self.user_repo.create(
@@ -39,7 +47,7 @@ class UserService:
             hashed_password=hash_password(data.password),
             first_name=data.first_name,
             last_name=data.last_name,
-            phone=data.phone,
+            phone=normalize_phone(data.phone),
             role=data.role,
             tenant_id=actor_tenant_id,
             primary_branch_id=data.primary_branch_id,
@@ -68,6 +76,30 @@ class UserService:
             except Exception:
                 pass  # fail-open, don't break user creation
         return user
+
+    async def _assert_not_last_active_owner(self, user: User) -> None:
+        """Raise if `user` is a BUSINESS_OWNER and removing/demoting them would
+        leave their tenant with zero active owners — with no one left who can
+        undo it (MANAGER can't reach the status/role/delete endpoints)."""
+        if user.role != UserRole.BUSINESS_OWNER or user.tenant_id is None:
+            return
+        result = await self.session.execute(
+            select(func.count())
+            .select_from(User)
+            .where(
+                User.tenant_id == user.tenant_id,
+                User.role == UserRole.BUSINESS_OWNER,
+                User.status == UserStatus.ACTIVE,
+                User.is_deleted.is_(False),
+                User.id != user.id,
+            )
+        )
+        other_active_owners = result.scalar_one()
+        if other_active_owners == 0:
+            raise BusinessRuleError(
+                "Cannot remove the last active owner of this business. "
+                "Promote another user to owner first."
+            )
 
     def _assert_same_tenant(
         self,
@@ -130,13 +162,29 @@ class UserService:
             raise NotFoundError("User", user_id)
         self._assert_same_tenant(user, actor_id, tenant_id, actor_role)
 
+        update_data = data.model_dump(exclude_none=True)
+        if "phone" in update_data:
+            update_data["phone"] = normalize_phone(update_data["phone"])
+
+        # primary_branch_id drives branch-scoping for CASHIER/INVENTORY_STAFF
+        # (assert_branch_access, cashier-session open, checkout, adjustments).
+        # Letting anyone reassign it — including a staff member changing their
+        # own — would let them grant themselves access to any branch. Only the
+        # business owner (or platform admin) may move a user between branches.
+        if "primary_branch_id" in update_data and actor_role not in (
+            UserRole.SUPER_ADMIN.value, UserRole.BUSINESS_OWNER.value,
+        ):
+            raise AuthorizationError(
+                "Only the business owner can reassign a user's branch"
+            )
+
         before_state = {
             "first_name": user.first_name,
             "last_name": user.last_name,
             "phone": user.phone,
+            "primary_branch_id": str(user.primary_branch_id) if user.primary_branch_id else None,
         }
 
-        update_data = data.model_dump(exclude_none=True)
         user = await self.user_repo.update(user, **update_data)
 
         # JSONB columns require JSON-serializable types; convert uuid.UUID → str
@@ -170,6 +218,28 @@ class UserService:
             raise AuthorizationError("SUPER_ADMIN account cannot be modified")
 
         old_status = user.status
+        if old_status == UserStatus.ACTIVE and status != UserStatus.ACTIVE:
+            await self._assert_not_last_active_owner(user)
+
+        # Reactivating a previously-deactivated user re-adds them to the active
+        # headcount — re-run the same max-users entitlement check create_user()
+        # enforces, or a tenant at its plan's limit can bypass it by suspending
+        # one user and reactivating a different one.
+        if old_status != UserStatus.ACTIVE and status == UserStatus.ACTIVE and user.tenant_id is not None:
+            from app.subscriptions.entitlements import EntitlementService
+            result = await self.session.execute(
+                select(func.count())
+                .select_from(User)
+                .where(
+                    User.tenant_id == user.tenant_id,
+                    User.status == UserStatus.ACTIVE,
+                    User.is_deleted.is_(False),
+                )
+            )
+            active_count = result.scalar_one()
+            ent_svc = EntitlementService(self.session)
+            await ent_svc.validate_limit(user.tenant_id, "users", active_count)
+
         user = await self.user_repo.update(user, status=status)
 
         action = {
@@ -209,6 +279,8 @@ class UserService:
             raise AuthorizationError("Cannot assign RESELLER role to a tenant-scoped user. Create a new RESELLER account instead.")
         if user.role == UserRole.RESELLER and role != UserRole.RESELLER:
             raise AuthorizationError("Cannot change a RESELLER's role to a tenant-scoped role. Create a new user account instead.")
+        if user.role == UserRole.BUSINESS_OWNER and role != UserRole.BUSINESS_OWNER and user.status == UserStatus.ACTIVE:
+            await self._assert_not_last_active_owner(user)
 
         old_role = user.role
         user = await self.user_repo.update(user, role=role)
@@ -267,6 +339,8 @@ class UserService:
         self._assert_same_tenant(user, actor_id, tenant_id, actor_role)
         if user.role == UserRole.SUPER_ADMIN:
             raise AuthorizationError("SUPER_ADMIN account cannot be deleted")
+        if user.status == UserStatus.ACTIVE:
+            await self._assert_not_last_active_owner(user)
 
         await self.user_repo.soft_delete(user)
 

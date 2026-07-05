@@ -72,12 +72,15 @@ export default function InventoryScreen() {
   const totalPages  = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const paginated   = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
-  const outOfStock  = items.filter(i => parseFloat(i.quantity_on_hand) === 0).length
+  // Uses quantity_available (on_hand - reserved) — same field the row badges
+  // and sort already use, so "out of stock"/"low stock" agree with what's
+  // shown per-row instead of ignoring reservations.
+  const outOfStock  = items.filter(i => parseFloat(i.quantity_available) === 0).length
   const lowStock    = items.filter(i => {
-    const qty = parseFloat(i.quantity_on_hand)
+    const qty = parseFloat(i.quantity_available)
     return i.reorder_point != null && qty > 0 && qty <= i.reorder_point
   }).length
-  const totalValue  = items.reduce((s, i) => s + parseFloat(i.quantity_on_hand), 0)
+  const totalValue  = items.reduce((s, i) => s + parseFloat(i.quantity_available), 0)
 
   if (!branchId) {
     return (
@@ -254,7 +257,11 @@ export default function InventoryScreen() {
 
       {historyItem && (
         <StockHistoryModal
-          item={historyItem}
+          // Re-derive from the live inventory list on every render instead of
+          // the snapshot captured when the modal was opened — otherwise
+          // "Available now" stays frozen even after a sale/adjustment
+          // elsewhere invalidates and refetches this list.
+          item={items.find(i => i.id === historyItem.id) ?? historyItem}
           branchId={branchId}
           productName={productMap.get(historyItem.product_id)?.name ?? historyItem.product_id}
           productSku={productMap.get(historyItem.product_id)?.sku ?? ''}

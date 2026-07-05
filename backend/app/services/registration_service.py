@@ -24,7 +24,7 @@ from app.core.config import settings
 from app.core.exceptions import BusinessRuleError, ConflictError
 from app.core.logging import get_logger
 from app.core.rate_limit import check_ip_daily_abuse
-from app.core.security import create_access_token, create_refresh_token, decode_token, hash_password
+from app.core.security import create_access_token, create_refresh_token, decode_token, hash_password, normalize_phone
 from app.models.branch import Branch
 from app.models.tenant import Tenant, TenantSettings
 from app.models.user import User
@@ -108,6 +108,8 @@ class RegistrationService:
         request_id: str | None = None,
         redis: Redis | None = None,
     ) -> RegistrationResponse:
+        data.phone = normalize_phone(data.phone)
+
         # abuse + uniqueness checks
         await self._check_abuse(data, redis, ip_address)
 
@@ -331,13 +333,26 @@ class RegistrationService:
                     error=str(exc),
                 )
 
+        # verification email — soft gate: the user is still logged in immediately
+        # below regardless of whether this succeeds; verification only unlocks
+        # the "verified" badge/removes the reminder banner, it doesn't block login.
+        try:
+            from app.notifications.email import send_verification_email
+            from app.services.auth_service import AuthService
+            verification_token = await AuthService(self.session).create_email_verification_token(
+                user, request_id=request_id,
+            )
+            await send_verification_email(to=user.email, token=verification_token)
+        except Exception as exc:
+            logger.warning("verification_email_failed", error=str(exc), tenant_id=str(tenant.id))
+
         # welcome notification
         try:
             from app.notifications.services import NotificationService
             notif_svc = NotificationService(self.session)
             notif_title = f"Welcome! Your {fallback_trial_days}-day trial has started"
             notif_message = (
-                f"Welcome to NexusPOS, {data.first_name}! "
+                f"Welcome to SawYunPos, {data.first_name}! "
                 f"Your free trial of {assigned_plan.name} starts today and expires on "
                 f"{sub_expires_at.strftime('%B %d, %Y')}. "  # type: ignore[union-attr]
                 "Complete your setup to get the most out of your trial."

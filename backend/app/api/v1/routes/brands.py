@@ -17,7 +17,7 @@ router = APIRouter()
     response_model=BrandResponse,
     status_code=201,
     summary="Create brand",
-    dependencies=[Depends(require_manager_or_above)],
+    dependencies=[Depends(require_inventory_access)],
 )
 async def create_brand(
     payload: BrandCreateRequest,
@@ -84,7 +84,7 @@ async def get_brand(
     "/{brand_id}",
     response_model=BrandResponse,
     summary="Update brand",
-    dependencies=[Depends(require_manager_or_above)],
+    dependencies=[Depends(require_inventory_access)],
 )
 async def update_brand(
     brand_id: uuid.UUID,

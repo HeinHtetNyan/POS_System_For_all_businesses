@@ -29,6 +29,21 @@ class CashierSessionRepository(BaseRepository[CashierSession]):
         )
         return result.scalar_one_or_none()
 
+    async def get_open_sessions_for_user(
+        self,
+        cashier_user_id: uuid.UUID,
+    ) -> list[CashierSession]:
+        """All of this user's open sessions, across every branch — a Manager/Owner
+        can hold more than one at once since open-session uniqueness is only
+        enforced per branch (see open_session)."""
+        result = await self.session.execute(
+            select(CashierSession).where(
+                CashierSession.cashier_user_id == cashier_user_id,
+                CashierSession.status == CashierSessionStatus.OPEN,
+            )
+        )
+        return list(result.scalars().all())
+
     async def get_by_tenant(
         self,
         tenant_id: uuid.UUID,

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useCartStore, useCartTotals } from '@/store/cartStore'
+import { useAuthStore } from '@/store/auth.store'
 import { IconCart, IconX, IconRefund, IconChevLeft } from '@/components/icons'
 import { Divider, Kbd } from '@/components/ui'
 import { fmt } from '@/lib/utils'
@@ -7,6 +8,8 @@ import { useLocaleStore } from '@/i18n/localeStore'
 import CartItem from '@/features/pos/CartItem'
 import DiscountRow from '@/features/pos/DiscountRow'
 import RefundModal from '@/features/pos/RefundModal'
+
+const REFUND_ALLOWED_ROLES = new Set(['SUPER_ADMIN', 'BUSINESS_OWNER', 'MANAGER'])
 
 export default function CartPanel({ onBackToProducts }: { onBackToProducts?: () => void }) {
   const items           = useCartStore(s => s.items)
@@ -17,6 +20,8 @@ export default function CartPanel({ onBackToProducts }: { onBackToProducts?: () 
   const setCheckoutStep = useCartStore(s => s.setCheckoutStep)
   const totals          = useCartTotals()
   const t               = useLocaleStore(s => s.t)
+  const role            = useAuthStore(s => s.user?.role)
+  const canRefund       = !!role && REFUND_ALLOWED_ROLES.has(role)
 
   const [showRefund, setShowRefund] = useState(false)
 
@@ -51,14 +56,16 @@ export default function CartPanel({ onBackToProducts }: { onBackToProducts?: () 
             )}
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowRefund(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border border-zinc-700 bg-zinc-800 text-zinc-300 hover:text-amber-400 hover:border-amber-500/50 transition-colors"
-              title="Process a refund"
-            >
-              <IconRefund width="13" height="13" />
-              {t('pos.refund')}
-            </button>
+            {canRefund && (
+              <button
+                onClick={() => setShowRefund(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border border-zinc-700 bg-zinc-800 text-zinc-300 hover:text-amber-400 hover:border-amber-500/50 transition-colors"
+                title="Process a refund"
+              >
+                <IconRefund width="13" height="13" />
+                {t('pos.refund')}
+              </button>
+            )}
             {items.length > 0 && (
               <button
                 onClick={clearCart}

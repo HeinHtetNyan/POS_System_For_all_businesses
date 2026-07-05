@@ -25,7 +25,7 @@ export const useResellerStore = create<ResellerState>()(
         set({ selectedTenantId: null, selectedBranchId: null }),
     }),
     {
-      name: 'nexuspos-reseller',
+      name: 'sawyunpos-reseller',
       partialize: (s) => ({
         selectedTenantId: s.selectedTenantId,
         selectedBranchId: s.selectedBranchId,

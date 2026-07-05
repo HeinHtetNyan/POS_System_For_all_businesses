@@ -33,7 +33,7 @@ router = APIRouter()
     response_model=SupplierResponse,
     status_code=201,
     summary="Create supplier",
-    dependencies=[Depends(require_manager_or_above)],
+    dependencies=[Depends(require_inventory_access)],
 )
 async def create_supplier(
     payload: SupplierCreateRequest,
@@ -102,7 +102,7 @@ async def get_supplier(
     "/{supplier_id}",
     response_model=SupplierResponse,
     summary="Update supplier",
-    dependencies=[Depends(require_manager_or_above)],
+    dependencies=[Depends(require_inventory_access)],
 )
 async def update_supplier(
     supplier_id: uuid.UUID,

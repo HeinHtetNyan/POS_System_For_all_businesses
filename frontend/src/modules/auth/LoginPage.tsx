@@ -26,12 +26,7 @@ export default function LoginPage() {
   }
 
   function buildOwnerPayload() {
-    const val = identifier.trim()
-    // phone: starts with digit or +, no @
-    if (val && !val.includes('@') && /^[+0-9]/.test(val)) {
-      return { phone: val, password }
-    }
-    return { email: val, password }
+    return { email: identifier.trim(), password }
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -88,10 +83,8 @@ export default function LoginPage() {
     <div className="relative w-full max-w-md">
       {/* Logo */}
       <div className="text-center mb-8">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-amber-500 shadow-2xl shadow-amber-900/50 mb-4">
-          <span className="text-black font-black text-3xl">N</span>
-        </div>
-        <h1 className="text-2xl font-bold text-zinc-100">NexusPOS</h1>
+        <img src="/logo-icon.png" alt="SawYunPos" className="inline-block w-16 h-16 rounded-2xl shadow-2xl shadow-blue-900/50 mb-4" />
+        <h1 className="text-2xl font-bold text-zinc-100">SawYunPos</h1>
         <p className="text-zinc-500 text-sm mt-1">Enterprise Point of Sale</p>
       </div>
 
@@ -120,11 +113,11 @@ export default function LoginPage() {
             {mode === 'owner' ? (
               <>
                 <Input
-                  label="Email or Phone"
-                  type="text"
+                  label="Email"
+                  type="email"
                   value={identifier}
                   onChange={e => { setIdentifier(e.target.value); clearError() }}
-                  placeholder="you@company.com or 09xxxxxxxx"
+                  placeholder="you@company.com"
                   autoComplete="username"
                   required
                 />
@@ -226,7 +219,7 @@ export default function LoginPage() {
       )}
 
       <p className="text-center text-zinc-600 text-[11px] mt-3">
-        NexusPOS v5.0 · {fmtDate(new Date())}
+        SawYunPos v5.0 · {fmtDate(new Date())}
       </p>
     </div>
   )

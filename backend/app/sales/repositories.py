@@ -92,9 +92,47 @@ class OrderRepository(BaseRepository[Order]):
         )
         return result.scalar_one_or_none()
 
+    async def get_with_details_locked(self, order_id: uuid.UUID) -> Order | None:
+        """
+        Same as get_with_details, but locks the Order row (SELECT ... FOR UPDATE)
+        first. Refund and void both read-validate-then-write against
+        order.refunded_amount/order_status — without this lock, two concurrent
+        requests for the same order can each pass validation against the same
+        stale snapshot and both write, producing an over-refund or double-void.
+        Must be called inside an explicit transaction (the caller's session).
+        """
+        result = await self.session.execute(
+            select(Order)
+            .options(
+                selectinload(Order.items),
+                selectinload(Order.payments),
+                selectinload(Order.refunds),
+            )
+            .where(Order.id == order_id)
+            .with_for_update()
+        )
+        return result.scalar_one_or_none()
+
     async def get_by_order_number(self, order_number: str) -> Order | None:
         result = await self.session.execute(
             select(Order).where(Order.order_number == order_number)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_by_idempotency_key(
+        self, tenant_id: uuid.UUID, idempotency_key: str
+    ) -> Order | None:
+        result = await self.session.execute(
+            select(Order)
+            .options(
+                selectinload(Order.items),
+                selectinload(Order.payments),
+                selectinload(Order.refunds),
+            )
+            .where(
+                Order.tenant_id == tenant_id,
+                Order.idempotency_key == idempotency_key,
+            )
         )
         return result.scalar_one_or_none()
 
