@@ -8,6 +8,7 @@ import type {
   TenantEntitlementOverride,
   PaginatedResponse,
   PublicPlan,
+  PublicTrialPlan,
   TrialStatus,
   SubscriptionPaymentMethod,
 } from '@/shared/types'
@@ -126,6 +127,9 @@ export const subscriptionsService = {
 
   getPublicPlans: () =>
     axios.get<PublicPlan[]>(`${BASE_URL}/public/plans`).then(r => r.data),
+
+  getPublicTrialPlan: () =>
+    axios.get<PublicTrialPlan>(`${BASE_URL}/public/trial-plan`).then(r => r.data),
 
   getTrialStatus: () =>
     apiClient.get<TrialStatus>('/subscriptions/status').then(r => r.data),

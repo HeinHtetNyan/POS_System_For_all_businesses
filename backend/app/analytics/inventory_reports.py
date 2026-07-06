@@ -41,10 +41,11 @@ class InventoryReportsService:
         self,
         tenant_id: uuid.UUID,
         branch_id: uuid.UUID | None = None,
+        limit: int | None = None,
         actor_id: uuid.UUID | None = None,
         request_id: str | None = None,
     ) -> InventoryValuationResponse:
-        rows = await self.repo.get_inventory_valuation(tenant_id, branch_id)
+        rows = await self.repo.get_inventory_valuation(tenant_id, branch_id, limit=limit)
         items = [
             InventoryValuationItem(
                 product_id=r["product_id"],
@@ -72,10 +73,11 @@ class InventoryReportsService:
         self,
         tenant_id: uuid.UUID,
         branch_id: uuid.UUID | None = None,
+        limit: int | None = None,
         actor_id: uuid.UUID | None = None,
         request_id: str | None = None,
     ) -> list[LowStockResponse]:
-        rows = await self.repo.get_low_stock_items(tenant_id, branch_id)
+        rows = await self.repo.get_low_stock_items(tenant_id, branch_id, limit=limit)
         return [
             LowStockResponse(
                 product_id=r["product_id"],
@@ -145,10 +147,11 @@ class InventoryReportsService:
         tenant_id: uuid.UUID,
         days: int = 90,
         branch_id: uuid.UUID | None = None,
+        limit: int | None = None,
         actor_id: uuid.UUID | None = None,
         request_id: str | None = None,
     ) -> list[DeadStockResponse]:
-        rows = await self.repo.get_dead_stock(tenant_id, days, branch_id)
+        rows = await self.repo.get_dead_stock(tenant_id, days, branch_id, limit=limit)
         return [
             DeadStockResponse(
                 product_id=r["product_id"],

@@ -32,6 +32,23 @@ def _format_customer_code(seq: int) -> str:
     return f"CUS-{seq:06d}"
 
 
+def _sum_ledger_entries(entries: list[CustomerLedger]) -> tuple[Decimal, Decimal]:
+    """Return (total_debited, total_credited) for already-fetched ledger entries."""
+    debited = Decimal("0")
+    credited = Decimal("0")
+    for e in entries:
+        if e.entry_type == CustomerLedgerEntryType.SALE_DEBT:
+            debited += e.amount
+        elif e.entry_type in (CustomerLedgerEntryType.PAYMENT, CustomerLedgerEntryType.REFUND_CREDIT):
+            credited += e.amount
+        elif e.entry_type == CustomerLedgerEntryType.ADJUSTMENT:
+            if e.amount > 0:
+                debited += e.amount
+            else:
+                credited += abs(e.amount)
+    return debited, credited
+
+
 class CustomerService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -504,9 +521,7 @@ class CustomerService:
             else Decimal("0")
         )
         entries = await self.ledger_repo.get_by_customer(customer_id, date_from, date_to)
-        debited, credited = await self.ledger_repo.get_totals_in_range(
-            customer_id, date_from, date_to
-        )
+        debited, credited = _sum_ledger_entries(entries)
 
         from app.customers.schemas import CustomerResponse, CustomerLedgerResponse
         return CustomerStatementResponse(

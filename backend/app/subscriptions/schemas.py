@@ -134,7 +134,21 @@ class PublicPlanResponse(BaseSchema):
     currency: str
     trial_days: int
     sort_order: int
+    is_custom: bool
+    contact_links: dict | None
     entitlements: list[PlanEntitlementResponse]
+
+
+class PublicTrialPlanResponse(BaseSchema):
+    """The trial every new self-registration gets — deliberately minimal
+    (no id/price/etc.) since this is exposed with no auth, purely so public
+    marketing pages can show the real trial length/limits instead of a
+    hardcoded copy that drifts out of sync when the plan changes."""
+    trial_days: int
+    products: int | None
+    branches: int | None
+    users: int | None
+    customers: int | None
 
 
 class RegisterRequest(BaseSchema):

@@ -24,7 +24,7 @@ from app.core.config import settings
 from app.core.exceptions import BusinessRuleError, ConflictError
 from app.core.logging import get_logger
 from app.core.rate_limit import check_ip_daily_abuse
-from app.core.security import create_access_token, create_refresh_token, decode_token, hash_password, normalize_phone
+from app.core.security import create_access_token, create_refresh_token, decode_token, hash_password_async, normalize_phone
 from app.models.branch import Branch
 from app.models.tenant import Tenant, TenantSettings
 from app.models.user import User
@@ -194,7 +194,7 @@ class RegistrationService:
 
             user = User(
                 email=data.email,
-                hashed_password=hash_password(data.password),
+                hashed_password=await hash_password_async(data.password),
                 first_name=data.first_name,
                 last_name=data.last_name,
                 phone=data.phone,

@@ -284,12 +284,14 @@ async def get_inventory_valuation(
     tenant_id: EffectiveTenantId,
     request_id: RequestId,
     branch_id: uuid.UUID | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=5000),
 ) -> InventoryValuationResponse:
     branch_id = scope_branch_filter(current_user, branch_id)
     svc = InventoryReportsService(db)
     return await svc.get_valuation(
         tenant_id=tenant_id,
         branch_id=branch_id,
+        limit=limit,
         actor_id=current_user.id,
         request_id=request_id,
     )
@@ -306,12 +308,14 @@ async def get_low_stock(
     tenant_id: EffectiveTenantId,
     request_id: RequestId,
     branch_id: uuid.UUID | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=5000),
 ) -> list[LowStockResponse]:
     branch_id = scope_branch_filter(current_user, branch_id)
     svc = InventoryReportsService(db)
     return await svc.get_low_stock(
         tenant_id=tenant_id,
         branch_id=branch_id,
+        limit=limit,
         actor_id=current_user.id,
         request_id=request_id,
     )
@@ -385,6 +389,7 @@ async def get_dead_stock(
     request_id: RequestId,
     days: int = Query(default=90, ge=1, le=365),
     branch_id: uuid.UUID | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=5000),
 ) -> list[DeadStockResponse]:
     branch_id = scope_branch_filter(current_user, branch_id)
     svc = InventoryReportsService(db)
@@ -392,6 +397,7 @@ async def get_dead_stock(
         tenant_id=tenant_id,
         days=days,
         branch_id=branch_id,
+        limit=limit,
         actor_id=current_user.id,
         request_id=request_id,
     )

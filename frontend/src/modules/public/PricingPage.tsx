@@ -3,6 +3,30 @@ import { Link } from 'react-router-dom'
 import { subscriptionsService } from '@/services/subscriptions/subscriptions.service'
 import { Spinner } from '@/components/ui/index'
 import type { PublicPlan } from '@/shared/types'
+import { CONTACT_PLATFORMS, contactHref } from '@/shared/constants/contactPlatforms'
+
+function ContactLinksRow({ plan }: { plan: PublicPlan }) {
+  const active = CONTACT_PLATFORMS.filter(p => plan.contact_links?.[p.key])
+  if (active.length === 0) {
+    return <p className="text-xs text-zinc-600 text-center mt-6">Contact us to discuss your requirements.</p>
+  }
+  return (
+    <div className="flex flex-wrap gap-2 justify-center mt-6">
+      {active.map(p => (
+        <a
+          key={p.key}
+          href={contactHref(p.key, plan.contact_links![p.key]!)}
+          target={p.key === 'phone' || p.key === 'email' ? undefined : '_blank'}
+          rel="noopener noreferrer"
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-400 text-xs font-medium transition-colors ${p.color}`}
+        >
+          {p.icon}
+          {p.label}
+        </a>
+      ))}
+    </div>
+  )
+}
 
 function PricingCard({ plan, highlighted = false }: { plan: PublicPlan; highlighted?: boolean }) {
   const price = parseFloat(plan.price as unknown as string)
@@ -51,12 +75,16 @@ function PricingCard({ plan, highlighted = false }: { plan: PublicPlan; highligh
       )}
 
       <div className="mt-4 mb-6">
-        <div className="flex items-baseline gap-1">
-          <span className="text-3xl font-bold text-zinc-100">${price}</span>
-          <span className="text-zinc-500 text-sm">
-            /{plan.billing_cycle === 'YEARLY' ? 'yr' : 'mo'}
-          </span>
-        </div>
+        {plan.is_custom ? (
+          <span className="text-3xl font-bold text-zinc-100">Contact Us</span>
+        ) : (
+          <div className="flex items-baseline gap-1">
+            <span className="text-3xl font-bold text-zinc-100">${price}</span>
+            <span className="text-zinc-500 text-sm">
+              /{plan.billing_cycle === 'YEARLY' ? 'yr' : 'mo'}
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="space-y-2.5 flex-1">
@@ -74,16 +102,20 @@ function PricingCard({ plan, highlighted = false }: { plan: PublicPlan; highligh
         ))}
       </div>
 
-      <Link
-        to="/register"
-        className={`mt-6 inline-flex items-center justify-center w-full px-4 py-3 rounded-xl font-semibold text-sm transition-colors ${
-          highlighted
-            ? 'bg-amber-500 hover:bg-amber-400 text-black'
-            : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700'
-        }`}
-      >
-        Start Free Trial
-      </Link>
+      {plan.is_custom ? (
+        <ContactLinksRow plan={plan} />
+      ) : (
+        <Link
+          to="/register"
+          className={`mt-6 inline-flex items-center justify-center w-full px-4 py-3 rounded-xl font-semibold text-sm transition-colors ${
+            highlighted
+              ? 'bg-amber-500 hover:bg-amber-400 text-black'
+              : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700'
+          }`}
+        >
+          Start Free Trial
+        </Link>
+      )}
     </div>
   )
 }
@@ -94,6 +126,16 @@ export default function PricingPage() {
     queryFn: subscriptionsService.getPublicPlans,
     staleTime: 5 * 60 * 1000,
   })
+
+  // Real trial length — was hardcoded and drifted out of sync with the
+  // actual plan (Free Trial isn't in the plans list above since /public/plans
+  // deliberately excludes trial-type plans).
+  const { data: trialPlan } = useQuery({
+    queryKey: ['public', 'trial-plan'],
+    queryFn: subscriptionsService.getPublicTrialPlan,
+    staleTime: 5 * 60 * 1000,
+  })
+  const trialDaysText = trialPlan ? `${trialPlan.trial_days}-day` : 'free'
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -121,7 +163,7 @@ export default function PricingPage() {
             Simple, transparent pricing
           </h1>
           <p className="text-zinc-400 text-lg max-w-xl mx-auto">
-            Start with a 14-day free trial. No credit card required.
+            Start with a {trialDaysText} free trial. No credit card required.
             Upgrade when you're ready.
           </p>
         </div>
@@ -163,7 +205,7 @@ export default function PricingPage() {
         <div className="mt-16 text-center">
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 max-w-2xl mx-auto">
             <div className="text-4xl mb-3">🚀</div>
-            <h2 className="text-xl font-bold text-zinc-100 mb-2">Start with a 14-day free trial</h2>
+            <h2 className="text-xl font-bold text-zinc-100 mb-2">Start with a {trialDaysText} free trial</h2>
             <p className="text-zinc-500 text-sm mb-5">
               Full access to all features. No credit card needed.
               Cancel anytime during the trial period.

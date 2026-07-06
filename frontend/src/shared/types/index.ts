@@ -565,6 +565,8 @@ export interface PlanEntitlement {
 }
 
 export interface ContactLinks {
+  phone?: string | null
+  email?: string | null
   viber?: string | null
   telegram?: string | null
   facebook?: string | null
@@ -1499,7 +1501,17 @@ export interface PublicPlan {
   currency: string
   trial_days: number
   sort_order: number
+  is_custom: boolean
+  contact_links: ContactLinks | null
   entitlements: Array<{ feature_code: string; enabled: boolean; limit_value: number | null }>
+}
+
+export interface PublicTrialPlan {
+  trial_days: number
+  products: number | null
+  branches: number | null
+  users: number | null
+  customers: number | null
 }
 
 export interface TrialStatus {

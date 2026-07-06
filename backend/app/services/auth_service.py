@@ -19,9 +19,9 @@ from app.core.security import (
     create_refresh_token,
     decode_refresh_token,
     generate_secure_token,
-    hash_password,
+    hash_password_async,
     normalize_phone,
-    verify_password,
+    verify_password_async,
 )
 from app.core.config import settings
 from app.models.user import User
@@ -89,7 +89,7 @@ class AuthService:
             # they must always sign in via business code + phone instead.
             user = await self.user_repo.get_by_email_for_login(email)
 
-        if not user or not verify_password(password, user.hashed_password):
+        if not user or not await verify_password_async(password, user.hashed_password):
             _id_hash = hashlib.sha256(_ident_raw.encode()).hexdigest()[:16]
             # Record failure for account lockout BEFORE committing the audit log.
             if redis:
@@ -280,12 +280,12 @@ class AuthService:
         if not user:
             raise AuthenticationError("User not found")
 
-        if not verify_password(current_password, user.hashed_password):
+        if not await verify_password_async(current_password, user.hashed_password):
             if redis:
                 await record_failed_login(redis, _account_key)
             raise AuthenticationError("Current password is incorrect")
 
-        user.hashed_password = hash_password(new_password)
+        user.hashed_password = await hash_password_async(new_password)
         await self.auth_repo.revoke_all_user_tokens(user_id)
 
         if redis:
@@ -363,7 +363,7 @@ class AuthService:
         if not user:
             raise BusinessRuleError("Invalid or expired password reset link.")
 
-        user.hashed_password = hash_password(new_password)
+        user.hashed_password = await hash_password_async(new_password)
         reset_record.is_used = True
 
         # Revoke all active sessions so the old password can't be used via cached tokens
@@ -494,7 +494,7 @@ class AuthService:
         if not user:
             raise AuthenticationError("User not found")
 
-        if not verify_password(current_password, user.hashed_password):
+        if not await verify_password_async(current_password, user.hashed_password):
             if redis:
                 await record_failed_login(redis, _account_key)
             raise AuthenticationError("Current password is incorrect")

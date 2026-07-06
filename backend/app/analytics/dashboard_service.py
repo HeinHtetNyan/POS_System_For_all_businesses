@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from typing import TypeVar
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,7 +13,24 @@ from app.analytics.repositories import AnalyticsRepository
 from app.analytics.schemas import DashboardResponse
 from app.core.constants import AuditAction, EntityType
 from app.core.timezone import resolve_zone
+from app.db.session import AsyncSessionLocal
 from app.services.audit_service import AuditService
+
+T = TypeVar("T")
+
+
+async def _run_with_own_session(
+    query: Callable[[AnalyticsRepository], Awaitable[T]],
+) -> T:
+    """Run one read against its own short-lived session.
+
+    An AsyncSession can't run more than one query at a time, so the 9
+    independent dashboard aggregates below can't be gathered concurrently
+    on the shared request-scoped session — each needs its own connection
+    to actually overlap instead of queueing behind one another.
+    """
+    async with AsyncSessionLocal() as session:
+        return await query(AnalyticsRepository(session))
 
 
 class DashboardService:
@@ -45,25 +65,45 @@ class DashboardService:
         week_start = week_start_local.astimezone(timezone.utc)
         month_start = month_start_local.astimezone(timezone.utc)
 
-        today_stats = await self.repo.get_order_stats_in_range(
-            tenant_id, today_start, tomorrow, branch_id, cashier_user_id
+        (
+            today_stats,
+            yesterday_stats,
+            week_stats,
+            month_stats,
+            refund_stats,
+            customer_stats,
+            low_stock_count,
+            inventory_value,
+            total_customer_outstanding,
+        ) = await asyncio.gather(
+            _run_with_own_session(
+                lambda r: r.get_order_stats_in_range(
+                    tenant_id, today_start, tomorrow, branch_id, cashier_user_id
+                )
+            ),
+            _run_with_own_session(
+                lambda r: r.get_order_stats_in_range(
+                    tenant_id, yesterday_start, today_start, branch_id, cashier_user_id
+                )
+            ),
+            _run_with_own_session(
+                lambda r: r.get_order_stats_in_range(
+                    tenant_id, week_start, tomorrow, branch_id, cashier_user_id
+                )
+            ),
+            _run_with_own_session(
+                lambda r: r.get_order_stats_in_range(
+                    tenant_id, month_start, tomorrow, branch_id, cashier_user_id
+                )
+            ),
+            _run_with_own_session(
+                lambda r: r.get_refund_stats_in_range(tenant_id, month_start, tomorrow)
+            ),
+            _run_with_own_session(lambda r: r.get_customer_stats(tenant_id, month_start)),
+            _run_with_own_session(lambda r: r.get_low_stock_count(tenant_id, branch_id)),
+            _run_with_own_session(lambda r: r.get_total_inventory_value(tenant_id, branch_id)),
+            _run_with_own_session(lambda r: r.get_total_customer_outstanding(tenant_id)),
         )
-        yesterday_stats = await self.repo.get_order_stats_in_range(
-            tenant_id, yesterday_start, today_start, branch_id, cashier_user_id
-        )
-        week_stats = await self.repo.get_order_stats_in_range(
-            tenant_id, week_start, tomorrow, branch_id, cashier_user_id
-        )
-        month_stats = await self.repo.get_order_stats_in_range(
-            tenant_id, month_start, tomorrow, branch_id, cashier_user_id
-        )
-        refund_stats = await self.repo.get_refund_stats_in_range(
-            tenant_id, month_start, tomorrow
-        )
-        customer_stats = await self.repo.get_customer_stats(tenant_id, month_start)
-        low_stock_count = await self.repo.get_low_stock_count(tenant_id, branch_id)
-        inventory_value = await self.repo.get_total_inventory_value(tenant_id, branch_id)
-        total_customer_outstanding = await self.repo.get_total_customer_outstanding(tenant_id)
 
         await self.audit.log(
             action=AuditAction.DASHBOARD_VIEWED,

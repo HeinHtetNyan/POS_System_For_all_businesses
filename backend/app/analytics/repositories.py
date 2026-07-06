@@ -465,6 +465,7 @@ class AnalyticsRepository:
         self,
         tenant_id: uuid.UUID,
         branch_id: uuid.UUID | None = None,
+        limit: int | None = None,
     ) -> list[dict[str, Any]]:
         filters: list = [
             BranchInventory.tenant_id == tenant_id,
@@ -503,6 +504,8 @@ class AnalyticsRepository:
             )
             .order_by(valuation_expr.desc())
         )
+        if limit is not None:
+            stmt = stmt.limit(limit)
         result = await self.session.execute(stmt)
         return [dict(r) for r in result.mappings().all()]
 
@@ -510,6 +513,7 @@ class AnalyticsRepository:
         self,
         tenant_id: uuid.UUID,
         branch_id: uuid.UUID | None = None,
+        limit: int | None = None,
     ) -> list[dict[str, Any]]:
         filters: list = [
             BranchInventory.tenant_id == tenant_id,
@@ -534,6 +538,8 @@ class AnalyticsRepository:
             .where(and_(*filters))
             .order_by(BranchInventory.quantity_on_hand.asc())
         )
+        if limit is not None:
+            stmt = stmt.limit(limit)
         result = await self.session.execute(stmt)
         return [dict(r) for r in result.mappings().all()]
 
@@ -625,6 +631,7 @@ class AnalyticsRepository:
         days_threshold: int = 90,
         branch_id: uuid.UUID | None = None,
         now: datetime | None = None,
+        limit: int | None = None,
     ) -> list[dict[str, Any]]:
         if now is None:
             now = datetime.now(timezone.utc)
@@ -683,6 +690,8 @@ class AnalyticsRepository:
             .having(func.coalesce(func.sum(BranchInventory.quantity_on_hand), 0) > 0)
             .order_by(last_sale_sq.c.last_sold_at.asc().nullsfirst())
         )
+        if limit is not None:
+            stmt = stmt.limit(limit)
         result = await self.session.execute(stmt)
         rows = [dict(r) for r in result.mappings().all()]
 

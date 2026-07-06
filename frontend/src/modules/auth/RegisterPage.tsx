@@ -1,7 +1,9 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/store/auth.store'
 import { authService } from '@/services/auth/auth.service'
+import { subscriptionsService } from '@/services/subscriptions/subscriptions.service'
 import { tokenStorage } from '@/app/lib/axios'
 import { ROLE_HOME } from '@/shared/constants/rbac'
 import { Btn, Input, PasswordInput, Spinner, Divider } from '@/components/ui/index'
@@ -44,6 +46,14 @@ export default function RegisterPage() {
   }))
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Real trial length — was hardcoded and drifted out of sync with the
+  // actual plan; no auth required since this page is shown logged-out.
+  const { data: trialPlan } = useQuery({
+    queryKey: ['public', 'trial-plan'],
+    queryFn: subscriptionsService.getPublicTrialPlan,
+    staleTime: 5 * 60 * 1000,
+  })
 
   function set(field: keyof FormState) {
     return (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -110,7 +120,9 @@ export default function RegisterPage() {
       <div className="text-center mb-8">
         <img src="/logo-icon.png" alt="SawYunPos" className="inline-block w-16 h-16 rounded-2xl shadow-2xl shadow-blue-900/50 mb-4" />
         <h1 className="text-2xl font-bold text-zinc-100">Start your free trial</h1>
-        <p className="text-zinc-500 text-sm mt-1">14 days free · No credit card required</p>
+        <p className="text-zinc-500 text-sm mt-1">
+          {trialPlan ? `${trialPlan.trial_days} days free` : 'Free trial'} · No credit card required
+        </p>
       </div>
 
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl">

@@ -7,6 +7,7 @@ from typing import Any
 
 import bcrypt as _bcrypt
 from jose import JWTError, jwt
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
 from app.core.constants import TOKEN_TYPE_ACCESS, TOKEN_TYPE_REFRESH
@@ -36,6 +37,17 @@ def hash_password(password: str) -> str:
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return _bcrypt.checkpw(plain_password.encode(), hashed_password.encode())
+
+
+async def hash_password_async(password: str) -> str:
+    """Bcrypt is CPU-bound and takes ~700ms per call — run it off the event
+    loop so one password hash doesn't stall every other request this uvicorn
+    worker is handling concurrently."""
+    return await run_in_threadpool(hash_password, password)
+
+
+async def verify_password_async(plain_password: str, hashed_password: str) -> bool:
+    return await run_in_threadpool(verify_password, plain_password, hashed_password)
 
 
 def generate_secure_token(length: int = 64) -> str:

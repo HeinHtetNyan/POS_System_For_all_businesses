@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { useUIStore } from '@/store/ui.store'
 import { IconWifi, IconWifiOff, IconAlert } from '@/components/icons'
-import SyncIssuesModal from './SyncIssuesModal'
+
+const SyncIssuesModal = lazy(() => import('./SyncIssuesModal'))
 
 export default function SyncBadge() {
   const isOnline = useUIStore(s => s.isOnline)
@@ -39,7 +40,11 @@ export default function SyncBadge() {
         </button>
       )}
 
-      {showIssues && <SyncIssuesModal onClose={() => setShowIssues(false)} />}
+      {showIssues && (
+        <Suspense fallback={null}>
+          <SyncIssuesModal onClose={() => setShowIssues(false)} />
+        </Suspense>
+      )}
     </div>
   )
 }

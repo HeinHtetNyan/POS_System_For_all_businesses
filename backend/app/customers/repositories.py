@@ -214,26 +214,3 @@ class CustomerLedgerRepository(BaseRepository[CustomerLedger]):
         row = result.scalar_one_or_none()
         return row if row is not None else _D("0")
 
-    async def get_totals_in_range(
-        self,
-        customer_id: uuid.UUID,
-        date_from: datetime | None,
-        date_to: datetime | None,
-    ) -> tuple[Decimal, Decimal]:
-        """Return (total_debited, total_credited) within the date range."""
-        from decimal import Decimal as _D
-        from app.core.constants import CustomerLedgerEntryType as LT
-        entries = await self.get_by_customer(customer_id, date_from, date_to)
-        debited = _D("0")
-        credited = _D("0")
-        for e in entries:
-            if e.entry_type == LT.SALE_DEBT:
-                debited += e.amount
-            elif e.entry_type in (LT.PAYMENT, LT.REFUND_CREDIT):
-                credited += e.amount
-            elif e.entry_type == LT.ADJUSTMENT:
-                if e.amount > 0:
-                    debited += e.amount
-                else:
-                    credited += abs(e.amount)
-        return debited, credited

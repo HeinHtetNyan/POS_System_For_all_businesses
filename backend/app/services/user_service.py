@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import AuditAction, EntityType, UserRole, UserStatus
 from app.core.exceptions import BusinessRuleError, ConflictError, NotFoundError, AuthorizationError
-from app.core.security import hash_password, normalize_phone
+from app.core.security import hash_password_async, normalize_phone
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.repositories.branch_repository import BranchRepository
@@ -44,7 +44,7 @@ class UserService:
 
         user = await self.user_repo.create(
             email=data.email,
-            hashed_password=hash_password(data.password),
+            hashed_password=await hash_password_async(data.password),
             first_name=data.first_name,
             last_name=data.last_name,
             phone=normalize_phone(data.phone),
@@ -313,7 +313,7 @@ class UserService:
         if user.role == UserRole.SUPER_ADMIN:
             raise AuthorizationError("SUPER_ADMIN account cannot be modified")
 
-        await self.user_repo.update(user, hashed_password=hash_password(new_password))
+        await self.user_repo.update(user, hashed_password=await hash_password_async(new_password))
 
         await self.audit_service.log(
             action=AuditAction.PASSWORD_CHANGED,

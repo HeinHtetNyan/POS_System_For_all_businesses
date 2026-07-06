@@ -1,11 +1,17 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/store/auth.store'
 import { ROLE_HOME } from '@/shared/constants/rbac'
 import { Btn, Input, Spinner } from '@/components/ui/index'
 import { tenantService } from '@/services/tenant/tenant.service'
+import { subscriptionsService } from '@/services/subscriptions/subscriptions.service'
 
 type Step = 1 | 2 | 3
+
+function fmtLimit(limit: number | null | undefined): string {
+  return limit === null || limit === undefined ? 'Unlimited' : String(limit)
+}
 
 function StepIndicator({ current, total }: { current: number; total: number }) {
   return (
@@ -36,6 +42,15 @@ export default function OnboardingWizard() {
 
   const [branchName, setBranchName] = useState('Main Branch')
   const [branchPhone, setBranchPhone] = useState('')
+
+  // Real trial length/limits for whatever plan this account actually got
+  // (Free Trial vs a referral trial can differ) — was hardcoded and had
+  // drifted out of sync with the real plan.
+  const { data: trialStatus } = useQuery({
+    queryKey: ['subscription', 'status'],
+    queryFn: subscriptionsService.getTrialStatus,
+    staleTime: 60_000,
+  })
 
   function completeOnboarding() {
     localStorage.removeItem('sawyunpos_onboarding_pending')
@@ -244,7 +259,7 @@ export default function OnboardingWizard() {
                 <div className="text-5xl mb-4">🎉</div>
                 <h2 className="text-lg font-semibold text-zinc-100 mb-2">You're all set!</h2>
                 <p className="text-zinc-400 text-sm mb-6">
-                  Your {14}-day free trial has started. Here's what's included:
+                  Your {trialStatus ? `${trialStatus.days_remaining}-day` : ''} free trial has started. Here's what's included:
                 </p>
 
                 <div className="text-left bg-zinc-800/60 rounded-xl p-4 mb-6 space-y-2.5">
@@ -270,9 +285,14 @@ export default function OnboardingWizard() {
                   Go to Dashboard →
                 </Btn>
 
-                <p className="text-xs text-zinc-600 mt-3">
-                  Trial limits: 100 products · 3 staff · 1 branch · 200 customers
-                </p>
+                {trialStatus && (
+                  <p className="text-xs text-zinc-600 mt-3">
+                    Trial limits: {fmtLimit(trialStatus.usage.products?.limit)} products
+                    {' '}· {fmtLimit(trialStatus.usage.staff?.limit)} staff
+                    {' '}· {fmtLimit(trialStatus.usage.branches?.limit)} branch
+                    {' '}· {fmtLimit(trialStatus.usage.customers?.limit)} customers
+                  </p>
+                )}
               </div>
             </div>
           )}
