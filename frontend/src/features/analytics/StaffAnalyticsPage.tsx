@@ -3,8 +3,10 @@ import { fmt } from '@/lib/utils'
 import { StatCard, Table, Th, Td } from '@/components/ui'
 import { analyticsService } from '@/services/analytics/analytics.service'
 import { useAnalyticsFilters, AnalyticsFilters, ChartCard } from './analyticsHelpers'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 export default function StaffAnalyticsPage() {
+  const t = useLocaleStore(s => s.t)
   const filters = useAnalyticsFilters()
   const { from, to, branch, apiParams } = filters
 
@@ -21,20 +23,20 @@ export default function StaffAnalyticsPage() {
   return (
     <div className="p-4 sm:p-6 space-y-5">
       <div className="flex flex-col gap-3">
-        <h2 className="text-base font-semibold text-zinc-100">Staff Performance</h2>
+        <h2 className="text-base font-semibold text-zinc-100">{t('analytics.staff_performance_title')}</h2>
         <AnalyticsFilters {...filters} />
       </div>
 
       {/* Summary row */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <StatCard label="Active Cashiers" value={cashiers.length.toString()} />
-        <StatCard label="Total Orders"    value={totalOrders.toLocaleString()} />
-        <StatCard label="Total Sales"     value={fmt(totalSales)} accent />
+        <StatCard label={t('analytics.active_cashiers')} value={cashiers.length.toString()} />
+        <StatCard label={t('analytics.field_total_orders')}    value={totalOrders.toLocaleString()} />
+        <StatCard label={t('analytics.total_sales')}     value={fmt(totalSales)} accent />
       </div>
 
       {/* Cashier breakdown table */}
       <ChartCard
-        title="Cashier Sales Breakdown"
+        title={t('analytics.cashier_sales_breakdown')}
         isLoading={cashierQ.isLoading}
         isEmpty={cashiers.length === 0}
       >
@@ -42,11 +44,11 @@ export default function StaffAnalyticsPage() {
           <thead>
             <tr>
               <Th>#</Th>
-              <Th>Cashier</Th>
-              <Th right>Orders</Th>
-              <Th right>Sales</Th>
-              <Th right>Refunds</Th>
-              <Th right>Avg Ticket</Th>
+              <Th>{t('analytics.field_cashier')}</Th>
+              <Th right>{t('analytics.field_orders')}</Th>
+              <Th right>{t('nav.sales')}</Th>
+              <Th right>{t('analytics.refunds')}</Th>
+              <Th right>{t('analytics.avg_ticket')}</Th>
             </tr>
           </thead>
           <tbody>

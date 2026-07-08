@@ -1,41 +1,45 @@
 import { Badge } from '@/components/ui'
 import { fmt, fmtDate, fmtDateTime } from '@/lib/utils'
+import { useLocaleStore } from '@/i18n/localeStore'
 import type { Notification } from '@/shared/types'
 
 const TYPE_CONFIG: Record<string, {
   icon: string
   variant: 'default' | 'success' | 'danger' | 'warning' | 'info' | 'purple' | 'orange'
-  label: string
+  labelKey: string
 }> = {
-  SYSTEM:       { icon: '⚙️',  variant: 'default',  label: 'System'       },
-  INVENTORY:    { icon: '📦',  variant: 'warning',  label: 'Inventory'    },
-  PROCUREMENT:  { icon: '🛒',  variant: 'info',     label: 'Procurement'  },
-  CUSTOMER:     { icon: '👥',  variant: 'purple',   label: 'Customer'     },
-  SUBSCRIPTION: { icon: '💳',  variant: 'orange',   label: 'Subscription' },
-  SECURITY:     { icon: '🔐',  variant: 'danger',   label: 'Security'     },
+  SYSTEM:       { icon: '⚙️',  variant: 'default',  labelKey: 'notif.type.system'       },
+  INVENTORY:    { icon: '📦',  variant: 'warning',  labelKey: 'notif.type.inventory'    },
+  PROCUREMENT:  { icon: '🛒',  variant: 'info',     labelKey: 'notif.type.procurement'  },
+  CUSTOMER:     { icon: '👥',  variant: 'purple',   labelKey: 'notif.type.customer'     },
+  SUBSCRIPTION: { icon: '💳',  variant: 'orange',   labelKey: 'notif.type.subscription' },
+  SECURITY:     { icon: '🔐',  variant: 'danger',   labelKey: 'notif.type.security'     },
 }
 
 const PRIORITY_CONFIG: Record<string, {
   variant: 'default' | 'success' | 'danger' | 'warning' | 'info' | 'purple' | 'orange'
+  labelKey: string
 }> = {
-  LOW:      { variant: 'default'  },
-  MEDIUM:   { variant: 'info'     },
-  HIGH:     { variant: 'warning'  },
-  CRITICAL: { variant: 'danger'   },
+  LOW:      { variant: 'default',  labelKey: 'notif.priority.low'      },
+  MEDIUM:   { variant: 'info',     labelKey: 'notif.priority.medium'   },
+  HIGH:     { variant: 'warning',  labelKey: 'notif.priority.high'     },
+  CRITICAL: { variant: 'danger',   labelKey: 'notif.priority.critical' },
 }
 
 export function NotificationTypeBadge({ type }: { type: string }) {
-  const cfg = TYPE_CONFIG[type] ?? { icon: '🔔', variant: 'default' as const, label: type }
+  const t = useLocaleStore(s => s.t)
+  const cfg = TYPE_CONFIG[type] ?? { icon: '🔔', variant: 'default' as const, labelKey: '' }
   return (
     <Badge variant={cfg.variant} size="xs">
-      {cfg.icon} {cfg.label}
+      {cfg.icon} {cfg.labelKey ? t(cfg.labelKey) : type}
     </Badge>
   )
 }
 
 export function NotificationPriorityBadge({ priority }: { priority: string }) {
-  const cfg = PRIORITY_CONFIG[priority] ?? { variant: 'default' as const }
-  return <Badge variant={cfg.variant} size="xs">{priority}</Badge>
+  const t = useLocaleStore(s => s.t)
+  const cfg = PRIORITY_CONFIG[priority] ?? { variant: 'default' as const, labelKey: '' }
+  return <Badge variant={cfg.variant} size="xs">{cfg.labelKey ? t(cfg.labelKey) : priority}</Badge>
 }
 
 /** Shows which branch a notification originated from, when the event carried one
@@ -71,35 +75,35 @@ const MONEY_KEYS = new Set([
 
 const DATE_KEYS = new Set(['expires_at', 'order_date'])
 
-const LABELS: Record<string, string> = {
-  po_number:          'PO Number',
-  receipt_number:     'Receipt Number',
-  supplier_name:      'Supplier',
-  submitted_by_name:  'Submitted By',
-  product_name:       'Product',
-  sku:                'SKU',
-  current_stock:      'Current Stock',
-  reorder_level:      'Reorder Level',
-  customer_name:      'Customer',
-  current_balance:    'Balance',
-  credit_limit:       'Credit Limit',
-  total_amount:       'Total Amount',
-  remaining_amount:   'Remaining Amount',
-  order_date:         'Order Date',
-  tenant_name:        'Business',
-  days_remaining:     'Days Remaining',
-  expires_at:         'Expires At',
-  plan_name:          'Plan',
-  old_plan_name:      'Previous Plan',
-  new_plan_name:      'New Plan',
-  amount:             'Amount',
-  device_name:        'Device',
-  error:              'Error',
-  business_name:      'Business',
-  owner_name:         'Owner',
-  owner_email:        'Owner Email',
-  trial_days:         'Trial Days',
-  branch_name:        'Branch',
+const LABEL_KEYS: Record<string, string> = {
+  po_number:          'notif.field.po_number',
+  receipt_number:     'notif.field.receipt_number',
+  supplier_name:      'notif.field.supplier_name',
+  submitted_by_name:  'notif.field.submitted_by_name',
+  product_name:       'notif.field.product_name',
+  sku:                'products.col.sku',
+  current_stock:      'notif.field.current_stock',
+  reorder_level:      'notif.field.reorder_level',
+  customer_name:      'notif.field.customer_name',
+  current_balance:    'notif.field.current_balance',
+  credit_limit:       'notif.field.credit_limit',
+  total_amount:       'notif.field.total_amount',
+  remaining_amount:   'notif.field.remaining_amount',
+  order_date:         'notif.field.order_date',
+  tenant_name:        'notif.field.tenant_name',
+  days_remaining:     'notif.field.days_remaining',
+  expires_at:         'notif.field.expires_at',
+  plan_name:          'settings.plan',
+  old_plan_name:      'notif.field.old_plan_name',
+  new_plan_name:      'notif.field.new_plan_name',
+  amount:             'notif.field.amount',
+  device_name:        'notif.field.device_name',
+  error:              'notif.field.error',
+  business_name:      'notif.field.business_name',
+  owner_name:         'notif.field.owner_name',
+  owner_email:        'notif.field.owner_email',
+  trial_days:         'notif.field.trial_days',
+  branch_name:        'notif.field.branch_name',
 }
 
 function humanizeKey(key: string): string {
@@ -111,7 +115,10 @@ export interface MetadataEntry { key: string; label: string; value: string }
 /** Turns a notification's raw metadata JSON into a clean, human-readable list —
  * skipping ID fields (used only for the "View" link) and the `currency` key
  * (merged into whichever *_amount/balance field it pairs with). */
-export function formatMetadataEntries(metadata: Record<string, unknown> | null | undefined): MetadataEntry[] {
+export function formatMetadataEntries(
+  metadata: Record<string, unknown> | null | undefined,
+  t: (key: string) => string,
+): MetadataEntry[] {
   if (!metadata) return []
   const currency = typeof metadata.currency === 'string' ? metadata.currency : null
   const entries: MetadataEntry[] = []
@@ -128,12 +135,12 @@ export function formatMetadataEntries(metadata: Record<string, unknown> | null |
       value = String(raw)
     }
 
-    entries.push({ key, label: LABELS[key] ?? humanizeKey(key), value })
+    entries.push({ key, label: LABEL_KEYS[key] ? t(LABEL_KEYS[key]) : humanizeKey(key), value })
   }
   return entries
 }
 
-export interface NotificationAction { label: string; path: string }
+export interface NotificationAction { labelKey: string; path: string }
 
 /** Resolves a "View X" call-to-action from a notification's type + metadata,
  * when the underlying entity can be linked to directly. */
@@ -145,22 +152,22 @@ export function getNotificationAction(notification: Notification): NotificationA
   // notification's metadata carries both, and the receipt is the more specific,
   // just-created entity the notification is actually about.
   if (typeof m.goods_receipt_id === 'string') {
-    return { label: 'View Goods Receipt', path: `/app/procurement/receipts/${m.goods_receipt_id}` }
+    return { labelKey: 'notif.action.view_goods_receipt', path: `/app/procurement/receipts/${m.goods_receipt_id}` }
   }
   if (typeof m.purchase_order_id === 'string') {
-    return { label: 'View Purchase Order', path: `/app/procurement/purchase-orders/${m.purchase_order_id}` }
+    return { labelKey: 'notif.action.view_purchase_order', path: `/app/procurement/purchase-orders/${m.purchase_order_id}` }
   }
   if (typeof m.customer_id === 'string') {
-    return { label: 'View Customer', path: `/app/customers/${m.customer_id}` }
+    return { labelKey: 'notif.action.view_customer', path: `/app/customers/${m.customer_id}` }
   }
   if (typeof m.payable_id === 'string') {
-    return { label: 'View Payables', path: '/app/procurement/payments' }
+    return { labelKey: 'notif.action.view_payables', path: '/app/procurement/payments' }
   }
   if (notification.type === 'INVENTORY') {
-    return { label: 'View Inventory', path: '/app/inventory' }
+    return { labelKey: 'notif.action.view_inventory', path: '/app/inventory' }
   }
   if (notification.type === 'SUBSCRIPTION') {
-    return { label: 'View Subscription', path: '/app/subscription' }
+    return { labelKey: 'notif.action.view_subscription', path: '/app/subscription' }
   }
   return null
 }

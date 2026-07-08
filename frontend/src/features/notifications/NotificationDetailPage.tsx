@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { fmtDateTime, extractApiMsg } from '@/lib/utils'
 import { Btn, Spinner } from '@/components/ui'
 import { notificationsService } from '@/services/notifications/notifications.service'
+import { useLocaleStore } from '@/i18n/localeStore'
 import {
   NotificationTypeBadge, NotificationPriorityBadge, NotificationBranchBadge,
   formatMetadataEntries, getNotificationAction,
@@ -12,6 +13,7 @@ import {
 import type { Notification } from '@/shared/types'
 
 export default function NotificationDetailPage() {
+  const t = useLocaleStore(s => s.t)
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const location = useLocation()
@@ -34,7 +36,7 @@ export default function NotificationDetailPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['notifications'] })
     },
-    onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to mark as read'),
+    onError: (err) => toast.error(extractApiMsg(err) ?? t('notif.failed_mark_read')),
   })
 
   useEffect(() => {
@@ -56,15 +58,15 @@ export default function NotificationDetailPage() {
   if (!notification) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3">
-        <p className="text-zinc-400 text-sm">Notification not found</p>
+        <p className="text-zinc-400 text-sm">{t('notif.not_found')}</p>
         <Btn variant="secondary" size="sm" onClick={() => navigate(-1)}>
-          Back to Notifications
+          {t('notif.back_to_notifications')}
         </Btn>
       </div>
     )
   }
 
-  const metadataEntries = formatMetadataEntries(notification.metadata)
+  const metadataEntries = formatMetadataEntries(notification.metadata, t)
   const action = getNotificationAction(notification)
 
   return (
@@ -73,7 +75,7 @@ export default function NotificationDetailPage() {
       <div className="flex items-center gap-3 px-4 py-3.5 border-b border-zinc-800 flex-shrink-0">
         <button
           onClick={() => navigate(-1)}
-          aria-label="Go back"
+          aria-label={t('notif.go_back')}
           className="text-zinc-500 hover:text-zinc-200 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-zinc-800 transition-colors"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -83,7 +85,7 @@ export default function NotificationDetailPage() {
         <h2 className="text-base font-semibold text-zinc-100 flex-1 truncate min-w-0">{notification.title}</h2>
         {notification.is_read && (
           <span className="text-xs text-zinc-600 bg-zinc-900 border border-zinc-800 px-2 py-0.5 rounded-full flex-shrink-0">
-            Read
+            {t('notif.read_badge')}
           </span>
         )}
       </div>
@@ -112,7 +114,7 @@ export default function NotificationDetailPage() {
                 className="mt-4"
                 onClick={() => navigate(action.path)}
               >
-                {action.label} →
+                {t(action.labelKey)} →
               </Btn>
             )}
           </div>
@@ -120,7 +122,7 @@ export default function NotificationDetailPage() {
           {/* Details (from notification metadata) */}
           {metadataEntries.length > 0 && (
             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 space-y-2.5 text-sm">
-              <h4 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Details</h4>
+              <h4 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">{t('notif.details')}</h4>
               {metadataEntries.map(entry => (
                 <div key={entry.key} className="flex justify-between items-start gap-4">
                   <span className="text-zinc-500 flex-shrink-0">{entry.label}</span>
@@ -132,29 +134,29 @@ export default function NotificationDetailPage() {
 
           {/* Notification info */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 space-y-2.5 text-sm">
-            <h4 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Notification Info</h4>
+            <h4 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">{t('notif.notification_info')}</h4>
             <div className="flex justify-between items-center">
-              <span className="text-zinc-500">Received</span>
+              <span className="text-zinc-500">{t('notif.received')}</span>
               <span className="text-zinc-300 text-xs">{fmtDateTime(notification.created_at)}</span>
             </div>
             {notification.read_at && (
               <div className="flex justify-between items-center">
-                <span className="text-zinc-500">Read at</span>
+                <span className="text-zinc-500">{t('notif.read_at')}</span>
                 <span className="text-zinc-300 text-xs">{fmtDateTime(notification.read_at)}</span>
               </div>
             )}
             {notification.expires_at && (
               <div className="flex justify-between items-center">
-                <span className="text-zinc-500">Expires</span>
+                <span className="text-zinc-500">{t('notif.expires')}</span>
                 <span className="text-zinc-300 text-xs">{fmtDateTime(notification.expires_at)}</span>
               </div>
             )}
             <div className="flex justify-between items-center">
-              <span className="text-zinc-500">Type</span>
+              <span className="text-zinc-500">{t('products.detail.type')}</span>
               <span className="text-zinc-300">{notification.type}</span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-zinc-500">Priority</span>
+              <span className="text-zinc-500">{t('notif.priority_label')}</span>
               <span className="text-zinc-300">{notification.priority}</span>
             </div>
           </div>

@@ -3,23 +3,26 @@ import { useQuery } from '@tanstack/react-query'
 import { subscriptionsService } from '@/services/subscriptions/subscriptions.service'
 import { Badge, Spinner } from '@/components/ui'
 import { cn } from '@/shared/utils'
+import { useLocaleStore } from '@/i18n/localeStore'
 import type { Plan } from '@/shared/types'
 
 // Feature display helpers
 
-const FEATURE_LABELS: Record<string, string> = {
-  users:         'Staff / Users',
-  branches:      'Branches',
-  products:      'Products',
-  customers:     'Customers',
-  devices:       'Devices',
-  analytics:     'Analytics',
-  procurement:   'Procurement',
-  sync:          'Offline Sync',
-  notifications: 'Notifications',
-  sales:         'Sales Engine',
-  inventory:     'Inventory',
-  pos:           'POS / Checkout',
+function featureLabelKeys(): Record<string, string> {
+  return {
+    users:         'reseller.feature_users',
+    branches:      'settings.tab.branches',
+    products:      'nav.products',
+    customers:     'qa.customers',
+    devices:       'reseller.feature_devices',
+    analytics:     'nav.analytics',
+    procurement:   'nav.procurement',
+    sync:          'reseller.feature_sync',
+    notifications: 'nav.notifications',
+    sales:         'reseller.feature_sales',
+    inventory:     'nav.inventory',
+    pos:           'reseller.feature_pos',
+  }
 }
 
 const FEATURE_ICONS: Record<string, string> = {
@@ -38,7 +41,9 @@ const FEATURE_ICONS: Record<string, string> = {
 }
 
 function featureLabel(code: string) {
-  return FEATURE_LABELS[code] ?? code.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+  const t = useLocaleStore.getState().t
+  const key = featureLabelKeys()[code]
+  return key ? t(key) : code.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 
 function featureIcon(code: string) {
@@ -46,22 +51,25 @@ function featureIcon(code: string) {
 }
 
 function formatLimit(limit: number | null): string {
-  if (limit === null || limit === 0) return 'Unlimited'
+  const t = useLocaleStore.getState().t
+  if (limit === null || limit === 0) return t('reseller.unlimited')
   return limit.toLocaleString()
 }
 
 function formatPrice(price: string, currency: string, cycle: string): string {
+  const t = useLocaleStore.getState().t
   const num = Number(price)
-  if (num === 0) return 'Free'
+  if (num === 0) return t('reseller.free')
   const formatted = num.toLocaleString('en-US', { minimumFractionDigits: 0 })
-  const curr = currency === 'MMK' ? 'Kyats' : currency
-  const per = cycle === 'YEARLY' ? 'yr' : 'mo'
+  const curr = currency === 'MMK' ? t('currency.mmk') : currency
+  const per = cycle === 'YEARLY' ? t('reseller.abbr_year') : t('reseller.abbr_month')
   return `${formatted} ${curr} / ${per}`
 }
 
 //  Plan Card 
 
 function PlanCard({ plan, highlight }: { plan: Plan; highlight?: boolean }) {
+  const t = useLocaleStore(s => s.t)
   const [copied, setCopied] = useState(false)
   const price = Number(plan.price)
   const isFree = price === 0
@@ -70,16 +78,16 @@ function PlanCard({ plan, highlight }: { plan: Plan; highlight?: boolean }) {
   const disabledFeatures = plan.entitlements.filter(e => !e.enabled)
 
   const pitchText = [
-    `📋 ${plan.name} Plan`,
+    `📋 ${plan.name} ${t('reseller.plan_word')}`,
     `💰 ${formatPrice(plan.price, plan.currency, plan.billing_cycle)}`,
     plan.description ? `\n${plan.description}` : '',
     '',
-    '✅ Included:',
+    `✅ ${t('reseller.included_label')}`,
     ...enabledFeatures.map(e => {
-      const limit = e.limit_value ? ` (up to ${formatLimit(e.limit_value)})` : ''
+      const limit = e.limit_value ? ` (${t('reseller.up_to')} ${formatLimit(e.limit_value)})` : ''
       return `  • ${featureLabel(e.feature_code)}${limit}`
     }),
-    disabledFeatures.length > 0 ? '\n❌ Not included:' : '',
+    disabledFeatures.length > 0 ? `\n❌ ${t('reseller.not_included_label')}` : '',
     ...disabledFeatures.map(e => `  • ${featureLabel(e.feature_code)}`),
   ].filter(l => l !== undefined).join('\n')
 
@@ -98,7 +106,7 @@ function PlanCard({ plan, highlight }: { plan: Plan; highlight?: boolean }) {
     )}>
       {highlight && (
         <div className="bg-orange-500 text-black text-[10px] font-bold tracking-widest uppercase text-center py-1">
-          Most Popular
+          {t('reseller.most_popular')}
         </div>
       )}
 
@@ -107,7 +115,7 @@ function PlanCard({ plan, highlight }: { plan: Plan; highlight?: boolean }) {
         <div className="flex items-start justify-between gap-2 mb-1">
           <h3 className="text-base font-bold text-zinc-100">{plan.name}</h3>
           {plan.trial_days > 0 && (
-            <Badge variant="info" size="xs">{plan.trial_days}d trial</Badge>
+            <Badge variant="info" size="xs">{plan.trial_days}{t('reseller.trial_days_suffix')}</Badge>
           )}
         </div>
         {plan.description && (
@@ -115,17 +123,17 @@ function PlanCard({ plan, highlight }: { plan: Plan; highlight?: boolean }) {
         )}
         <div className="mt-3">
           {isFree ? (
-            <p className="text-2xl font-black text-zinc-100">Free</p>
+            <p className="text-2xl font-black text-zinc-100">{t('reseller.free')}</p>
           ) : (
             <>
               <p className="text-2xl font-black text-zinc-100 tabular-nums">
                 {Number(plan.price).toLocaleString()}
                 <span className="text-sm font-normal text-zinc-500 ml-1">
-                  {plan.currency === 'MMK' ? 'Kyats' : plan.currency}
+                  {plan.currency === 'MMK' ? t('currency.mmk') : plan.currency}
                 </span>
               </p>
               <p className="text-xs text-zinc-600 mt-0.5">
-                per {plan.billing_cycle === 'YEARLY' ? 'year' : 'month'}
+                {plan.billing_cycle === 'YEARLY' ? t('reseller.per_year') : t('reseller.per_month')}
               </p>
             </>
           )}
@@ -135,7 +143,7 @@ function PlanCard({ plan, highlight }: { plan: Plan; highlight?: boolean }) {
       {/* Features */}
       <div className="flex-1 px-5 py-4 space-y-2">
         {enabledFeatures.length === 0 && (
-          <p className="text-xs text-zinc-600 italic">No features listed</p>
+          <p className="text-xs text-zinc-600 italic">{t('reseller.no_features_listed')}</p>
         )}
         {enabledFeatures.map(e => (
           <div key={e.feature_code} className="flex items-center gap-2">
@@ -144,10 +152,10 @@ function PlanCard({ plan, highlight }: { plan: Plan; highlight?: boolean }) {
               <span className="mr-1">{featureIcon(e.feature_code)}</span>
               <span className="text-zinc-300">{featureLabel(e.feature_code)}</span>
               {e.limit_value !== null && e.limit_value > 0 && (
-                <span className="text-zinc-500 ml-1">up to {formatLimit(e.limit_value)}</span>
+                <span className="text-zinc-500 ml-1">{t('reseller.up_to')} {formatLimit(e.limit_value)}</span>
               )}
               {(e.limit_value === null || e.limit_value === 0) && (
-                <span className="text-zinc-500 ml-1">unlimited</span>
+                <span className="text-zinc-500 ml-1">{t('reseller.feature_unlimited')}</span>
               )}
             </span>
           </div>
@@ -178,7 +186,7 @@ function PlanCard({ plan, highlight }: { plan: Plan; highlight?: boolean }) {
               : 'bg-zinc-800 hover:bg-zinc-700 border-zinc-700 hover:border-zinc-600 text-zinc-300 hover:text-zinc-100',
           )}
         >
-          {copied ? '✓ Copied to clipboard' : '📋 Copy pitch text'}
+          {copied ? t('reseller.copied_to_clipboard') : t('reseller.copy_pitch_text')}
         </button>
       </div>
     </div>
@@ -188,6 +196,7 @@ function PlanCard({ plan, highlight }: { plan: Plan; highlight?: boolean }) {
 //  Comparison table 
 
 function ComparisonTable({ plans }: { plans: Plan[] }) {
+  const t = useLocaleStore(s => s.t)
   // Collect all unique feature codes across all plans (enabled or disabled)
   const allCodes = Array.from(
     new Set(plans.flatMap(p => p.entitlements.map(e => e.feature_code)))
@@ -202,7 +211,7 @@ function ComparisonTable({ plans }: { plans: Plan[] }) {
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-zinc-800">
-            <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium w-40">Feature</th>
+            <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium w-40">{t('reseller.feature_column')}</th>
             {plans.map(p => (
               <th key={p.id} className="text-center px-4 py-3 text-xs font-semibold min-w-[120px]">
                 <p className="text-zinc-100">{p.name}</p>
@@ -250,6 +259,7 @@ function ComparisonTable({ plans }: { plans: Plan[] }) {
 //  Main page 
 
 export default function ResellerPlansPage() {
+  const t = useLocaleStore(s => s.t)
   const [view, setView] = useState<'cards' | 'table'>('cards')
 
   const { data, isLoading } = useQuery({
@@ -273,9 +283,9 @@ export default function ResellerPlansPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-100">Plans & Pricing</h1>
+          <h1 className="text-2xl font-bold text-zinc-100">{t('reseller.plans_pricing_title')}</h1>
           <p className="text-zinc-500 text-sm mt-1">
-            Active subscription plans you can present to prospective businesses.
+            {t('reseller.plans_subtitle')}
           </p>
         </div>
         <div className="flex gap-1 bg-zinc-800 rounded-xl p-1 border border-zinc-700 self-start">
@@ -290,7 +300,7 @@ export default function ResellerPlansPage() {
                   : 'text-zinc-500 hover:text-zinc-300',
               )}
             >
-              {v === 'cards' ? '⊞ Cards' : '⊟ Compare'}
+              {v === 'cards' ? t('reseller.view_cards') : t('reseller.view_compare')}
             </button>
           ))}
         </div>
@@ -302,7 +312,7 @@ export default function ResellerPlansPage() {
         </div>
       ) : plans.length === 0 ? (
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-12 text-center text-zinc-600 text-sm">
-          No active plans available at the moment.
+          {t('reseller.no_active_plans')}
         </div>
       ) : (
         <>
@@ -325,11 +335,11 @@ export default function ResellerPlansPage() {
 
           {/* Tips */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 space-y-3">
-            <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Tips for resellers</p>
+            <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">{t('reseller.tips_title')}</p>
             <ul className="space-y-1.5 text-xs text-zinc-500 list-none">
-              <li className="flex items-start gap-2"><span className="text-orange-400 flex-shrink-0">→</span>Use "Copy pitch text" on any plan card to instantly copy a formatted summary you can paste into a chat or email.</li>
-              <li className="flex items-start gap-2"><span className="text-orange-400 flex-shrink-0">→</span>Switch to Compare view to show a side-by-side feature breakdown when prospects are deciding between plans.</li>
-              <li className="flex items-start gap-2"><span className="text-orange-400 flex-shrink-0">→</span>After a business registers with your referral code, use the Referrals page to submit their payment proof and activate their chosen plan.</li>
+              <li className="flex items-start gap-2"><span className="text-orange-400 flex-shrink-0">→</span>{t('reseller.tip_copy_pitch')}</li>
+              <li className="flex items-start gap-2"><span className="text-orange-400 flex-shrink-0">→</span>{t('reseller.tip_compare_view')}</li>
+              <li className="flex items-start gap-2"><span className="text-orange-400 flex-shrink-0">→</span>{t('reseller.tip_referral_flow')}</li>
             </ul>
           </div>
         </>

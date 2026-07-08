@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/store/auth.store'
+import { useLocaleStore } from '@/i18n/localeStore'
 import { authService } from '@/services/auth/auth.service'
 import { extractApiMsg } from '@/lib/utils'
 
@@ -12,6 +13,7 @@ import { extractApiMsg } from '@/lib/utils'
 // verification email, so nagging them would be a dead end.
 export default function VerifyEmailBanner() {
   const user = useAuthStore(s => s.user)
+  const t = useLocaleStore(s => s.t)
   const [dismissed, setDismissed] = useState(false)
   const [sending, setSending] = useState(false)
 
@@ -24,9 +26,9 @@ export default function VerifyEmailBanner() {
     setSending(true)
     try {
       await authService.resendVerification(user.email)
-      toast.success('Verification email sent — check your inbox.')
+      toast.success(t('shared.verify_email_banner.sent_toast'))
     } catch (err) {
-      toast.error(extractApiMsg(err) ?? 'Failed to send verification email')
+      toast.error(extractApiMsg(err) ?? t('shared.verify_email_banner.failed_toast'))
     } finally {
       setSending(false)
     }
@@ -34,18 +36,18 @@ export default function VerifyEmailBanner() {
 
   return (
     <div className="px-4 py-2 flex items-center justify-between gap-4 text-xs font-medium bg-blue-950/60 border-b border-blue-900/40 text-blue-300 flex-shrink-0">
-      <span>Please verify your email address ({user.email}) to secure your account.</span>
+      <span>{t('shared.verify_email_banner.prompt_prefix')} ({user.email}) {t('shared.verify_email_banner.prompt_suffix')}</span>
       <div className="flex items-center gap-2 flex-shrink-0">
         <button
           onClick={handleResend}
           disabled={sending}
           className="px-3 py-1 rounded-lg font-semibold transition-colors bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50"
         >
-          {sending ? 'Sending…' : 'Resend email'}
+          {sending ? t('auth.sending') : t('shared.verify_email_banner.resend')}
         </button>
         <button
           onClick={() => setDismissed(true)}
-          aria-label="Dismiss"
+          aria-label={t('shared.verify_email_banner.dismiss')}
           className="text-blue-400 hover:text-blue-200 px-1"
         >
           ✕

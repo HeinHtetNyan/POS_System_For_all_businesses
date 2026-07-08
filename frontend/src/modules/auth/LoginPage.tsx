@@ -1,11 +1,15 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/store/auth.store'
 import { ROLE_HOME, canAccess } from '@/shared/constants/rbac'
 import type { UserRole } from '@/shared/types'
 import { Btn, Input, PasswordInput, Spinner } from '@/components/ui/index'
-import { IconAlert } from '@/components/icons'
+import { IconAlert, IconSmartphone, IconMonitor } from '@/components/icons'
+import { getMobileDownloadLink } from '@/shared/constants/appDownloads'
 import { fmtDate } from '@/lib/utils'
+import { useLocaleStore } from '@/i18n/localeStore'
+import { subscriptionsService } from '@/services/subscriptions/subscriptions.service'
 
 type LoginMode = 'owner' | 'staff'
 
@@ -13,6 +17,15 @@ export default function LoginPage() {
   const navigate  = useNavigate()
   const location  = useLocation()
   const { login, isLoading, error, clearError } = useAuthStore()
+  const t = useLocaleStore(s => s.t)
+
+  // Public, unauthenticated — safe to fetch before sign-in. Super Admin edits
+  // these under App Download Links; empty fields render as "Coming Soon".
+  const { data: downloadLinks } = useQuery({
+    queryKey: ['public', 'app-download-links'],
+    queryFn: subscriptionsService.getPublicAppDownloadLinks,
+    staleTime: 5 * 60 * 1000,
+  })
 
   const [mode, setMode]               = useState<LoginMode>('owner')
   const [identifier, setIdentifier]   = useState('')  // email or phone for owner/reseller
@@ -85,7 +98,7 @@ export default function LoginPage() {
       <div className="text-center mb-8">
         <img src="/logo-icon.png" alt="SawYunPos" className="inline-block w-16 h-16 rounded-2xl shadow-2xl shadow-blue-900/50 mb-4" />
         <h1 className="text-2xl font-bold text-zinc-100">SawYunPos</h1>
-        <p className="text-zinc-500 text-sm mt-1">Enterprise Point of Sale</p>
+        <p className="text-zinc-500 text-sm mt-1">{t('auth.tagline')}</p>
       </div>
 
       {/* Card */}
@@ -103,7 +116,7 @@ export default function LoginPage() {
                   : 'text-zinc-400 hover:text-zinc-100'
               }`}
             >
-              {m === 'owner' ? 'Owner / Reseller / Admin' : 'Staff'}
+              {m === 'owner' ? t('auth.tab_owner') : t('settings.tab.staff')}
             </button>
           ))}
         </div>
@@ -113,29 +126,29 @@ export default function LoginPage() {
             {mode === 'owner' ? (
               <>
                 <Input
-                  label="Email"
+                  label={t('settings.email')}
                   type="email"
                   value={identifier}
                   onChange={e => { setIdentifier(e.target.value); clearError() }}
-                  placeholder="you@company.com"
+                  placeholder={t('auth.email_placeholder')}
                   autoComplete="username"
                   required
                 />
                 <p className="text-[11px] text-zinc-600 -mt-1">
-                  Business owners, resellers, and admins sign in here.
+                  {t('auth.owner_login_hint')}
                 </p>
                 <div>
                   <PasswordInput
-                    label="Password"
+                    label={t('auth.password')}
                     value={password}
                     onChange={e => { setPassword(e.target.value); clearError() }}
-                    placeholder="Enter password"
+                    placeholder={t('auth.password_placeholder')}
                     autoComplete="current-password"
                     required
                   />
                   <div className="text-right mt-1">
                     <Link to="/forgot-password" className="text-xs text-zinc-500 hover:text-amber-400 transition-colors">
-                      Forgot password?
+                      {t('auth.forgot_password')}
                     </Link>
                   </div>
                 </div>
@@ -143,31 +156,31 @@ export default function LoginPage() {
             ) : (
               <>
                 <Input
-                  label="Business Code"
+                  label={t('auth.business_code')}
                   type="text"
                   value={businessCode}
                   onChange={e => { setBusinessCode(e.target.value.toUpperCase()); clearError() }}
-                  placeholder="e.g. BAKE4F2A"
+                  placeholder={t('auth.business_code_placeholder')}
                   autoComplete="off"
                   required
                 />
                 <p className="text-[11px] text-zinc-600 -mt-1">
-                  Ask your business owner for the 8-character business code.
+                  {t('auth.business_code_hint')}
                 </p>
                 <Input
-                  label="Phone or Email"
+                  label={t('auth.phone_or_email')}
                   type="text"
                   value={staffIdentifier}
                   onChange={e => { setStaffIdentifier(e.target.value); clearError() }}
-                  placeholder="09123456789 or you@example.com"
+                  placeholder={t('auth.phone_or_email_placeholder')}
                   autoComplete="username"
                   required
                 />
                 <PasswordInput
-                  label="Password"
+                  label={t('auth.password')}
                   value={password}
                   onChange={e => { setPassword(e.target.value); clearError() }}
-                  placeholder="Enter password"
+                  placeholder={t('auth.password_placeholder')}
                   autoComplete="current-password"
                   required
                 />
@@ -181,9 +194,9 @@ export default function LoginPage() {
                   <span>{error}</span>
                   {mode === 'owner' && error.includes('incorrect') && (
                     <span className="text-red-500/70">
-                      Don't have an account?{' '}
+                      {t('auth.no_account')}{' '}
                       <a href="/register" className="underline text-red-400 hover:text-red-300">
-                        Register here
+                        {t('auth.register_here')}
                       </a>
                     </span>
                   )}
@@ -200,9 +213,9 @@ export default function LoginPage() {
               className="mt-1"
             >
               {isLoading ? (
-                <><Spinner size={18} /> Signing in…</>
+                <><Spinner size={18} /> {t('auth.signing_in')}</>
               ) : (
-                'Sign In'
+                t('auth.sign_in')
               )}
             </Btn>
           </div>
@@ -211,12 +224,47 @@ export default function LoginPage() {
 
       {mode === 'owner' && (
         <p className="text-center text-zinc-600 text-xs mt-4">
-          Don't have an account?{' '}
+          {t('auth.no_account')}{' '}
           <Link to="/register" className="text-amber-500 hover:text-amber-400">
-            Start free trial
+            {t('auth.start_free_trial')}
           </Link>
         </p>
       )}
+
+      {/* Mobile / desktop app downloads — editable in Super Admin > App Download Links */}
+      <div className="grid grid-cols-2 gap-3 mt-4">
+        {[
+          { icon: IconSmartphone, label: t('auth.download_mobile_app'),  href: getMobileDownloadLink(downloadLinks) },
+          { icon: IconMonitor,    label: t('auth.download_windows_app'), href: downloadLinks?.windows ?? '' },
+        ].map(({ icon: Icon, label, href }) => {
+          const isLive = !!href
+          const className = `relative flex flex-col items-center justify-center gap-1 rounded-xl py-3 transition-colors ${
+            isLive
+              ? 'bg-zinc-900 border border-zinc-700 text-zinc-200 hover:border-amber-500/50 hover:text-amber-400'
+              : 'bg-zinc-900/60 border border-zinc-800 text-zinc-500 cursor-not-allowed'
+          }`
+          const content = (
+            <>
+              {!isLive && (
+                <span className="absolute top-1.5 right-1.5 bg-amber-500/15 text-amber-400 text-[9px] font-semibold uppercase tracking-wide rounded-full px-1.5 py-0.5">
+                  {t('auth.coming_soon')}
+                </span>
+              )}
+              <Icon width="18" height="18" />
+              <span className="text-[11px] font-medium">{label}</span>
+            </>
+          )
+          return isLive ? (
+            <a key={label} href={href} target="_blank" rel="noopener noreferrer" className={className}>
+              {content}
+            </a>
+          ) : (
+            <button key={label} type="button" disabled className={className}>
+              {content}
+            </button>
+          )
+        })}
+      </div>
 
       <p className="text-center text-zinc-600 text-[11px] mt-3">
         SawYunPos v5.0 · {fmtDate(new Date())}

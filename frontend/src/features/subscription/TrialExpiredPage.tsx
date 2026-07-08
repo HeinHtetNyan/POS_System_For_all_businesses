@@ -4,9 +4,11 @@ import { useAuthStore } from '@/store/auth.store'
 import { subscriptionsService } from '@/services/subscriptions/subscriptions.service'
 import { Badge, Btn, Spinner } from '@/components/ui'
 import { fmtDate } from '@/lib/utils'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 export default function TrialExpiredPage() {
   const { user, logout } = useAuthStore()
+  const t = useLocaleStore(s => s.t)
 
   const { data: sub, isLoading: subLoading } = useQuery({
     // Must match the key used everywhere else (['subscription', 'current'])
@@ -50,12 +52,12 @@ export default function TrialExpiredPage() {
             </svg>
           </div>
           <h1 className="text-2xl font-bold text-zinc-100 mb-2">
-            {sub?.status === 'SUSPENDED' ? 'Account Suspended' : 'Trial Period Ended'}
+            {sub?.status === 'SUSPENDED' ? t('subscription.account_suspended') : t('subscription.trial_period_ended')}
           </h1>
           <p className="text-zinc-400 text-sm max-w-md mx-auto">
             {sub?.status === 'SUSPENDED'
-              ? 'Your account has been suspended. Contact support to resolve this.'
-              : 'Your free trial has expired. Activate a subscription to continue using SawYunPos.'}
+              ? t('subscription.account_suspended_desc')
+              : t('subscription.trial_expired_desc')}
           </p>
         </div>
 
@@ -64,18 +66,18 @@ export default function TrialExpiredPage() {
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 mb-6">
             <div className="flex items-center justify-between mb-3">
               <div>
-                <p className="text-xs text-zinc-500 uppercase tracking-wider">Current Plan</p>
-                <p className="text-zinc-100 font-semibold mt-0.5">{sub.plan?.name ?? 'Trial Plan'}</p>
+                <p className="text-xs text-zinc-500 uppercase tracking-wider">{t('settings.plan')}</p>
+                <p className="text-zinc-100 font-semibold mt-0.5">{sub.plan?.name ?? t('subscription.trial_plan')}</p>
               </div>
               <Badge variant="danger">{sub.status}</Badge>
             </div>
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div>
-                <p className="text-zinc-500 text-xs">Started</p>
+                <p className="text-zinc-500 text-xs">{t('subscription.started')}</p>
                 <p className="text-zinc-300">{fmtDate(sub.started_at)}</p>
               </div>
               <div>
-                <p className="text-zinc-500 text-xs">Expired</p>
+                <p className="text-zinc-500 text-xs">{t('subscription.expired')}</p>
                 <p className="text-red-400 font-medium">{sub.expires_at ? fmtDate(sub.expires_at) : '—'}</p>
               </div>
             </div>
@@ -86,12 +88,12 @@ export default function TrialExpiredPage() {
         <div className="grid grid-cols-1 gap-3 mb-6">
           <Link to="/app/subscription/billing">
             <Btn variant="primary" size="lg" fullWidth>
-              Submit Payment Proof to Activate
+              {t('subscription.submit_payment_proof_to_activate')}
             </Btn>
           </Link>
           <Link to="/app/subscription/current">
             <Btn variant="secondary" size="lg" fullWidth>
-              View Subscription Options
+              {t('subscription.view_subscription_options')}
             </Btn>
           </Link>
         </div>
@@ -99,7 +101,7 @@ export default function TrialExpiredPage() {
         {/* Available plans */}
         {!plansLoading && plans && plans.length > 0 && (
           <div>
-            <p className="text-xs text-zinc-500 uppercase tracking-wider text-center mb-4">Available Plans</p>
+            <p className="text-xs text-zinc-500 uppercase tracking-wider text-center mb-4">{t('subscription.available_plans')}</p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {plans.map((plan, i) => (
                 <div
@@ -111,12 +113,12 @@ export default function TrialExpiredPage() {
                   }`}
                 >
                   {i === Math.floor(plans.length / 2) && (
-                    <p className="text-amber-400 text-xs font-semibold uppercase tracking-wider mb-2">Most Popular</p>
+                    <p className="text-amber-400 text-xs font-semibold uppercase tracking-wider mb-2">{t('subscription.most_popular')}</p>
                   )}
                   <p className="text-zinc-100 font-semibold">{plan.name}</p>
                   <p className="text-2xl font-bold text-zinc-100 mt-1">
                     {plan.currency} {Number(plan.price).toFixed(0)}
-                    <span className="text-sm font-normal text-zinc-500">/{plan.billing_cycle === 'MONTHLY' ? 'mo' : 'yr'}</span>
+                    <span className="text-sm font-normal text-zinc-500">/{plan.billing_cycle === 'MONTHLY' ? t('subscription.per_month_short') : t('subscription.per_year_short')}</span>
                   </p>
                   <ul className="mt-3 space-y-1">
                     {plan.entitlements.slice(0, 3).map(ent => (
@@ -142,11 +144,11 @@ export default function TrialExpiredPage() {
         {/* Footer */}
         <div className="flex items-center justify-center gap-6 mt-8 text-xs text-zinc-600">
           <button onClick={logout} className="hover:text-zinc-400 transition-colors">
-            Log out
+            {t('common.sign_out')}
           </button>
           <span>·</span>
           <a href="mailto:support@sawyunpos.com" className="hover:text-zinc-400 transition-colors">
-            Contact Support
+            {t('subscription.contact_support')}
           </a>
         </div>
       </div>

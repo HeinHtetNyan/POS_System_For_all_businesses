@@ -11,6 +11,7 @@ import { ROLE_BADGE_STYLES } from '@/shared/constants/rbac'
 import { usersService } from '@/services/users/users.service'
 import { authService } from '@/services/auth/auth.service'
 import { useAuthStore } from '@/store/auth.store'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 function inputCls(err = false) {
   return cn(
@@ -30,17 +31,19 @@ function FormField({ label, error, children }: { label: string; error?: string; 
   )
 }
 
+const requiredMsg = () => useLocaleStore.getState().t('reseller.field_required')
+
 const profileSchema = z.object({
-  first_name: z.string().min(1, 'Required'),
-  last_name:  z.string().min(1, 'Required'),
+  first_name: z.string().min(1, requiredMsg()),
+  last_name:  z.string().min(1, requiredMsg()),
   phone:      z.string().optional(),
 })
 type ProfileForm = z.infer<typeof profileSchema>
 
 const passwordSchema = z.object({
-  current_password: z.string().min(1, 'Required'),
+  current_password: z.string().min(1, requiredMsg()),
   new_password: newPasswordZodSchema,
-  confirm_password: z.string().min(1, 'Required'),
+  confirm_password: z.string().min(1, requiredMsg()),
 }).refine(d => d.new_password === d.confirm_password, {
   message: PASSWORDS_DO_NOT_MATCH_MESSAGE,
   path: ['confirm_password'],
@@ -48,13 +51,14 @@ const passwordSchema = z.object({
 type PasswordForm = z.infer<typeof passwordSchema>
 
 const emailSchema = z.object({
-  new_email: z.string().min(1, 'Required').email('Enter a valid email address'),
-  current_password: z.string().min(1, 'Required'),
+  new_email: z.string().min(1, requiredMsg()).email(useLocaleStore.getState().t('reseller.invalid_email')),
+  current_password: z.string().min(1, requiredMsg()),
 })
 type EmailForm = z.infer<typeof emailSchema>
 
 export default function ResellerProfilePage() {
   const user = useAuthStore(s => s.user)
+  const t = useLocaleStore(s => s.t)
   const [showPassword, setShowPassword] = useState(false)
   const [showEmail, setShowEmail] = useState(false)
 
@@ -80,31 +84,31 @@ export default function ResellerProfilePage() {
   const profileMutation = useMutation({
     mutationFn: (data: ProfileForm) => usersService.update(user!.id, data),
     onSuccess: (updatedUser) => {
-      toast.success('Profile updated')
+      toast.success(t('reseller.profile_updated'))
       useAuthStore.getState().setUser(updatedUser)
     },
-    onError: err => toast.error(extractApiMsg(err) ?? 'Failed to update profile'),
+    onError: err => toast.error(extractApiMsg(err) ?? t('reseller.failed_update_profile')),
   })
 
   const passwordMutation = useMutation({
     mutationFn: (data: PasswordForm) =>
       authService.changePassword({ current_password: data.current_password, new_password: data.new_password }),
     onSuccess: () => {
-      toast.success('Password changed successfully')
+      toast.success(t('reseller.password_changed'))
       passwordForm.reset()
       setShowPassword(false)
     },
-    onError: err => toast.error(extractApiMsg(err) ?? 'Failed to change password'),
+    onError: err => toast.error(extractApiMsg(err) ?? t('reseller.failed_change_password')),
   })
 
   const emailMutation = useMutation({
     mutationFn: (data: EmailForm) => authService.requestEmailChange(data.new_email, data.current_password),
     onSuccess: (res) => {
-      toast.success(res.message ?? 'Check your new email for a confirmation link.')
+      toast.success(res.message ?? t('reseller.check_new_email'))
       emailForm.reset()
       setShowEmail(false)
     },
-    onError: err => toast.error(extractApiMsg(err) ?? 'Failed to request email change'),
+    onError: err => toast.error(extractApiMsg(err) ?? t('reseller.failed_email_change')),
   })
 
   if (!user) return null
@@ -128,18 +132,18 @@ export default function ResellerProfilePage() {
             <p className="text-zinc-500 text-xs">{user.email}</p>
             {user.email_verified_at ? (
               <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-green-400">
-                ✓ Verified
+                ✓ {t('reseller.verified_badge')}
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-red-400">
-                ✗ Email Unverified
+                ✗ {t('reseller.email_unverified_badge')}
               </span>
             )}
           </div>
           <div className="flex items-center gap-2 mt-1.5">
-            <Badge variant="orange" size="xs">Reseller</Badge>
+            <Badge variant="orange" size="xs">{t('reseller.reseller_label')}</Badge>
             {user.last_login_at && (
-              <span className="text-zinc-600 text-[11px]">Last login {fmtDate(user.last_login_at)}</span>
+              <span className="text-zinc-600 text-[11px]">{t('reseller.last_login_prefix')} {fmtDate(user.last_login_at)}</span>
             )}
           </div>
         </div>
@@ -148,40 +152,40 @@ export default function ResellerProfilePage() {
       {/* Edit Profile */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
         <div className="px-5 py-3.5 border-b border-zinc-800">
-          <h3 className="text-sm font-semibold text-zinc-100">Edit Profile</h3>
-          <p className="text-xs text-zinc-500 mt-0.5">Update your name and phone number</p>
+          <h3 className="text-sm font-semibold text-zinc-100">{t('reseller.edit_profile_title')}</h3>
+          <p className="text-xs text-zinc-500 mt-0.5">{t('reseller.edit_profile_subtitle')}</p>
         </div>
         <form
           onSubmit={profileForm.handleSubmit(d => profileMutation.mutate(d))}
           className="p-5 space-y-4"
         >
           <div className="grid grid-cols-2 gap-3">
-            <FormField label="First Name" error={profileForm.formState.errors.first_name?.message}>
+            <FormField label={t('reseller.first_name')} error={profileForm.formState.errors.first_name?.message}>
               <input
                 {...profileForm.register('first_name')}
                 className={inputCls(!!profileForm.formState.errors.first_name)}
               />
             </FormField>
-            <FormField label="Last Name" error={profileForm.formState.errors.last_name?.message}>
+            <FormField label={t('reseller.last_name')} error={profileForm.formState.errors.last_name?.message}>
               <input
                 {...profileForm.register('last_name')}
                 className={inputCls(!!profileForm.formState.errors.last_name)}
               />
             </FormField>
           </div>
-          <FormField label="Phone" error={profileForm.formState.errors.phone?.message}>
+          <FormField label={t('settings.phone')} error={profileForm.formState.errors.phone?.message}>
             <input
               {...profileForm.register('phone')}
               type="tel"
               inputMode="tel"
               autoComplete="tel"
-              placeholder="e.g. +95 9 123 456 789"
+              placeholder={t('reseller.phone_placeholder')}
               className={inputCls(!!profileForm.formState.errors.phone)}
             />
           </FormField>
           <div className="flex justify-end pt-1">
             <Btn type="submit" disabled={profileMutation.isPending}>
-              {profileMutation.isPending ? <><Spinner size={14} /> Saving…</> : 'Save Changes'}
+              {profileMutation.isPending ? <><Spinner size={14} /> {t('common.saving')}</> : t('common.save_changes')}
             </Btn>
           </div>
         </form>
@@ -195,8 +199,8 @@ export default function ResellerProfilePage() {
           onClick={() => setShowPassword(p => !p)}
         >
           <div>
-            <h3 className="text-sm font-semibold text-zinc-100">Change Password</h3>
-            <p className="text-xs text-zinc-500 mt-0.5">Update your login password</p>
+            <h3 className="text-sm font-semibold text-zinc-100">{t('reseller.change_password')}</h3>
+            <p className="text-xs text-zinc-500 mt-0.5">{t('reseller.change_password_subtitle')}</p>
           </div>
           <span className="text-zinc-500 text-sm">{showPassword ? '▲' : '▼'}</span>
         </button>
@@ -206,34 +210,34 @@ export default function ResellerProfilePage() {
             onSubmit={passwordForm.handleSubmit(d => passwordMutation.mutate(d))}
             className="p-5 space-y-4"
           >
-            <FormField label="Current Password" error={passwordForm.formState.errors.current_password?.message}>
+            <FormField label={t('reseller.current_password')} error={passwordForm.formState.errors.current_password?.message}>
               <PasswordInput
                 {...passwordForm.register('current_password')}
-                placeholder="Enter current password"
+                placeholder={t('reseller.enter_current_password')}
                 inputClassName={inputCls(!!passwordForm.formState.errors.current_password)}
               />
             </FormField>
             <Divider />
-            <FormField label="New Password" error={passwordForm.formState.errors.new_password?.message}>
+            <FormField label={t('reseller.new_password')} error={passwordForm.formState.errors.new_password?.message}>
               <PasswordInput
                 {...passwordForm.register('new_password')}
-                placeholder="Min 8 chars, upper, lower, digit"
+                placeholder={t('reseller.password_hint')}
                 inputClassName={inputCls(!!passwordForm.formState.errors.new_password)}
               />
             </FormField>
-            <FormField label="Confirm New Password" error={passwordForm.formState.errors.confirm_password?.message}>
+            <FormField label={t('reseller.confirm_new_password')} error={passwordForm.formState.errors.confirm_password?.message}>
               <PasswordInput
                 {...passwordForm.register('confirm_password')}
-                placeholder="Repeat new password"
+                placeholder={t('reseller.repeat_new_password')}
                 inputClassName={inputCls(!!passwordForm.formState.errors.confirm_password)}
               />
             </FormField>
             <div className="flex gap-3 justify-end pt-1">
               <Btn type="button" variant="secondary" onClick={() => { setShowPassword(false); passwordForm.reset() }}>
-                Cancel
+                {t('common.cancel')}
               </Btn>
               <Btn type="submit" disabled={passwordMutation.isPending}>
-                {passwordMutation.isPending ? <><Spinner size={14} /> Changing…</> : 'Change Password'}
+                {passwordMutation.isPending ? <><Spinner size={14} /> {t('reseller.changing')}</> : t('reseller.change_password')}
               </Btn>
             </div>
           </form>
@@ -248,8 +252,8 @@ export default function ResellerProfilePage() {
           onClick={() => setShowEmail(p => !p)}
         >
           <div>
-            <h3 className="text-sm font-semibold text-zinc-100">Change Email</h3>
-            <p className="text-xs text-zinc-500 mt-0.5">Update the email address used to sign in</p>
+            <h3 className="text-sm font-semibold text-zinc-100">{t('reseller.change_email_title')}</h3>
+            <p className="text-xs text-zinc-500 mt-0.5">{t('reseller.change_email_subtitle')}</p>
           </div>
           <span className="text-zinc-500 text-sm">{showEmail ? '▲' : '▼'}</span>
         </button>
@@ -260,32 +264,31 @@ export default function ResellerProfilePage() {
             className="p-5 space-y-4"
           >
             <p className="text-xs text-zinc-500 -mt-1">
-              We'll send a confirmation link to the new address — your email won't change until
-              you click it. Current: <span className="text-zinc-300">{user.email}</span>
+              {t('reseller.email_change_notice')} <span className="text-zinc-300">{user.email}</span>
             </p>
-            <FormField label="New Email" error={emailForm.formState.errors.new_email?.message}>
+            <FormField label={t('reseller.new_email')} error={emailForm.formState.errors.new_email?.message}>
               <input
                 {...emailForm.register('new_email')}
                 type="email"
                 autoComplete="email"
-                placeholder="you@example.com"
+                placeholder={t('reseller.email_placeholder')}
                 className={inputCls(!!emailForm.formState.errors.new_email)}
               />
             </FormField>
             <Divider />
-            <FormField label="Current Password" error={emailForm.formState.errors.current_password?.message}>
+            <FormField label={t('reseller.current_password')} error={emailForm.formState.errors.current_password?.message}>
               <PasswordInput
                 {...emailForm.register('current_password')}
-                placeholder="Confirm it's you"
+                placeholder={t('reseller.confirm_its_you')}
                 inputClassName={inputCls(!!emailForm.formState.errors.current_password)}
               />
             </FormField>
             <div className="flex gap-3 justify-end pt-1">
               <Btn type="button" variant="secondary" onClick={() => { setShowEmail(false); emailForm.reset() }}>
-                Cancel
+                {t('common.cancel')}
               </Btn>
               <Btn type="submit" disabled={emailMutation.isPending}>
-                {emailMutation.isPending ? <><Spinner size={14} /> Sending…</> : 'Send Confirmation'}
+                {emailMutation.isPending ? <><Spinner size={14} /> {t('reseller.sending')}</> : t('reseller.send_confirmation')}
               </Btn>
             </div>
           </form>

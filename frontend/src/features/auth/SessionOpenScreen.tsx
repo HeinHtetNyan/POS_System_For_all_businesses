@@ -10,6 +10,7 @@ import { fmtDate, fmt, extractApiMsg, fmtDateTime } from '@/lib/utils'
 import { Btn, Spinner } from '@/components/ui/index'
 import { IconCash, IconAlert } from '@/components/icons'
 import type { CashierSession } from '@/shared/types'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 const QUICK_FLOATS = [50, 100, 200, 300, 500]
 
@@ -18,6 +19,7 @@ export default function SessionOpenScreen() {
   const { user } = useAuthStore()
   const { selectedBranch } = useTenantStore()
   const { setActiveSession } = useSessionStore()
+  const t = useLocaleStore(s => s.t)
 
   const [balance, setBalance] = useState('200.00')
   const [loading, setLoading] = useState(false)
@@ -31,7 +33,7 @@ export default function SessionOpenScreen() {
 
   async function handleOpen() {
     if (!selectedBranch) {
-      toast.error('Please select a branch before opening a session.')
+      toast.error(t('auth.session_open.select_branch_error'))
       return
     }
     setLoading(true)
@@ -41,10 +43,10 @@ export default function SessionOpenScreen() {
         opening_balance: numBalance.toFixed(2),
       })
       setActiveSession(session)
-      toast.success('Session opened successfully')
+      toast.success(t('auth.session_open.success'))
       navigate('/app/pos')
     } catch (err: unknown) {
-      const msg = extractApiMsg(err) ?? 'Failed to open session'
+      const msg = extractApiMsg(err) ?? t('auth.session_open.failed')
 
       // Extract existing session ID from error message and offer resume/close
       const match = msg.match(/Close session ([0-9a-f-]{36})/i)
@@ -87,29 +89,29 @@ export default function SessionOpenScreen() {
             <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 mb-4">
               <IconAlert width="28" height="28" />
             </div>
-            <h1 className="text-xl font-bold text-zinc-100">Session Already Open</h1>
-            <p className="text-zinc-500 text-sm mt-1">You have an existing open session at this branch</p>
+            <h1 className="text-xl font-bold text-zinc-100">{t('auth.session_open.already_open')}</h1>
+            <p className="text-zinc-500 text-sm mt-1">{t('auth.session_open.already_open_desc')}</p>
           </div>
 
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-5">
             {/* Session info */}
             <div className="rounded-xl border border-zinc-800 bg-zinc-950 divide-y divide-zinc-800">
               <div className="flex items-center justify-between px-4 py-3">
-                <span className="text-xs text-zinc-500">Session ID</span>
+                <span className="text-xs text-zinc-500">{t('auth.session_open.session_id')}</span>
                 <span className="font-mono text-xs text-amber-400">{existingSession.id.slice(0, 8)}…</span>
               </div>
               <div className="flex items-center justify-between px-4 py-3">
-                <span className="text-xs text-zinc-500">Opened At</span>
+                <span className="text-xs text-zinc-500">{t('auth.session_open.opened_at')}</span>
                 <span className="text-xs text-zinc-300">{fmtDateTime(existingSession.opened_at)}</span>
               </div>
               <div className="flex items-center justify-between px-4 py-3">
-                <span className="text-xs text-zinc-500">Opening Balance</span>
+                <span className="text-xs text-zinc-500">{t('auth.session_open.opening_balance')}</span>
                 <span className="font-mono text-xs text-zinc-200">{fmt(parseFloat(existingSession.opening_balance))}</span>
               </div>
             </div>
 
             <p className="text-xs text-zinc-500 text-center">
-              Continue using the open session or close it to start a new one.
+              {t('auth.session_open.continue_or_close')}
             </p>
 
             <div className="flex flex-col gap-3">
@@ -120,7 +122,7 @@ export default function SessionOpenScreen() {
                 onClick={() => navigate('/app/pos')}
               >
                 <IconCash width="18" height="18" />
-                Resume Session
+                {t('auth.session_open.resume_session')}
               </Btn>
               <Btn
                 variant="danger"
@@ -128,7 +130,7 @@ export default function SessionOpenScreen() {
                 fullWidth
                 onClick={() => navigate('/app/session-close')}
               >
-                Close This Session
+                {t('auth.session_open.close_this_session')}
               </Btn>
             </div>
           </div>
@@ -160,15 +162,15 @@ export default function SessionOpenScreen() {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 mb-4">
             <IconCash width="28" height="28" />
           </div>
-          <h1 className="text-xl font-bold text-zinc-100">Open Cash Register</h1>
-          <p className="text-zinc-500 text-sm mt-1">Enter your opening float to begin the session</p>
+          <h1 className="text-xl font-bold text-zinc-100">{t('auth.session_open.title')}</h1>
+          <p className="text-zinc-500 text-sm mt-1">{t('auth.session_open.subtitle')}</p>
         </div>
 
         {/* Branch warning */}
         {!selectedBranch && (
           <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-amber-950 border border-amber-800 text-amber-400 text-xs mb-4">
             <IconAlert width="14" height="14" className="flex-shrink-0" />
-            <span>No branch selected — pick one from the sidebar before opening a session.</span>
+            <span>{t('auth.session_open.no_branch_warning')}</span>
           </div>
         )}
 
@@ -197,7 +199,7 @@ export default function SessionOpenScreen() {
           {/* Opening balance */}
           <div>
             <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider block mb-2">
-              Opening Balance
+              {t('auth.session_open.opening_balance')}
             </label>
             <div className="relative flex items-center">
               <span className="absolute left-4 text-amber-500 text-lg font-bold pointer-events-none">$</span>
@@ -216,7 +218,7 @@ export default function SessionOpenScreen() {
 
           {/* Quick float buttons */}
           <div>
-            <p className="text-xs text-zinc-600 mb-2 uppercase tracking-wider font-medium">Quick Float</p>
+            <p className="text-xs text-zinc-600 mb-2 uppercase tracking-wider font-medium">{t('auth.session_open.quick_float')}</p>
             <div className="flex gap-2">
               {QUICK_FLOATS.map(amount => {
                 const active = numBalance === amount
@@ -246,9 +248,9 @@ export default function SessionOpenScreen() {
             disabled={loading || !selectedBranch}
           >
             {loading ? (
-              <><Spinner size={18} /> Opening Session…</>
+              <><Spinner size={18} /> {t('auth.session_open.opening')}</>
             ) : (
-              <><IconCash width="18" height="18" /> Open Session</>
+              <><IconCash width="18" height="18" /> {t('auth.session_open.open_session_btn')}</>
             )}
           </Btn>
         </div>

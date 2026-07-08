@@ -7,6 +7,7 @@ import {
 import { fmt, fmtDate } from '@/lib/utils'
 import { StatCard, Table, Th, Td } from '@/components/ui'
 import { analyticsService } from '@/services/analytics/analytics.service'
+import { useLocaleStore } from '@/i18n/localeStore'
 import {
   useAnalyticsFilters, AnalyticsFilters, ChartCard,
   CHART_COLORS, CHART_AXIS_TICK, CHART_TOOLTIP_STYLE, CHART_GRID_STROKE,
@@ -15,6 +16,7 @@ import {
 const PAGE_SIZE = 30
 
 export default function InventoryAnalyticsPage() {
+  const t = useLocaleStore(s => s.t)
   const filters = useAnalyticsFilters()
   const { from, to, branch, apiParams } = filters
   const [deadDays, setDeadDays] = useState(90)
@@ -76,7 +78,7 @@ export default function InventoryAnalyticsPage() {
     <div className="p-4 sm:p-6 space-y-5">
       {/* Header + Filters */}
       <div className="flex flex-col gap-3">
-        <h2 className="text-base font-semibold text-zinc-100">Inventory Analytics</h2>
+        <h2 className="text-base font-semibold text-zinc-100">{t('analytics.inventory_analytics_title')}</h2>
         <AnalyticsFilters {...filters} />
       </div>
 
@@ -88,15 +90,15 @@ export default function InventoryAnalyticsPage() {
           ))
         ) : (
           <>
-            <StatCard label="Inventory Value" value={fmt(valuation?.total_valuation ?? 0)} accent />
-            <StatCard label="Product Lines"   value={(valuation?.items.length ?? 0).toLocaleString()} />
+            <StatCard label={t('analytics.inventory_value')} value={fmt(valuation?.total_valuation ?? 0)} accent />
+            <StatCard label={t('analytics.product_lines')}   value={(valuation?.items.length ?? 0).toLocaleString()} />
             <StatCard
-              label="Low Stock Alerts"
+              label={t('analytics.low_stock_alerts')}
               value={lowStock.length.toLocaleString()}
               accent={lowStock.length > 0}
             />
             <StatCard
-              label="Dead Stock Items"
+              label={t('analytics.dead_stock_items')}
               value={deadStock.length.toLocaleString()}
               accent={deadStock.length > 0}
             />
@@ -106,7 +108,7 @@ export default function InventoryAnalyticsPage() {
 
       {/* Stock Movements Chart */}
       <ChartCard
-        title="Stock Movements"
+        title={t('analytics.stock_movements')}
         isLoading={movementsQ.isLoading}
         isEmpty={movementsData.length === 0}
       >
@@ -125,7 +127,7 @@ export default function InventoryAnalyticsPage() {
                 contentStyle={CHART_TOOLTIP_STYLE.contentStyle}
                 labelStyle={CHART_TOOLTIP_STYLE.labelStyle}
               />
-              <Bar dataKey="count" fill={CHART_COLORS.blue} radius={[4, 4, 0, 0]} name="Count" />
+              <Bar dataKey="count" fill={CHART_COLORS.blue} radius={[4, 4, 0, 0]} name={t('analytics.field_count')} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -134,18 +136,18 @@ export default function InventoryAnalyticsPage() {
       {/* Low Stock + Fast Moving */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ChartCard
-          title={`Low Stock (${lowStock.length})`}
+          title={`${t('status.low_stock')} (${lowStock.length})`}
           isLoading={lowStockQ.isLoading}
           isEmpty={lowStock.length === 0}
-          emptyMessage="No low stock items"
+          emptyMessage={t('analytics.no_low_stock_items')}
         >
           <Table>
             <thead>
               <tr>
-                <Th>Product</Th>
-                <Th>Branch</Th>
-                <Th right>On Hand</Th>
-                <Th right>Reorder Pt.</Th>
+                <Th>{t('products.col.product')}</Th>
+                <Th>{t('analytics.field_branch')}</Th>
+                <Th right>{t('analytics.field_on_hand')}</Th>
+                <Th right>{t('analytics.field_reorder_pt')}</Th>
               </tr>
             </thead>
             <tbody>
@@ -160,17 +162,17 @@ export default function InventoryAnalyticsPage() {
             </tbody>
           </Table>
           <div className="px-4 py-2.5 border-t border-zinc-800 flex items-center justify-between gap-3">
-            <p className="text-xs text-zinc-500">{lowStock.length === 0 ? '0 items' : `${(lowStockPage-1)*PAGE_SIZE+1}–${Math.min(lowStockPage*PAGE_SIZE, lowStock.length)} of ${lowStock.length}`}</p>
+            <p className="text-xs text-zinc-500">{lowStock.length === 0 ? `0 ${t('analytics.noun_items')}` : `${(lowStockPage-1)*PAGE_SIZE+1}–${Math.min(lowStockPage*PAGE_SIZE, lowStock.length)} ${t('analytics.of')} ${lowStock.length}`}</p>
             <div className="flex items-center gap-1">
-              <button onClick={() => setLowStockPage(p => Math.max(1, p-1))} disabled={lowStockPage===1} className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">‹ Prev</button>
+              <button onClick={() => setLowStockPage(p => Math.max(1, p-1))} disabled={lowStockPage===1} className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">{t('common.prev')}</button>
               <span className="text-xs text-zinc-500 px-2">{lowStockPage} / {lowStockTotalPages}</span>
-              <button onClick={() => setLowStockPage(p => Math.min(lowStockTotalPages, p+1))} disabled={lowStockPage>=lowStockTotalPages} className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">Next ›</button>
+              <button onClick={() => setLowStockPage(p => Math.min(lowStockTotalPages, p+1))} disabled={lowStockPage>=lowStockTotalPages} className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">{t('common.next')}</button>
             </div>
           </div>
         </ChartCard>
 
         <ChartCard
-          title="Fast Moving Products"
+          title={t('analytics.fast_moving_products')}
           isLoading={fastMovingQ.isLoading}
           isEmpty={fastMoving.length === 0}
         >
@@ -178,9 +180,9 @@ export default function InventoryAnalyticsPage() {
             <thead>
               <tr>
                 <Th>#</Th>
-                <Th>Product</Th>
-                <Th right>Qty Sold</Th>
-                <Th right>Orders</Th>
+                <Th>{t('products.col.product')}</Th>
+                <Th right>{t('analytics.field_qty_sold')}</Th>
+                <Th right>{t('analytics.field_orders')}</Th>
               </tr>
             </thead>
             <tbody>
@@ -195,11 +197,11 @@ export default function InventoryAnalyticsPage() {
             </tbody>
           </Table>
           <div className="px-4 py-2.5 border-t border-zinc-800 flex items-center justify-between gap-3">
-            <p className="text-xs text-zinc-500">{fastMoving.length === 0 ? '0 items' : `${(fastMovingPage-1)*PAGE_SIZE+1}–${Math.min(fastMovingPage*PAGE_SIZE, fastMoving.length)} of ${fastMoving.length}`}</p>
+            <p className="text-xs text-zinc-500">{fastMoving.length === 0 ? `0 ${t('analytics.noun_items')}` : `${(fastMovingPage-1)*PAGE_SIZE+1}–${Math.min(fastMovingPage*PAGE_SIZE, fastMoving.length)} ${t('analytics.of')} ${fastMoving.length}`}</p>
             <div className="flex items-center gap-1">
-              <button onClick={() => setFastMovingPage(p => Math.max(1, p-1))} disabled={fastMovingPage===1} className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">‹ Prev</button>
+              <button onClick={() => setFastMovingPage(p => Math.max(1, p-1))} disabled={fastMovingPage===1} className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">{t('common.prev')}</button>
               <span className="text-xs text-zinc-500 px-2">{fastMovingPage} / {fastMovingTotalPages}</span>
-              <button onClick={() => setFastMovingPage(p => Math.min(fastMovingTotalPages, p+1))} disabled={fastMovingPage>=fastMovingTotalPages} className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">Next ›</button>
+              <button onClick={() => setFastMovingPage(p => Math.min(fastMovingTotalPages, p+1))} disabled={fastMovingPage>=fastMovingTotalPages} className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">{t('common.next')}</button>
             </div>
           </div>
         </ChartCard>
@@ -207,10 +209,10 @@ export default function InventoryAnalyticsPage() {
 
       {/* Dead Stock */}
       <ChartCard
-        title={`Dead Stock — no sales in ${deadDays} days`}
+        title={`${t('analytics.dead_stock_no_sales_prefix')} ${deadDays} ${t('analytics.days_suffix')}`}
         isLoading={deadStockQ.isLoading}
         isEmpty={deadStock.length === 0}
-        emptyMessage="No dead stock items"
+        emptyMessage={t('analytics.no_dead_stock_items')}
         action={
           <select
             value={deadDays}
@@ -218,7 +220,7 @@ export default function InventoryAnalyticsPage() {
             className="bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-400 text-xs px-2 py-1 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20"
           >
             {[30, 60, 90, 180].map(d => (
-              <option key={d} value={d}>{d} days</option>
+              <option key={d} value={d}>{d} {t('analytics.days_suffix')}</option>
             ))}
           </select>
         }
@@ -226,11 +228,11 @@ export default function InventoryAnalyticsPage() {
         <Table>
           <thead>
             <tr>
-              <Th>Product</Th>
-              <Th>SKU</Th>
-              <Th right>On Hand</Th>
-              <Th right>Last Sold</Th>
-              <Th right>Days Idle</Th>
+              <Th>{t('products.col.product')}</Th>
+              <Th>{t('products.col.sku')}</Th>
+              <Th right>{t('analytics.field_on_hand')}</Th>
+              <Th right>{t('analytics.field_last_sold')}</Th>
+              <Th right>{t('analytics.field_days_idle')}</Th>
             </tr>
           </thead>
           <tbody>
@@ -239,7 +241,7 @@ export default function InventoryAnalyticsPage() {
                 <Td>{p.product_name}</Td>
                 <Td muted mono>{p.sku ?? '—'}</Td>
                 <Td right><span className="font-mono">{p.quantity_on_hand}</span></Td>
-                <Td right muted>{p.last_sold_at ? fmtDate(p.last_sold_at) : 'Never'}</Td>
+                <Td right muted>{p.last_sold_at ? fmtDate(p.last_sold_at) : t('analytics.never')}</Td>
                 <Td right>
                   <span className={`font-mono font-semibold ${p.days_without_sale > 180 ? 'text-red-400' : 'text-amber-400'}`}>
                     {p.days_without_sale}
@@ -250,29 +252,29 @@ export default function InventoryAnalyticsPage() {
           </tbody>
         </Table>
         <div className="px-4 py-2.5 border-t border-zinc-800 flex items-center justify-between gap-3">
-          <p className="text-xs text-zinc-500">{deadStock.length === 0 ? '0 items' : `${(deadStockPage-1)*PAGE_SIZE+1}–${Math.min(deadStockPage*PAGE_SIZE, deadStock.length)} of ${deadStock.length}`}</p>
+          <p className="text-xs text-zinc-500">{deadStock.length === 0 ? `0 ${t('analytics.noun_items')}` : `${(deadStockPage-1)*PAGE_SIZE+1}–${Math.min(deadStockPage*PAGE_SIZE, deadStock.length)} ${t('analytics.of')} ${deadStock.length}`}</p>
           <div className="flex items-center gap-1">
-            <button onClick={() => setDeadStockPage(p => Math.max(1, p-1))} disabled={deadStockPage===1} className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">‹ Prev</button>
+            <button onClick={() => setDeadStockPage(p => Math.max(1, p-1))} disabled={deadStockPage===1} className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">{t('common.prev')}</button>
             <span className="text-xs text-zinc-500 px-2">{deadStockPage} / {deadStockTotalPages}</span>
-            <button onClick={() => setDeadStockPage(p => Math.min(deadStockTotalPages, p+1))} disabled={deadStockPage>=deadStockTotalPages} className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">Next ›</button>
+            <button onClick={() => setDeadStockPage(p => Math.min(deadStockTotalPages, p+1))} disabled={deadStockPage>=deadStockTotalPages} className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">{t('common.next')}</button>
           </div>
         </div>
       </ChartCard>
 
       {/* Valuation Table */}
       <ChartCard
-        title="Inventory Valuation"
+        title={t('analytics.inventory_valuation')}
         isLoading={valuationQ.isLoading}
         isEmpty={valuationItems.length === 0}
       >
         <Table>
           <thead>
             <tr>
-              <Th>Product</Th>
-              <Th>SKU</Th>
-              <Th right>On Hand</Th>
-              <Th right>Cost Price</Th>
-              <Th right>Valuation</Th>
+              <Th>{t('products.col.product')}</Th>
+              <Th>{t('products.col.sku')}</Th>
+              <Th right>{t('analytics.field_on_hand')}</Th>
+              <Th right>{t('products.detail.cost')}</Th>
+              <Th right>{t('analytics.field_valuation')}</Th>
             </tr>
           </thead>
           <tbody>
@@ -288,11 +290,11 @@ export default function InventoryAnalyticsPage() {
           </tbody>
         </Table>
         <div className="px-4 py-2.5 border-t border-zinc-800 flex items-center justify-between gap-3">
-          <p className="text-xs text-zinc-500">{valuationItems.length === 0 ? '0 items' : `${(valuationPage-1)*PAGE_SIZE+1}–${Math.min(valuationPage*PAGE_SIZE, valuationItems.length)} of ${valuationItems.length}`}</p>
+          <p className="text-xs text-zinc-500">{valuationItems.length === 0 ? `0 ${t('analytics.noun_items')}` : `${(valuationPage-1)*PAGE_SIZE+1}–${Math.min(valuationPage*PAGE_SIZE, valuationItems.length)} ${t('analytics.of')} ${valuationItems.length}`}</p>
           <div className="flex items-center gap-1">
-            <button onClick={() => setValuationPage(p => Math.max(1, p-1))} disabled={valuationPage===1} className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">‹ Prev</button>
+            <button onClick={() => setValuationPage(p => Math.max(1, p-1))} disabled={valuationPage===1} className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">{t('common.prev')}</button>
             <span className="text-xs text-zinc-500 px-2">{valuationPage} / {valuationTotalPages}</span>
-            <button onClick={() => setValuationPage(p => Math.min(valuationTotalPages, p+1))} disabled={valuationPage>=valuationTotalPages} className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">Next ›</button>
+            <button onClick={() => setValuationPage(p => Math.min(valuationTotalPages, p+1))} disabled={valuationPage>=valuationTotalPages} className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">{t('common.next')}</button>
           </div>
         </div>
       </ChartCard>

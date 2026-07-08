@@ -1,7 +1,9 @@
 import { useRouteError, isRouteErrorResponse } from 'react-router-dom'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 export default function RouteErrorPage() {
   const error = useRouteError()
+  const t = useLocaleStore(s => s.t)
 
   const isChunkError =
     error instanceof Error &&
@@ -19,46 +21,46 @@ export default function RouteErrorPage() {
         {isChunkError ? (
           <>
             <div>
-              <h1 className="text-xl font-semibold text-zinc-100 mb-2">New version available</h1>
+              <h1 className="text-xl font-semibold text-zinc-100 mb-2">{t('errors.new_version_available')}</h1>
               <p className="text-sm text-zinc-400 leading-relaxed">
-                A newer version of the app was deployed. Reload to get the latest version.
+                {t('errors.new_version_desc')}
               </p>
             </div>
             <button
               onClick={() => window.location.reload()}
               className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-black text-sm font-semibold rounded-xl transition-colors"
             >
-              Reload App
+              {t('errors.reload_app')}
             </button>
           </>
         ) : is404 ? (
           <>
             <div>
-              <h1 className="text-xl font-semibold text-zinc-100 mb-2">Page not found</h1>
-              <p className="text-sm text-zinc-400">The page you're looking for doesn't exist.</p>
+              <h1 className="text-xl font-semibold text-zinc-100 mb-2">{t('errors.page_not_found')}</h1>
+              <p className="text-sm text-zinc-400">{t('errors.page_not_found_desc')}</p>
             </div>
             <a
               href="/"
               className="inline-block px-5 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 text-sm font-semibold rounded-xl transition-colors"
             >
-              Go Home
+              {t('errors.go_home')}
             </a>
           </>
         ) : (
           <>
             <div>
-              <h1 className="text-xl font-semibold text-zinc-100 mb-2">Something went wrong</h1>
+              <h1 className="text-xl font-semibold text-zinc-100 mb-2">{t('errors.something_went_wrong')}</h1>
               <p className="text-sm text-zinc-400 leading-relaxed">
                 {import.meta.env.DEV && error instanceof Error
                   ? error.message
-                  : 'An unexpected error occurred. Please reload the page.'}
+                  : t('errors.unexpected_error_reload')}
               </p>
             </div>
             <button
               onClick={() => window.location.reload()}
               className="px-5 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 text-sm font-semibold rounded-xl transition-colors"
             >
-              Reload Page
+              {t('errors.reload_page')}
             </button>
           </>
         )}

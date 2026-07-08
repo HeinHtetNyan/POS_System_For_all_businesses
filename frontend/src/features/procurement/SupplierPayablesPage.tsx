@@ -8,17 +8,18 @@ import { cn, fmt, fmtDate, fmtDateTime, timeAgo, extractApiMsg } from '@/lib/uti
 import { Btn, Table, Th, Td, Empty, Spinner, SectionHeader, StatCard, Badge } from '@/components/ui'
 import { procurementService } from '@/services/procurement/procurement.service'
 import { PayableStatusBadge, inputCls, FormField } from './procurementHelpers'
+import { useLocaleStore } from '@/i18n/localeStore'
 import type { SupplierPayableDetail } from '@/shared/types'
 
 const PAGE_SIZE = 30
 
 
-const makePaymentSchema = (maxAmount: number) => z.object({
-  payment_method:   z.string().min(1, 'Payment method required'),
+const makePaymentSchema = (maxAmount: number, t: (key: string) => string) => z.object({
+  payment_method:   z.string().min(1, t('procurement.validation_payment_method_required')),
   amount:           z.string().min(1)
-    .refine(v => parseFloat(v) > 0, 'Must be > 0')
-    .refine(v => parseFloat(v) <= maxAmount, `Cannot exceed the remaining balance (${maxAmount.toFixed(2)})`),
-  payment_date:     z.string().min(1, 'Date required'),
+    .refine(v => parseFloat(v) > 0, t('procurement.validation_must_be_positive'))
+    .refine(v => parseFloat(v) <= maxAmount, `${t('procurement.validation_cannot_exceed_remaining')} (${maxAmount.toFixed(2)})`),
+  payment_date:     z.string().min(1, t('procurement.validation_date_required')),
   reference_number: z.string(),
   notes:            z.string(),
 })
@@ -29,10 +30,11 @@ const PAYMENT_METHODS = ['CASH', 'BANK_TRANSFER', 'CHEQUE', 'CARD', 'MOBILE_PAYM
 
 function RecordPaymentModal({ payable, onClose }: { payable: SupplierPayableDetail; onClose: () => void }) {
   const qc = useQueryClient()
+  const t = useLocaleStore(s => s.t)
 
   const remainingAmount = parseFloat(payable.remaining_amount)
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<PaymentFormValues>({
-    resolver: zodResolver(makePaymentSchema(remainingAmount)),
+    resolver: zodResolver(makePaymentSchema(remainingAmount, t)),
     defaultValues: {
       payment_method:   'BANK_TRANSFER',
       amount:           remainingAmount.toFixed(2),
@@ -51,14 +53,14 @@ function RecordPaymentModal({ payable, onClose }: { payable: SupplierPayableDeta
       notes:            data.notes || undefined,
     }),
     onSuccess: (payment) => {
-      toast.success(`Payment of ${fmt(payment.amount)} recorded`)
+      toast.success(`${t('procurement.payment_of_prefix')} ${fmt(payment.amount)} ${t('procurement.payment_recorded_suffix')}`)
       qc.invalidateQueries({ queryKey: ['supplier-payables'] })
       qc.invalidateQueries({ queryKey: ['supplier-balance'] })
       qc.invalidateQueries({ queryKey: ['payable-detail', payable.id] })
       qc.invalidateQueries({ queryKey: ['purchase-order', payable.purchase_order_id] })
       onClose()
     },
-    onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to record payment'),
+    onError: (err) => toast.error(extractApiMsg(err) ?? t('procurement.failed_record_payment')),
   })
 
   const pending = isSubmitting || mutation.isPending
@@ -67,7 +69,7 @@ function RecordPaymentModal({ payable, onClose }: { payable: SupplierPayableDeta
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
       <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-sm shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
-          <h2 className="text-base font-semibold text-zinc-100">Record Payment</h2>
+          <h2 className="text-base font-semibold text-zinc-100">{t('procurement.record_payment')}</h2>
           <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-zinc-800 transition-colors">
             ✕
           </button>
@@ -76,16 +78,16 @@ function RecordPaymentModal({ payable, onClose }: { payable: SupplierPayableDeta
         <form onSubmit={handleSubmit(d => mutation.mutate(d))} className="p-5 space-y-4">
           <div className="bg-zinc-800/50 rounded-xl p-3 text-sm">
             <div className="flex justify-between">
-              <span className="text-zinc-500">Outstanding</span>
+              <span className="text-zinc-500">{t('procurement.outstanding')}</span>
               <span className="font-mono font-semibold text-amber-400">{fmt(payable.remaining_amount)}</span>
             </div>
             <div className="flex justify-between mt-1">
-              <span className="text-zinc-500">Total</span>
+              <span className="text-zinc-500">{t('procurement.col_total')}</span>
               <span className="font-mono text-zinc-400">{fmt(payable.total_amount)}</span>
             </div>
           </div>
 
-          <FormField label="Payment Method" error={errors.payment_method?.message} required>
+          <FormField label={t('procurement.payment_method')} error={errors.payment_method?.message} required>
             <select {...register('payment_method')} className={inputCls(!!errors.payment_method)}>
               {PAYMENT_METHODS.map(m => (
                 <option key={m} value={m}>{m.replace('_', ' ')}</option>
@@ -93,26 +95,26 @@ function RecordPaymentModal({ payable, onClose }: { payable: SupplierPayableDeta
             </select>
           </FormField>
 
-          <FormField label="Amount" error={errors.amount?.message} required>
+          <FormField label={t('procurement.amount')} error={errors.amount?.message} required>
             <input {...register('amount')} type="number" min="0.01" max={remainingAmount} step="0.01" className={inputCls(!!errors.amount)} />
           </FormField>
 
-          <FormField label="Payment Date" error={errors.payment_date?.message} required>
+          <FormField label={t('procurement.payment_date')} error={errors.payment_date?.message} required>
             <input {...register('payment_date')} type="date" className={inputCls(!!errors.payment_date)} />
           </FormField>
 
-          <FormField label="Reference Number">
+          <FormField label={t('procurement.reference_number')}>
             <input {...register('reference_number')} placeholder="TXN-12345" className={inputCls(false)} />
           </FormField>
 
-          <FormField label="Notes">
-            <textarea {...register('notes')} placeholder="Optional notes…" rows={2} className={`${inputCls(false)} resize-none`} />
+          <FormField label={t('procurement.notes')}>
+            <textarea {...register('notes')} placeholder={t('procurement.optional_notes_ellipsis_placeholder')} rows={2} className={`${inputCls(false)} resize-none`} />
           </FormField>
 
           <div className="flex gap-3 pt-1">
-            <Btn type="button" variant="secondary" onClick={onClose}>Cancel</Btn>
+            <Btn type="button" variant="secondary" onClick={onClose}>{t('common.cancel')}</Btn>
             <Btn type="submit" disabled={pending} fullWidth>
-              {pending ? <Spinner size={16} /> : 'Record Payment'}
+              {pending ? <Spinner size={16} /> : t('procurement.record_payment')}
             </Btn>
           </div>
         </form>
@@ -123,6 +125,7 @@ function RecordPaymentModal({ payable, onClose }: { payable: SupplierPayableDeta
 
 
 function PaymentHistoryRow({ payableId }: { payableId: string }) {
+  const t = useLocaleStore(s => s.t)
   const { data: detail, isLoading } = useQuery({
     queryKey: ['payable-detail', payableId],
     queryFn: () => procurementService.getPayable(payableId),
@@ -142,10 +145,10 @@ function PaymentHistoryRow({ payableId }: { payableId: string }) {
     <tr className="bg-zinc-800/30">
       <td colSpan={8} className="px-4 py-3">
         {!detail || detail.payments.length === 0 ? (
-          <p className="text-xs text-zinc-600">No payments recorded yet.</p>
+          <p className="text-xs text-zinc-600">{t('procurement.no_payments_recorded_yet')}</p>
         ) : (
           <div className="space-y-1">
-            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">Payment History</p>
+            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">{t('procurement.payment_history')}</p>
             {detail.payments.map(p => (
               <div key={p.id} className="flex items-center gap-3 text-xs bg-zinc-800 rounded-lg px-3 py-2 flex-wrap">
                 <span className="text-zinc-500">{fmtDate(p.payment_date)}</span>
@@ -153,7 +156,7 @@ function PaymentHistoryRow({ payableId }: { payableId: string }) {
                   {p.payment_method.replace('_', ' ')}
                 </Badge>
                 {p.reference_number && <span className="font-mono text-zinc-500">{p.reference_number}</span>}
-                {p.recorded_by_name && <span className="text-zinc-600">by {p.recorded_by_name}</span>}
+                {p.recorded_by_name && <span className="text-zinc-600">{t('procurement.by_prefix')} {p.recorded_by_name}</span>}
                 <span className="ml-auto font-mono font-semibold text-green-400">{fmt(p.amount)}</span>
               </div>
             ))}
@@ -166,6 +169,7 @@ function PaymentHistoryRow({ payableId }: { payableId: string }) {
 
 
 export default function SupplierPayablesPage() {
+  const t = useLocaleStore(s => s.t)
   const [status, setStatus]             = useState<string | undefined>(undefined)
   const [selMonth, setSelMonth] = useState(() => new Date().getMonth() + 1)
   const [selYear,  setSelYear]  = useState(() => new Date().getFullYear())
@@ -204,16 +208,16 @@ export default function SupplierPayablesPage() {
     <>
       <div className="flex flex-col h-full overflow-hidden">
         <SectionHeader
-          title="Payments"
-          subtitle={`${total} payable${total !== 1 ? 's' : ''}`}
+          title={t('procurement.payments_title')}
+          subtitle={`${total} ${t('procurement.payable_word')}${total !== 1 ? 's' : ''}`}
         />
 
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
           {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <StatCard label="Open Payables"    value={(openData?.total ?? 0).toLocaleString()} />
-            <StatCard label="Partially Paid"   value={(partialData?.total ?? 0).toLocaleString()} />
-            <StatCard label="Total Outstanding" value={fmt(outstanding)} accent={outstanding > 0} />
+            <StatCard label={t('procurement.stat_open_payables')}    value={(openData?.total ?? 0).toLocaleString()} />
+            <StatCard label={t('procurement.stat_partially_paid')}   value={(partialData?.total ?? 0).toLocaleString()} />
+            <StatCard label={t('procurement.stat_total_outstanding')} value={fmt(outstanding)} accent={outstanding > 0} />
           </div>
 
           {/* Month / Year selectors */}
@@ -223,7 +227,12 @@ export default function SupplierPayablesPage() {
               onChange={e => { setSelMonth(Number(e.target.value)); setPage(1) }}
               className="bg-zinc-900 border border-zinc-700 rounded-xl text-zinc-200 text-sm px-3 py-1.5 focus:outline-none focus:border-amber-500"
             >
-              {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m, i) => (
+              {[
+                t('procurement.month_january'), t('procurement.month_february'), t('procurement.month_march'),
+                t('procurement.month_april'), t('procurement.month_may'), t('procurement.month_june'),
+                t('procurement.month_july'), t('procurement.month_august'), t('procurement.month_september'),
+                t('procurement.month_october'), t('procurement.month_november'), t('procurement.month_december'),
+              ].map((m, i) => (
                 <option key={i + 1} value={i + 1}>{m}</option>
               ))}
             </select>
@@ -241,10 +250,10 @@ export default function SupplierPayablesPage() {
           {/* Status filters */}
           <div className="flex gap-1 flex-wrap">
             {([
-              { label: 'All',     value: undefined  },
-              { label: 'Open',    value: 'OPEN'     },
-              { label: 'Partial', value: 'PARTIAL'  },
-              { label: 'Paid',    value: 'PAID'     },
+              { label: t('procurement.filter_all'),        value: undefined  },
+              { label: t('procurement.payable_status_open'), value: 'OPEN'     },
+              { label: t('status.partial'),                  value: 'PARTIAL'  },
+              { label: t('status.paid'),                     value: 'PAID'     },
             ] as const).map(f => (
               <button
                 key={f.label}
@@ -268,20 +277,20 @@ export default function SupplierPayablesPage() {
             ) : payables.length === 0 ? (
               <Empty
                 icon={<span className="text-4xl">💳</span>}
-                title="No payables found"
-                subtitle="Payables are created automatically when purchase orders are approved and received"
+                title={t('procurement.no_payables_found')}
+                subtitle={t('procurement.no_payables_found_subtitle')}
               />
             ) : (
               <Table>
                 <thead>
                   <tr>
-                    <Th>Payable ID</Th>
-                    <Th>Supplier</Th>
-                    <Th>Status</Th>
-                    <Th right>Total</Th>
-                    <Th right>Paid</Th>
-                    <Th right>Remaining</Th>
-                    <Th>Created</Th>
+                    <Th>{t('procurement.col_payable_id')}</Th>
+                    <Th>{t('procurement.supplier')}</Th>
+                    <Th>{t('settings.status')}</Th>
+                    <Th right>{t('procurement.col_total')}</Th>
+                    <Th right>{t('status.paid')}</Th>
+                    <Th right>{t('procurement.col_remaining')}</Th>
+                    <Th>{t('procurement.col_created')}</Th>
                     <Th />
                   </tr>
                 </thead>
@@ -307,7 +316,7 @@ export default function SupplierPayablesPage() {
                         <Td muted>{timeAgo(p.created_at)}</Td>
                         <Td>
                           {p.status !== 'PAID' && (
-                            <Btn size="xs" onClick={e => { e.stopPropagation(); openPayModal(p.id) }}>Pay</Btn>
+                            <Btn size="xs" onClick={e => { e.stopPropagation(); openPayModal(p.id) }}>{t('procurement.pay')}</Btn>
                           )}
                         </Td>
                       </tr>
@@ -321,20 +330,20 @@ export default function SupplierPayablesPage() {
 
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-zinc-500">
-              {total === 0 ? '0 payables' : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, total)} of ${total}`}
+              {total === 0 ? t('procurement.zero_payables') : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, total)} ${t('procurement.of_word')} ${total}`}
             </p>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
                 className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              >‹ Prev</button>
+              >{t('common.prev')}</button>
               <span className="text-xs text-zinc-500 px-2">{page} / {totalPages}</span>
               <button
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page >= totalPages}
                 className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              >Next ›</button>
+              >{t('common.next')}</button>
             </div>
           </div>
         </div>

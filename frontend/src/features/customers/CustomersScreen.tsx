@@ -6,12 +6,14 @@ import { Btn, Badge, Table, Th, Td, Empty, Spinner, StatCard, SectionHeader } fr
 import { IconSearch, IconPlus, IconUser, IconChevRight, IconChevLeft } from '@/components/icons'
 import { customersService } from '@/services/customers/customers.service'
 import { useAuthStore } from '@/store/auth.store'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 const PAGE_SIZE = 20
 
 export default function CustomersScreen() {
   const navigate = useNavigate()
   const user = useAuthStore(s => s.user)
+  const t = useLocaleStore(s => s.t)
   // Cashiers get read-only lookup — creating/editing customers, notes,
   // payments and credit sales is manager+ (matches the backend's
   // require_manager_or_above gate on those endpoints).
@@ -48,12 +50,12 @@ export default function CustomersScreen() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <SectionHeader
-        title="Customers"
-        subtitle={`${total} customer${total !== 1 ? 's' : ''}`}
+        title={t('nav.customers')}
+        subtitle={`${total} ${t('customers.customer_word')}${total !== 1 ? t('customers.plural_suffix') : ''}`}
         action={
           canManageCustomers ? (
             <Btn size="sm" onClick={() => navigate('/app/customers/new')}>
-              <IconPlus width="14" height="14" /> New Customer
+              <IconPlus width="14" height="14" /> {t('customers.new_customer')}
             </Btn>
           ) : undefined
         }
@@ -63,10 +65,10 @@ export default function CustomersScreen() {
         <div className="p-4 sm:p-6 space-y-4">
           {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <StatCard label="Total"        value={total}              />
-            <StatCard label="Active"       value={activeCount}        />
-            <StatCard label="With Balance" value={withBalance}        />
-            <StatCard label="Outstanding"  value={fmt(totalOutstanding)} accent />
+            <StatCard label={t('customers.total')}        value={total}              />
+            <StatCard label={t('status.active')}       value={activeCount}        />
+            <StatCard label={t('customers.with_balance')} value={withBalance}        />
+            <StatCard label={t('customers.outstanding')}  value={fmt(totalOutstanding)} accent />
           </div>
 
           {/* Search + filters */}
@@ -79,15 +81,15 @@ export default function CustomersScreen() {
                 type="text"
                 value={rawSearch}
                 onChange={e => setRawSearch(e.target.value)}
-                placeholder="Search by name or phone…"
+                placeholder={t('customers.search_placeholder')}
                 className="w-full bg-zinc-900 border border-zinc-700 rounded-xl text-zinc-100 placeholder-zinc-600 text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 transition-all duration-150 py-2.5 pl-9 pr-3"
               />
             </div>
             <div className="flex gap-1">
               {([
-                { label: 'All',      value: undefined },
-                { label: 'Active',   value: true      },
-                { label: 'Inactive', value: false     },
+                { label: t('customers.filter_all'),      value: undefined },
+                { label: t('status.active'),   value: true      },
+                { label: t('status.inactive'), value: false     },
               ] as const).map(f => (
                 <button
                   key={f.label}
@@ -114,12 +116,12 @@ export default function CustomersScreen() {
             ) : customers.length === 0 ? (
               <Empty
                 icon={<IconUser width="40" height="40" />}
-                title="No customers found"
-                subtitle={rawSearch ? 'Try a different search term' : canManageCustomers ? 'Add your first customer to get started' : undefined}
+                title={t('customers.no_customers_found')}
+                subtitle={rawSearch ? t('customers.try_different_search') : canManageCustomers ? t('customers.add_first_customer') : undefined}
                 action={
                   canManageCustomers && !rawSearch ? (
                     <Btn size="sm" onClick={() => navigate('/app/customers/new')}>
-                      <IconPlus width="14" height="14" /> New Customer
+                      <IconPlus width="14" height="14" /> {t('customers.new_customer')}
                     </Btn>
                   ) : undefined
                 }
@@ -128,12 +130,12 @@ export default function CustomersScreen() {
               <Table>
                 <thead>
                   <tr>
-                    <Th>Customer</Th>
-                    <Th>Phone</Th>
-                    <Th>Email</Th>
-                    <Th right>Balance</Th>
-                    <Th>Status</Th>
-                    <Th>Updated</Th>
+                    <Th>{t('customers.customer_col')}</Th>
+                    <Th>{t('settings.phone')}</Th>
+                    <Th>{t('settings.email')}</Th>
+                    <Th right>{t('customers.balance')}</Th>
+                    <Th>{t('settings.status')}</Th>
+                    <Th>{t('customers.updated')}</Th>
                     <Th />
                   </tr>
                 </thead>
@@ -165,7 +167,7 @@ export default function CustomersScreen() {
                         </Td>
                         <Td>
                           <Badge variant={c.is_active ? 'success' : 'default'} dot size="xs">
-                            {c.is_active ? 'Active' : 'Inactive'}
+                            {c.is_active ? t('status.active') : t('status.inactive')}
                           </Badge>
                         </Td>
                         <Td muted>{timeAgo(c.updated_at)}</Td>
@@ -183,12 +185,12 @@ export default function CustomersScreen() {
           {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex items-center justify-between text-xs text-zinc-500">
-              <span>Page {page} of {totalPages} · {total} total</span>
+              <span>{t('customers.page_word')} {page} {t('customers.of')} {totalPages} · {total} {t('customers.total')}</span>
               <div className="flex gap-1">
-                <Btn variant="secondary" size="xs" disabled={page === 1} onClick={() => setPage(p => p - 1)} aria-label="Previous page">
+                <Btn variant="secondary" size="xs" disabled={page === 1} onClick={() => setPage(p => p - 1)} aria-label={t('customers.previous_page')}>
                   <IconChevLeft width="12" height="12" />
                 </Btn>
-                <Btn variant="secondary" size="xs" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} aria-label="Next page">
+                <Btn variant="secondary" size="xs" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} aria-label={t('customers.next_page')}>
                   <IconChevRight width="12" height="12" />
                 </Btn>
               </div>

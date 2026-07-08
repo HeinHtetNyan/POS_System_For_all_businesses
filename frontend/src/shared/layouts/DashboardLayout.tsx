@@ -32,13 +32,15 @@ interface NavItem {
   icon: ReactNode
   /** Hide this item on mobile-width browsers (< 768px). Tablet and wider still show it. */
   tabletOnly?: boolean
+  /** Extra route prefixes that should also count as "on this section" for the active-highlight (e.g. sibling routes reachable via in-page tabs). */
+  matchPrefixes?: string[]
 }
 
 const APP_NAV: NavItem[] = [
   { to: '/app/dashboard',     section: 'dashboard',     label: 'nav.dashboard',     icon: <span className="w-[18px] h-[18px] flex items-center justify-center text-base leading-none">🏠</span> },
   { to: '/app/pos',           section: 'pos',           label: 'nav.checkout',      icon: <IconPOS       width="18" height="18" />, tabletOnly: true },
   { to: '/app/sales',         section: 'sales',         label: 'nav.sales',         icon: <IconSales     width="18" height="18" /> },
-  { to: '/app/products',      section: 'products',      label: 'nav.products',      icon: <IconProducts  width="18" height="18" /> },
+  { to: '/app/products',      section: 'products',      label: 'nav.products',      icon: <IconProducts  width="18" height="18" />, matchPrefixes: ['/app/categories', '/app/brands'] },
   { to: '/app/inventory',     section: 'inventory',     label: 'nav.inventory',     icon: <IconInventory width="18" height="18" /> },
   { to: '/app/customers',     section: 'customers',     label: 'nav.customers',     icon: <span className="w-[18px] h-[18px] flex items-center justify-center text-base leading-none">👥</span> },
   { to: '/app/procurement',   section: 'procurement',   label: 'nav.procurement',   icon: <span className="w-[18px] h-[18px] flex items-center justify-center text-base leading-none">📦</span> },
@@ -54,6 +56,7 @@ const SUPER_ADMIN_NAV: NavItem[] = [
   { to: '/super-admin/resellers',        section: 'resellers',        label: 'nav.sa.resellers',        icon: <span className="w-[18px] h-[18px] flex items-center justify-center text-base leading-none">🤝</span> },
   { to: '/super-admin/plans',            section: 'plans',            label: 'nav.sa.plans',            icon: <span className="w-[18px] h-[18px] flex items-center justify-center text-base leading-none">📋</span> },
   { to: '/super-admin/payment-methods',  section: 'payment-methods',  label: 'nav.sa.payment_methods',  icon: <span className="w-[18px] h-[18px] flex items-center justify-center text-base leading-none">💳</span> },
+  { to: '/super-admin/app-downloads',    section: 'app-downloads',    label: 'nav.sa.app_downloads',    icon: <span className="w-[18px] h-[18px] flex items-center justify-center text-base leading-none">📲</span> },
   { to: '/super-admin/notifications',    section: 'notifications',    label: 'nav.sa.notifications',    icon: <span className="w-[18px] h-[18px] flex items-center justify-center text-base leading-none">🔔</span> },
   { to: '/super-admin/audit-logs',       section: 'audit-logs',       label: 'nav.sa.audit_logs',       icon: <span className="w-[18px] h-[18px] flex items-center justify-center text-base leading-none">📝</span> },
   { to: '/super-admin/reseller-finance', section: 'reseller-finance', label: 'nav.sa.reseller_finance', icon: <span className="w-[18px] h-[18px] flex items-center justify-center text-base leading-none">💰</span> },
@@ -72,6 +75,7 @@ interface DashboardLayoutProps {
 function SidebarContent({ navGroup, onClose, onSearch }: { navGroup: string; onClose?: () => void; onSearch?: () => void }) {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
+  const location = useLocation()
   const t = useLocaleStore(s => s.t)
   const timeFormat = usePreferencesStore(s => s.timeFormat)
 
@@ -126,13 +130,13 @@ function SidebarContent({ navGroup, onClose, onSearch }: { navGroup: string; onC
         const openSessions = await sessionService.getMyOpenSessions()
         if (openSessions.length === 1) {
           useSessionStore.getState().setActiveSession(openSessions[0])
-          toast.error('Please close your open cash register session before signing out.')
+          toast.error(t('shared.dashboard_layout.close_session_before_signout'))
           navigate('/app/session-close')
           return
         }
         if (openSessions.length > 1) {
           toast.error(
-            `You have ${openSessions.length} open cash register sessions across different branches. Please close them all before signing out.`,
+            `${t('shared.dashboard_layout.multiple_open_sessions_prefix')} ${openSessions.length} ${t('shared.dashboard_layout.multiple_open_sessions_suffix')}`,
           )
           return
         }
@@ -178,35 +182,38 @@ function SidebarContent({ navGroup, onClose, onSearch }: { navGroup: string; onC
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {filtered.map(item => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.to.endsWith('/pos')}
-            onClick={onClose}
-            className={({ isActive }) => cn(
-              'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 text-left',
-              item.tabletOnly && 'hidden md:flex',
-              isActive
-                ? 'bg-amber-500/15 border border-amber-500/30 text-amber-400'
-                : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 border border-transparent',
-            )}
-          >
-            {({ isActive }) => (
-              <>
-                <span className={cn('flex-shrink-0', isActive ? 'text-amber-400' : 'text-zinc-500')}>
-                  {item.icon}
-                </span>
-                <span className="flex-1">{t(item.label)}</span>
-                {item.section === 'notifications' && unreadCount > 0 && (
-                  <span className="w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">
-                    {unreadCount > 9 ? '9+' : unreadCount}
+        {filtered.map(item => {
+          const extraActive = item.matchPrefixes?.some(p => location.pathname.startsWith(p)) ?? false
+          return (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.to.endsWith('/pos')}
+              onClick={onClose}
+              className={({ isActive }) => cn(
+                'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 text-left',
+                item.tabletOnly && 'hidden md:flex',
+                (isActive || extraActive)
+                  ? 'bg-amber-500/15 border border-amber-500/30 text-amber-400'
+                  : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 border border-transparent',
+              )}
+            >
+              {({ isActive }) => (
+                <>
+                  <span className={cn('flex-shrink-0', (isActive || extraActive) ? 'text-amber-400' : 'text-zinc-500')}>
+                    {item.icon}
                   </span>
-                )}
-              </>
-            )}
-          </NavLink>
-        ))}
+                  <span className="flex-1">{t(item.label)}</span>
+                  {item.section === 'notifications' && unreadCount > 0 && (
+                    <span className="w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </>
+              )}
+            </NavLink>
+          )
+        })}
       </nav>
 
       {/* Footer */}

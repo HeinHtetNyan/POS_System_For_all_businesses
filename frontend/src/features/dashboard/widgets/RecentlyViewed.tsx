@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useWorkspaceStore } from '@/store/workspace.store'
+import { useLocaleStore } from '@/i18n/localeStore'
 import { DashboardSection } from './DashboardSection'
 
 const TYPE_ICONS: Record<string, string> = {
@@ -11,14 +12,15 @@ const TYPE_ICONS: Record<string, string> = {
 
 export function RecentlyViewed() {
   const navigate = useNavigate()
+  const t = useLocaleStore(s => s.t)
   const { recentItems, clearRecent } = useWorkspaceStore()
 
   if (!recentItems.length) return null
 
   return (
     <DashboardSection
-      title="Recently Viewed"
-      action={{ label: 'Clear', onClick: clearRecent }}
+      title={t('dash.recently_viewed')}
+      action={{ label: t('pos.clear'), onClick: clearRecent }}
     >
       <div className="flex flex-wrap gap-2">
         {recentItems.slice(0, 8).map(item => (

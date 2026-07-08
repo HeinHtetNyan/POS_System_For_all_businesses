@@ -1,5 +1,6 @@
 import { memo } from 'react'
 import { cn, fmt } from '@/lib/utils'
+import { useLocaleStore } from '@/i18n/localeStore'
 import type { Product } from '@/types'
 
 interface ProductCardProps {
@@ -12,6 +13,7 @@ const LOW_STOCK_THRESHOLD = 10
 
 // Stable product objects + numeric cartQty = pure value comparison → safe to memo
 function ProductCard({ product, cartQty, onAdd }: ProductCardProps) {
+  const t = useLocaleStore(s => s.t)
   const isOutOfStock = product.stock === 0
   const isLowStock = product.stock > 0 && product.stock <= LOW_STOCK_THRESHOLD
   const inCart = cartQty > 0
@@ -67,15 +69,15 @@ function ProductCard({ product, cartQty, onAdd }: ProductCardProps) {
             </span>
             {product.promoLabel && (
               <span className="font-mono text-[9px] text-zinc-500 line-through leading-tight">
-                orig.
+                {t('pos.orig')}
               </span>
             )}
           </div>
           {isOutOfStock ? (
-            <span className="text-[10px] font-semibold text-red-500">Out</span>
+            <span className="text-[10px] font-semibold text-red-500">{t('pos.out')}</span>
           ) : isLowStock ? (
             <span className="text-[10px] font-semibold text-amber-500">
-              {product.stock} left
+              {product.stock} {t('pos.left')}
             </span>
           ) : null}
         </div>

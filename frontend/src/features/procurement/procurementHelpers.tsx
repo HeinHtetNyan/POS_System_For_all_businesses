@@ -1,43 +1,53 @@
 import { type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 
 type BadgeVariant = 'default' | 'success' | 'danger' | 'warning' | 'info' | 'purple' | 'orange'
 
-const PO_STATUS_MAP: Record<string, { variant: BadgeVariant; label: string }> = {
-  DRAFT:              { variant: 'default', label: 'Draft'            },
-  SUBMITTED:          { variant: 'purple',  label: 'Pending Approval' },
-  APPROVED:           { variant: 'info',    label: 'Ordered'          },
-  PARTIALLY_RECEIVED: { variant: 'warning', label: 'Partial Receipt'  },
-  RECEIVED:           { variant: 'success', label: 'Received'         },
-  CANCELLED:          { variant: 'danger',  label: 'Cancelled'        },
+function poStatusMap(t: (key: string) => string): Record<string, { variant: BadgeVariant; label: string }> {
+  return {
+    DRAFT:              { variant: 'default', label: t('procurement.po_status_draft')            },
+    SUBMITTED:          { variant: 'purple',  label: t('procurement.po_status_pending_approval') },
+    APPROVED:           { variant: 'info',    label: t('procurement.po_status_ordered')          },
+    PARTIALLY_RECEIVED: { variant: 'warning', label: t('procurement.po_status_partial_receipt')  },
+    RECEIVED:           { variant: 'success', label: t('procurement.po_status_received')         },
+    CANCELLED:          { variant: 'danger',  label: t('status.cancelled')                       },
+  }
 }
 
-const PAYABLE_STATUS_MAP: Record<string, { variant: BadgeVariant; label: string }> = {
-  OPEN:    { variant: 'warning', label: 'Open'    },
-  PARTIAL: { variant: 'info',    label: 'Partial' },
-  PAID:    { variant: 'success', label: 'Paid'    },
+function payableStatusMap(t: (key: string) => string): Record<string, { variant: BadgeVariant; label: string }> {
+  return {
+    OPEN:    { variant: 'warning', label: t('procurement.payable_status_open') },
+    PARTIAL: { variant: 'info',    label: t('status.partial')                 },
+    PAID:    { variant: 'success', label: t('status.paid')                    },
+  }
 }
 
-const SUPPLIER_STATUS_MAP: Record<string, { variant: BadgeVariant; label: string }> = {
-  ACTIVE:   { variant: 'success', label: 'Active'   },
-  INACTIVE: { variant: 'default', label: 'Inactive' },
-  BLOCKED:  { variant: 'danger',  label: 'Blocked'  },
+function supplierStatusMap(t: (key: string) => string): Record<string, { variant: BadgeVariant; label: string }> {
+  return {
+    ACTIVE:   { variant: 'success', label: t('status.active')                    },
+    INACTIVE: { variant: 'default', label: t('status.inactive')                  },
+    BLOCKED:  { variant: 'danger',  label: t('procurement.supplier_status_blocked') },
+  }
 }
 
 export function POStatusBadge({ status }: { status: string }) {
-  const m = PO_STATUS_MAP[status] ?? { variant: 'default' as BadgeVariant, label: status }
+  const t = useLocaleStore(s => s.t)
+  const m = poStatusMap(t)[status] ?? { variant: 'default' as BadgeVariant, label: status }
   return <Badge variant={m.variant} size="xs" dot>{m.label}</Badge>
 }
 
 export function PayableStatusBadge({ status }: { status: string }) {
-  const m = PAYABLE_STATUS_MAP[status] ?? { variant: 'default' as BadgeVariant, label: status }
+  const t = useLocaleStore(s => s.t)
+  const m = payableStatusMap(t)[status] ?? { variant: 'default' as BadgeVariant, label: status }
   return <Badge variant={m.variant} size="xs" dot>{m.label}</Badge>
 }
 
 export function SupplierStatusBadge({ status }: { status: string }) {
-  const m = SUPPLIER_STATUS_MAP[status] ?? { variant: 'default' as BadgeVariant, label: status }
+  const t = useLocaleStore(s => s.t)
+  const m = supplierStatusMap(t)[status] ?? { variant: 'default' as BadgeVariant, label: status }
   return <Badge variant={m.variant} size="xs" dot>{m.label}</Badge>
 }
 

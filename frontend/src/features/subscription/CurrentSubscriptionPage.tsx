@@ -9,6 +9,7 @@ import { subscriptionsService } from '@/services/subscriptions/subscriptions.ser
 import type { Plan } from '@/shared/types'
 import { ProofActionType } from '@/shared/types'
 import { LatestProofCard, PendingProofBadge, UpcomingPlanCard } from '@/features/reseller/ResellerReferralPage'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'danger' | 'info' | 'default'> = {
   ACTIVE:    'success',
@@ -18,29 +19,31 @@ const STATUS_VARIANT: Record<string, 'success' | 'warning' | 'danger' | 'info' |
   CANCELLED: 'default',
 }
 
-const RESUBMIT_LABEL: Record<ProofActionType, string> = {
-  [ProofActionType.UPGRADE]:            'Upgrade Payment',
-  [ProofActionType.DOWNGRADE]:          'Downgrade Payment',
-  [ProofActionType.RENEWAL]:            'Renewal Payment',
-  [ProofActionType.INITIAL_ACTIVATION]: 'Payment',
+function resubmitLabel(actionType: ProofActionType, t: (k: string) => string) {
+  const map: Record<ProofActionType, string> = {
+    [ProofActionType.UPGRADE]:            t('subscription.upgrade_payment'),
+    [ProofActionType.DOWNGRADE]:          t('subscription.downgrade_payment'),
+    [ProofActionType.RENEWAL]:            t('subscription.renewal_payment'),
+    [ProofActionType.INITIAL_ACTIVATION]: t('subscription.payment'),
+  }
+  return map[actionType]
 }
 
-const FEATURE_LABELS: Record<string, string> = {
-  users:         'Users / Staff',
-  branches:      'Branches',
-  products:      'Products',
-  customers:     'Customers',
-  devices:       'Devices',
-  analytics:     'Analytics',
-  procurement:   'Procurement',
-  sync:          'Offline Sync',
-  notifications: 'Notifications',
-  sales:         'Sales',
-  inventory:     'Inventory',
-  pos:           'POS / Checkout',
-}
-
-function featureLabel(code: string) {
+function featureLabel(code: string, t: (k: string) => string) {
+  const FEATURE_LABELS: Record<string, string> = {
+    users:         t('subscription.feature_users'),
+    branches:      t('subscription.feature_branches'),
+    products:      t('subscription.feature_products'),
+    customers:     t('subscription.feature_customers'),
+    devices:       t('subscription.feature_devices'),
+    analytics:     t('subscription.feature_analytics'),
+    procurement:   t('subscription.feature_procurement'),
+    sync:          t('subscription.feature_offline_sync'),
+    notifications: t('subscription.feature_notifications'),
+    sales:         t('subscription.feature_sales'),
+    inventory:     t('subscription.feature_inventory'),
+    pos:           t('subscription.feature_pos'),
+  }
   return FEATURE_LABELS[code] ?? code.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 
@@ -49,6 +52,7 @@ function UsageRow({
 }: {
   featureCode: string; enabled: boolean; limitValue: number | null; used: number | null; isOverride: boolean
 }) {
+  const t = useLocaleStore(s => s.t)
   const isUnlimited = limitValue === null || limitValue === 0
   const pct = (!isUnlimited && used !== null && limitValue) ? Math.min((used / limitValue) * 100, 100) : 0
   let barColor = 'bg-green-500'
@@ -67,13 +71,13 @@ function UsageRow({
               <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M18 6 6 18M6 6l12 12" /></svg>
             )}
           </span>
-          <span className="text-sm text-zinc-200">{featureLabel(featureCode)}</span>
+          <span className="text-sm text-zinc-200">{featureLabel(featureCode, t)}</span>
           {isOverride && (
-            <span className="text-[10px] font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded px-1.5 py-0.5 flex-shrink-0">Override</span>
+            <span className="text-[10px] font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded px-1.5 py-0.5 flex-shrink-0">{t('subscription.override')}</span>
           )}
         </div>
         <span className="text-xs text-zinc-500 flex-shrink-0 tabular-nums">
-          {!enabled ? 'Disabled' : isUnlimited ? (used !== null ? `${used} used · ∞` : '∞ Unlimited') : used !== null ? `${used} / ${limitValue}` : `Limit: ${limitValue}`}
+          {!enabled ? t('subscription.disabled') : isUnlimited ? (used !== null ? `${used} ${t('subscription.used_suffix')} · ∞` : `∞ ${t('subscription.unlimited')}`) : used !== null ? `${used} / ${limitValue}` : `${t('subscription.limit_prefix')} ${limitValue}`}
         </span>
       </div>
       {enabled && !isUnlimited && limitValue !== null && used !== null && (
@@ -81,7 +85,7 @@ function UsageRow({
           <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
             <div className={cn('h-full rounded-full transition-all', barColor)} style={{ width: `${pct}%` }} />
           </div>
-          {pct >= 90 && <p className="text-[10px] text-red-400 mt-1">Approaching limit</p>}
+          {pct >= 90 && <p className="text-[10px] text-red-400 mt-1">{t('subscription.approaching_limit')}</p>}
         </div>
       )}
     </div>
@@ -96,6 +100,7 @@ function ProofSubmitModal({
   actionType: ProofActionType; targetPlanId?: string
 }) {
   const qc = useQueryClient()
+  const t = useLocaleStore(s => s.t)
   const [amount, setAmount] = useState('')
   const [currency, setCurrency] = useState('MMK')
   const [file, setFile] = useState<File | null>(null)
@@ -111,7 +116,7 @@ function ProofSubmitModal({
       qc.invalidateQueries({ queryKey: ['subscription', 'proofs'] })
       setDone(true)
     },
-    onError: err => toast.error(extractApiMsg(err) ?? 'Failed to submit proof'),
+    onError: err => toast.error(extractApiMsg(err) ?? t('subscription.failed_to_submit_proof')),
   })
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -119,9 +124,9 @@ function ProofSubmitModal({
     setFileError(null); setUploadedUrl(null); setUploadProgress('idle')
     if (!f) { setFile(null); return }
     if (!['image/jpeg', 'image/png', 'application/pdf'].includes(f.type)) {
-      setFileError('Only JPG, PNG, or PDF files are accepted'); setFile(null); return
+      setFileError(t('subscription.file_type_error')); setFile(null); return
     }
-    if (f.size > 10 * 1024 * 1024) { setFileError('File must be under 10 MB'); setFile(null); return }
+    if (f.size > 10 * 1024 * 1024) { setFileError(t('subscription.file_size_error_10mb')); setFile(null); return }
     setFile(f)
   }
 
@@ -135,7 +140,7 @@ function ProofSubmitModal({
         setUploadedUrl(proofUrl); setUploadProgress('done')
       } catch (err: unknown) {
         setUploadProgress('idle')
-        toast.error(extractApiMsg(err) ?? 'File upload failed')
+        toast.error(extractApiMsg(err) ?? t('subscription.file_upload_failed'))
         return
       }
     }
@@ -156,10 +161,10 @@ function ProofSubmitModal({
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
           <div>
-            <h3 className="text-base font-semibold text-zinc-100">{done ? 'Request Submitted' : title}</h3>
+            <h3 className="text-base font-semibold text-zinc-100">{done ? t('subscription.request_submitted') : title}</h3>
             {!done && subtitle && <p className="text-xs text-zinc-500 mt-0.5">{subtitle}</p>}
           </div>
-          <button onClick={onClose} aria-label="Close" className="text-zinc-500 hover:text-zinc-200 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-800">
+          <button onClick={onClose} aria-label={t('common.close')} className="text-zinc-500 hover:text-zinc-200 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-800">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
           </button>
         </div>
@@ -170,12 +175,12 @@ function ProofSubmitModal({
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-green-400"><polyline points="20 6 9 17 4 12" /></svg>
               </div>
               <div>
-                <p className="text-base font-semibold text-zinc-100">Proof Submitted</p>
-                <p className="text-sm text-zinc-400 mt-1">Our team will review your payment and process your request. Track status under Billing &gt; Payment Proofs.</p>
+                <p className="text-base font-semibold text-zinc-100">{t('subscription.proof_submitted')}</p>
+                <p className="text-sm text-zinc-400 mt-1">{t('subscription.track_status_billing_proofs')}</p>
               </div>
             </div>
             <div className="px-5 py-4 border-t border-zinc-800 flex justify-center">
-              <Btn size="sm" onClick={onClose}>Done</Btn>
+              <Btn size="sm" onClick={onClose}>{t('subscription.done')}</Btn>
             </div>
           </>
         ) : (
@@ -183,16 +188,16 @@ function ProofSubmitModal({
             <div className="p-5 space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Amount Paid *</label>
+                  <label className="block text-xs text-zinc-400 mb-1">{t('subscription.amount_paid_required')}</label>
                   <input type="number" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" className={inp} />
                 </div>
                 <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Currency</label>
-                  <input type="text" value={currency} onChange={e => setCurrency(e.target.value)} placeholder="Kyats" className={inp} />
+                  <label className="block text-xs text-zinc-400 mb-1">{t('settings.currency')}</label>
+                  <input type="text" value={currency} onChange={e => setCurrency(e.target.value)} placeholder={t('currency.mmk')} className={inp} />
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-zinc-400 mb-1">Receipt File * (JPG, PNG, PDF — max 10 MB)</label>
+                <label className="block text-xs text-zinc-400 mb-1">{t('subscription.receipt_file_required')} (JPG, PNG, PDF — {t('subscription.max_size_prefix')} 10 MB)</label>
                 <label className="block w-full cursor-pointer">
                   <input type="file" accept="image/jpeg,image/png,application/pdf" onChange={handleFileChange} className="sr-only" />
                   <div className={cn('w-full border-2 border-dashed rounded-xl px-4 py-5 text-center transition-colors',
@@ -200,10 +205,10 @@ function ProofSubmitModal({
                     {file ? (
                       <div>
                         <p className="text-sm text-zinc-200 font-medium truncate">{file.name}</p>
-                        <p className="text-xs text-zinc-500 mt-0.5">{(file.size / 1024).toFixed(0)} KB · {uploadProgress === 'done' ? <span className="text-green-400">Uploaded</span> : <span className="text-zinc-400">Click to change</span>}</p>
+                        <p className="text-xs text-zinc-500 mt-0.5">{(file.size / 1024).toFixed(0)} KB · {uploadProgress === 'done' ? <span className="text-green-400">{t('subscription.uploaded')}</span> : <span className="text-zinc-400">{t('subscription.click_to_change')}</span>}</p>
                       </div>
                     ) : (
-                      <p className="text-sm text-zinc-500">Click to select a receipt file</p>
+                      <p className="text-sm text-zinc-500">{t('subscription.click_to_select_receipt')}</p>
                     )}
                   </div>
                 </label>
@@ -211,9 +216,9 @@ function ProofSubmitModal({
               </div>
             </div>
             <div className="px-5 py-4 border-t border-zinc-800 flex gap-2 justify-end">
-              <Btn variant="secondary" size="sm" onClick={onClose} disabled={busy}>Cancel</Btn>
+              <Btn variant="secondary" size="sm" onClick={onClose} disabled={busy}>{t('common.cancel')}</Btn>
               <Btn size="sm" disabled={!amount || !file || busy} onClick={handleSubmit}>
-                {uploadProgress === 'uploading' ? 'Uploading…' : submitMutation.isPending ? 'Submitting…' : 'Submit Proof'}
+                {uploadProgress === 'uploading' ? t('subscription.uploading') : submitMutation.isPending ? t('subscription.submitting') : t('subscription.submit_proof')}
               </Btn>
             </div>
           </>
@@ -229,6 +234,7 @@ function PlanPickerModal({
 }: {
   mode: 'upgrade' | 'downgrade'; currentPlan: Plan; onClose: () => void; onConfirm: (planId: string) => void
 }) {
+  const t = useLocaleStore(s => s.t)
   const { data, isLoading } = useQuery({
     queryKey: ['plans'],
     queryFn: () => subscriptionsService.listPlans({ page_size: 50 }),
@@ -244,12 +250,14 @@ function PlanPickerModal({
     (mode === 'upgrade' ? Number(p.price) > currentPrice : Number(p.price) < currentPrice),
   )
 
+  const modeLabel = mode === 'upgrade' ? t('subscription.upgrade') : t('subscription.downgrade')
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
-          <h3 className="text-base font-semibold text-zinc-100 capitalize">{mode} Plan</h3>
-          <button onClick={onClose} aria-label="Close" className="text-zinc-500 hover:text-zinc-200 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-800">
+          <h3 className="text-base font-semibold text-zinc-100">{modeLabel} {t('subscription.plan')}</h3>
+          <button onClick={onClose} aria-label={t('common.close')} className="text-zinc-500 hover:text-zinc-200 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-800">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
           </button>
         </div>
@@ -257,22 +265,22 @@ function PlanPickerModal({
           {isLoading ? (
             <div className="flex justify-center py-8"><Spinner size={24} /></div>
           ) : plans.length === 0 ? (
-            <p className="text-zinc-500 text-sm text-center py-6">No {mode} plans available</p>
+            <p className="text-zinc-500 text-sm text-center py-6">{t('subscription.no_x_plans_available_prefix')} {modeLabel.toLowerCase()} {t('subscription.no_x_plans_available_suffix')}</p>
           ) : (
             plans.map(plan => (
               <button key={plan.id} onClick={() => setSelected(plan.id)}
                 className={cn('w-full text-left px-4 py-3 rounded-xl border transition-all',
                   selected === plan.id ? 'border-amber-500 bg-amber-500/10' : 'border-zinc-700 hover:border-zinc-600 bg-zinc-800')}>
                 <p className="text-sm font-medium text-zinc-100">{plan.name}</p>
-                <p className="text-xs text-zinc-500 mt-0.5">{Number(plan.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {plan.currency === 'MMK' ? 'Kyats' : plan.currency} / {plan.billing_cycle.toLowerCase()}</p>
+                <p className="text-xs text-zinc-500 mt-0.5">{Number(plan.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {plan.currency === 'MMK' ? t('currency.mmk') : plan.currency} / {plan.billing_cycle.toLowerCase()}</p>
               </button>
             ))
           )}
         </div>
         <div className="px-5 py-4 border-t border-zinc-800 flex gap-2 justify-end">
-          <Btn variant="secondary" size="sm" onClick={onClose}>Cancel</Btn>
+          <Btn variant="secondary" size="sm" onClick={onClose}>{t('common.cancel')}</Btn>
           <Btn size="sm" disabled={!selected} onClick={() => selected && onConfirm(selected)}>
-            Confirm {mode}
+            {t('subscription.confirm_prefix')} {modeLabel}
           </Btn>
         </div>
       </div>
@@ -283,6 +291,7 @@ function PlanPickerModal({
 // 2-step modal for Trial/Referral users: pick plan → upload payment proof
 function RequestUpgradeModal({ currentPlan, onClose }: { currentPlan: Plan; onClose: () => void }) {
   const qc = useQueryClient()
+  const t = useLocaleStore(s => s.t)
   const [step, setStep] = useState<'plan' | 'proof' | 'done'>('plan')
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null)
   const [amount, setAmount] = useState('')
@@ -308,7 +317,7 @@ function RequestUpgradeModal({ currentPlan, onClose }: { currentPlan: Plan; onCl
       qc.invalidateQueries({ queryKey: ['subscription', 'proofs'] })
       setStep('done')
     },
-    onError: err => toast.error(extractApiMsg(err) ?? 'Failed to submit'),
+    onError: err => toast.error(extractApiMsg(err) ?? t('subscription.failed_to_submit')),
   })
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -316,9 +325,9 @@ function RequestUpgradeModal({ currentPlan, onClose }: { currentPlan: Plan; onCl
     setFileError(null); setUploadedUrl(null); setUploadProgress('idle')
     if (!f) { setFile(null); return }
     if (!['image/jpeg', 'image/png', 'application/pdf'].includes(f.type)) {
-      setFileError('Only JPG, PNG, or PDF files are accepted'); setFile(null); return
+      setFileError(t('subscription.file_type_error')); setFile(null); return
     }
-    if (f.size > 10 * 1024 * 1024) { setFileError('File must be under 10 MB'); setFile(null); return }
+    if (f.size > 10 * 1024 * 1024) { setFileError(t('subscription.file_size_error_10mb')); setFile(null); return }
     setFile(f)
   }
 
@@ -332,7 +341,7 @@ function RequestUpgradeModal({ currentPlan, onClose }: { currentPlan: Plan; onCl
         setUploadedUrl(proofUrl); setUploadProgress('done')
       } catch (err: unknown) {
         setUploadProgress('idle')
-        toast.error(extractApiMsg(err) ?? 'File upload failed')
+        toast.error(extractApiMsg(err) ?? t('subscription.file_upload_failed'))
         return
       }
     }
@@ -354,13 +363,13 @@ function RequestUpgradeModal({ currentPlan, onClose }: { currentPlan: Plan; onCl
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
           <div>
             <h3 className="text-base font-semibold text-zinc-100">
-              {step === 'plan' ? 'Choose a Plan' : step === 'proof' ? 'Submit Payment Proof' : 'Request Submitted'}
+              {step === 'plan' ? t('subscription.choose_a_plan') : step === 'proof' ? t('subscription.submit_payment_proof') : t('subscription.request_submitted')}
             </h3>
             {step !== 'done' && (
-              <p className="text-xs text-zinc-500 mt-0.5">Step {step === 'plan' ? '1' : '2'} of 2</p>
+              <p className="text-xs text-zinc-500 mt-0.5">{t('subscription.step_prefix')} {step === 'plan' ? '1' : '2'} {t('subscription.step_of_2_suffix')}</p>
             )}
           </div>
-          <button onClick={onClose} aria-label="Close" className="text-zinc-500 hover:text-zinc-200 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-800">
+          <button onClick={onClose} aria-label={t('common.close')} className="text-zinc-500 hover:text-zinc-200 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-800">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
           </button>
         </div>
@@ -371,22 +380,22 @@ function RequestUpgradeModal({ currentPlan, onClose }: { currentPlan: Plan; onCl
               {plansLoading ? (
                 <div className="flex justify-center py-8"><Spinner size={24} /></div>
               ) : plans.length === 0 ? (
-                <p className="text-zinc-500 text-sm text-center py-6">No paid plans available at the moment</p>
+                <p className="text-zinc-500 text-sm text-center py-6">{t('subscription.no_paid_plans_available')}</p>
               ) : (
                 plans.map(plan => (
                   <button key={plan.id} onClick={() => setSelectedPlan(plan)}
                     className={cn('w-full text-left px-4 py-3 rounded-xl border transition-all',
                       selectedPlan?.id === plan.id ? 'border-amber-500 bg-amber-500/10' : 'border-zinc-700 hover:border-zinc-600 bg-zinc-800')}>
                     <p className="text-sm font-medium text-zinc-100">{plan.name}</p>
-                    <p className="text-xs text-zinc-500 mt-0.5">{Number(plan.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {plan.currency === 'MMK' ? 'Kyats' : plan.currency} / {plan.billing_cycle.toLowerCase()}</p>
+                    <p className="text-xs text-zinc-500 mt-0.5">{Number(plan.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {plan.currency === 'MMK' ? t('currency.mmk') : plan.currency} / {plan.billing_cycle.toLowerCase()}</p>
                     {plan.description && <p className="text-xs text-zinc-600 mt-0.5">{plan.description}</p>}
                   </button>
                 ))
               )}
             </div>
             <div className="px-5 py-4 border-t border-zinc-800 flex gap-2 justify-end">
-              <Btn variant="secondary" size="sm" onClick={onClose}>Cancel</Btn>
-              <Btn size="sm" disabled={!selectedPlan} onClick={() => setStep('proof')}>Next →</Btn>
+              <Btn variant="secondary" size="sm" onClick={onClose}>{t('common.cancel')}</Btn>
+              <Btn size="sm" disabled={!selectedPlan} onClick={() => setStep('proof')}>{t('common.next')}</Btn>
             </div>
           </>
         )}
@@ -396,25 +405,25 @@ function RequestUpgradeModal({ currentPlan, onClose }: { currentPlan: Plan; onCl
             <div className="p-5 space-y-4">
               <div className="bg-zinc-800/50 rounded-xl px-4 py-3 flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-zinc-500">Upgrading to</p>
+                  <p className="text-xs text-zinc-500">{t('subscription.upgrading_to')}</p>
                   <p className="text-sm font-semibold text-amber-400">{selectedPlan?.name}</p>
                 </div>
                 <p className="text-sm text-zinc-300">
-                  {Number(selectedPlan?.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {selectedPlan?.currency === 'MMK' ? 'Kyats' : selectedPlan?.currency} / {selectedPlan?.billing_cycle.toLowerCase()}
+                  {Number(selectedPlan?.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {selectedPlan?.currency === 'MMK' ? t('currency.mmk') : selectedPlan?.currency} / {selectedPlan?.billing_cycle.toLowerCase()}
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Amount Paid *</label>
+                  <label className="block text-xs text-zinc-400 mb-1">{t('subscription.amount_paid_required')}</label>
                   <input type="number" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" className={inp} />
                 </div>
                 <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Currency</label>
-                  <input type="text" value={currency} onChange={e => setCurrency(e.target.value)} placeholder="Kyats" className={inp} />
+                  <label className="block text-xs text-zinc-400 mb-1">{t('settings.currency')}</label>
+                  <input type="text" value={currency} onChange={e => setCurrency(e.target.value)} placeholder={t('currency.mmk')} className={inp} />
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-zinc-400 mb-1">Receipt File * (JPG, PNG, PDF — max 10 MB)</label>
+                <label className="block text-xs text-zinc-400 mb-1">{t('subscription.receipt_file_required')} (JPG, PNG, PDF — {t('subscription.max_size_prefix')} 10 MB)</label>
                 <label className="block w-full cursor-pointer">
                   <input type="file" accept="image/jpeg,image/png,application/pdf" onChange={handleFileChange} className="sr-only" />
                   <div className={`w-full border-2 border-dashed rounded-xl px-4 py-5 text-center transition-colors ${
@@ -425,11 +434,11 @@ function RequestUpgradeModal({ currentPlan, onClose }: { currentPlan: Plan; onCl
                         <p className="text-sm text-zinc-200 font-medium truncate">{file.name}</p>
                         <p className="text-xs text-zinc-500 mt-0.5">
                           {(file.size / 1024).toFixed(0)} KB ·{' '}
-                          {uploadProgress === 'done' ? <span className="text-green-400">Uploaded</span> : <span className="text-zinc-400">Click to change</span>}
+                          {uploadProgress === 'done' ? <span className="text-green-400">{t('subscription.uploaded')}</span> : <span className="text-zinc-400">{t('subscription.click_to_change')}</span>}
                         </p>
                       </div>
                     ) : (
-                      <p className="text-sm text-zinc-500">Click to select a receipt file</p>
+                      <p className="text-sm text-zinc-500">{t('subscription.click_to_select_receipt')}</p>
                     )}
                   </div>
                 </label>
@@ -437,9 +446,9 @@ function RequestUpgradeModal({ currentPlan, onClose }: { currentPlan: Plan; onCl
               </div>
             </div>
             <div className="px-5 py-4 border-t border-zinc-800 flex gap-2 justify-end">
-              <Btn variant="secondary" size="sm" onClick={() => setStep('plan')} disabled={busy}>← Back</Btn>
+              <Btn variant="secondary" size="sm" onClick={() => setStep('plan')} disabled={busy}>{t('subscription.back')}</Btn>
               <Btn size="sm" disabled={!amount || !file || busy} onClick={handleSubmitProof}>
-                {uploadProgress === 'uploading' ? 'Uploading…' : submitMutation.isPending ? 'Submitting…' : 'Submit Request'}
+                {uploadProgress === 'uploading' ? t('subscription.uploading') : submitMutation.isPending ? t('subscription.submitting') : t('subscription.submit_request')}
               </Btn>
             </div>
           </>
@@ -452,17 +461,17 @@ function RequestUpgradeModal({ currentPlan, onClose }: { currentPlan: Plan; onCl
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-green-400"><polyline points="20 6 9 17 4 12" /></svg>
               </div>
               <div>
-                <p className="text-base font-semibold text-zinc-100">Request Submitted</p>
+                <p className="text-base font-semibold text-zinc-100">{t('subscription.request_submitted')}</p>
                 <p className="text-sm text-zinc-400 mt-1">
-                  Your upgrade request to <span className="text-amber-400 font-medium">{selectedPlan?.name}</span> has been submitted.
+                  {t('subscription.upgrade_request_to_prefix')} <span className="text-amber-400 font-medium">{selectedPlan?.name}</span> {t('subscription.upgrade_request_submitted_suffix')}
                 </p>
                 <p className="text-xs text-zinc-500 mt-2">
-                  Our team will review your payment proof and activate your new plan. You can track the status in the Billing tab.
+                  {t('subscription.track_status_billing_tab')}
                 </p>
               </div>
             </div>
             <div className="px-5 py-4 border-t border-zinc-800 flex justify-center">
-              <Btn size="sm" onClick={onClose}>Done</Btn>
+              <Btn size="sm" onClick={onClose}>{t('subscription.done')}</Btn>
             </div>
           </>
         )}
@@ -473,6 +482,7 @@ function RequestUpgradeModal({ currentPlan, onClose }: { currentPlan: Plan; onCl
 
 export default function CurrentSubscriptionPage() {
   const user = useAuthStore(s => s.user)
+  const t = useLocaleStore(s => s.t)
   const qc = useQueryClient()
   const [modal, setModal] = useState<'upgrade' | 'downgrade' | 'request-upgrade' | 'renew-proof' | 'resubmit-proof' | null>(null)
   const [upgradePlanId, setUpgradePlanId] = useState<string | null>(null)
@@ -516,10 +526,10 @@ export default function CurrentSubscriptionPage() {
     mutationFn: (planId: string) => subscriptionsService.downgrade(planId),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['subscription'] })
-      toast.success(data.message ?? 'Downgrade scheduled for end of billing period.')
+      toast.success(data.message ?? t('subscription.downgrade_scheduled'))
       setModal(null)
     },
-    onError: err => toast.error(extractApiMsg(err) ?? 'Failed to schedule downgrade'),
+    onError: err => toast.error(extractApiMsg(err) ?? t('subscription.failed_to_schedule_downgrade')),
   })
 
   if (isLoading) return <div className="flex items-center justify-center h-full"><Spinner size={28} /></div>
@@ -527,8 +537,8 @@ export default function CurrentSubscriptionPage() {
   if (error || !sub) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3 p-6">
-        <p className="text-zinc-400 text-sm">No active subscription found.</p>
-        <p className="text-zinc-600 text-xs text-center max-w-xs">Contact your administrator to activate a subscription for this account.</p>
+        <p className="text-zinc-400 text-sm">{t('subscription.no_active_subscription_found')}</p>
+        <p className="text-zinc-600 text-xs text-center max-w-xs">{t('subscription.contact_admin_to_activate')}</p>
       </div>
     )
   }
@@ -597,16 +607,16 @@ export default function CurrentSubscriptionPage() {
       {modal === 'renew-proof' && (
         sub?.pending_downgrade_plan_id ? (
           <ProofSubmitModal
-            title={`Pay for ${pendingDowngradePlan?.name ?? 'Downgrade Plan'}`}
-            subtitle={`Submit payment for your new plan. It activates when your current plan expires${sub.expires_at ? ` (${fmtDate(sub.expires_at)})` : ''}.`}
+            title={`${t('subscription.pay_for_prefix')} ${pendingDowngradePlan?.name ?? t('subscription.downgrade_plan')}`}
+            subtitle={`${t('subscription.submit_payment_new_plan_desc')}${sub.expires_at ? ` (${fmtDate(sub.expires_at)})` : ''}.`}
             actionType={ProofActionType.DOWNGRADE}
             targetPlanId={sub.pending_downgrade_plan_id}
             onClose={() => setModal(null)}
           />
         ) : (
           <ProofSubmitModal
-            title="Submit Renewal Payment Proof"
-            subtitle="Upload your payment receipt to complete the renewal process."
+            title={t('subscription.submit_renewal_payment_proof')}
+            subtitle={t('subscription.upload_receipt_renewal_desc')}
             actionType={ProofActionType.RENEWAL}
             onClose={() => setModal(null)}
           />
@@ -614,8 +624,8 @@ export default function CurrentSubscriptionPage() {
       )}
       {upgradePlanId && (
         <ProofSubmitModal
-          title="Submit Upgrade Payment Proof"
-          subtitle="Upload your payment receipt to complete the upgrade process."
+          title={t('subscription.submit_upgrade_payment_proof')}
+          subtitle={t('subscription.upload_receipt_upgrade_desc')}
           actionType={ProofActionType.UPGRADE}
           targetPlanId={upgradePlanId}
           onClose={() => setUpgradePlanId(null)}
@@ -623,11 +633,11 @@ export default function CurrentSubscriptionPage() {
       )}
       {modal === 'resubmit-proof' && latestProof?.status === 'REJECTED' && (
         <ProofSubmitModal
-          title={`Resubmit ${RESUBMIT_LABEL[latestProof.action_type ?? ProofActionType.INITIAL_ACTIVATION]} Proof`}
+          title={`${t('subscription.resubmit_prefix')} ${resubmitLabel(latestProof.action_type ?? ProofActionType.INITIAL_ACTIVATION, t)} ${t('subscription.proof_suffix')}`}
           subtitle={
             latestProof.target_plan_name
-              ? `Your previous proof for ${latestProof.target_plan_name} was rejected${latestProof.review_notes ? `: "${latestProof.review_notes}"` : ''}. Upload a new receipt to try again.`
-              : `Your previous proof was rejected${latestProof.review_notes ? `: "${latestProof.review_notes}"` : ''}. Upload a new receipt to try again.`
+              ? `${t('subscription.previous_proof_for_prefix')} ${latestProof.target_plan_name} ${t('subscription.was_rejected_suffix')}${latestProof.review_notes ? `: "${latestProof.review_notes}"` : ''}. ${t('subscription.upload_new_receipt_retry')}`
+              : `${t('subscription.previous_proof_was_rejected')}${latestProof.review_notes ? `: "${latestProof.review_notes}"` : ''}. ${t('subscription.upload_new_receipt_retry')}`
           }
           actionType={latestProof.action_type ?? ProofActionType.INITIAL_ACTIVATION}
           targetPlanId={latestProof.target_plan_id ?? undefined}
@@ -641,43 +651,43 @@ export default function CurrentSubscriptionPage() {
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div>
-                <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Current Plan</p>
+                <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">{t('subscription.current_plan')}</p>
                 <h2 className="text-2xl font-bold text-zinc-100">{plan.name}</h2>
                 <p className="text-sm text-zinc-400 mt-1">{plan.description ?? plan.code}</p>
               </div>
               <div className="flex flex-col items-end gap-1.5">
                 <Badge variant={STATUS_VARIANT[sub.status] ?? 'default'} size="md" dot>{sub.status}</Badge>
                 {isReferralPlan && (
-                  <span className="text-[10px] font-semibold text-purple-400 bg-purple-500/10 border border-purple-500/30 rounded px-1.5 py-0.5">Referral Trial</span>
+                  <span className="text-[10px] font-semibold text-purple-400 bg-purple-500/10 border border-purple-500/30 rounded px-1.5 py-0.5">{t('subscription.referral_trial')}</span>
                 )}
               </div>
             </div>
 
             <div className="mt-4 pt-4 border-t border-zinc-800 grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
               <div>
-                <p className="text-zinc-500 text-xs mb-0.5">Price</p>
+                <p className="text-zinc-500 text-xs mb-0.5">{t('products.col.price')}</p>
                 <p className="text-zinc-100 font-medium">
-                  {Number(plan.price) === 0 ? 'Free' : `${Number(plan.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${plan.currency === 'MMK' ? 'Kyats' : plan.currency}`}
+                  {Number(plan.price) === 0 ? t('subscription.free') : `${Number(plan.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${plan.currency === 'MMK' ? t('currency.mmk') : plan.currency}`}
                   {Number(plan.price) > 0 && <span className="text-zinc-500 text-xs ml-1">/ {plan.billing_cycle.toLowerCase()}</span>}
                 </p>
               </div>
               <div>
-                <p className="text-zinc-500 text-xs mb-0.5">Started</p>
+                <p className="text-zinc-500 text-xs mb-0.5">{t('subscription.started')}</p>
                 <p className="text-zinc-100">{fmtDate(sub.started_at)}</p>
               </div>
               <div>
-                <p className="text-zinc-500 text-xs mb-0.5">Expires</p>
-                <p className="text-zinc-100">{sub.expires_at ? fmtDate(sub.expires_at) : 'Never'}</p>
+                <p className="text-zinc-500 text-xs mb-0.5">{t('subscription.expires')}</p>
+                <p className="text-zinc-100">{sub.expires_at ? fmtDate(sub.expires_at) : t('subscription.never')}</p>
               </div>
               {isTrial && sub.trial_ends_at && (
                 <div>
-                  <p className="text-zinc-500 text-xs mb-0.5">Trial Ends</p>
+                  <p className="text-zinc-500 text-xs mb-0.5">{t('subscription.trial_ends')}</p>
                   <p className="text-amber-400">{fmtDate(sub.trial_ends_at)}</p>
                 </div>
               )}
               <div>
-                <p className="text-zinc-500 text-xs mb-0.5">Auto-Renew</p>
-                <p className={sub.auto_renew ? 'text-green-400' : 'text-zinc-500'}>{sub.auto_renew ? 'Enabled' : 'Disabled'}</p>
+                <p className="text-zinc-500 text-xs mb-0.5">{t('subscription.auto_renew')}</p>
+                <p className={sub.auto_renew ? 'text-green-400' : 'text-zinc-500'}>{sub.auto_renew ? t('subscription.enabled') : t('subscription.disabled')}</p>
               </div>
             </div>
           </div>
@@ -695,8 +705,8 @@ export default function CurrentSubscriptionPage() {
           {entitlementItems.length > 0 && (
             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
               <div className="px-4 py-3 border-b border-zinc-800">
-                <p className="text-sm font-semibold text-zinc-100">Usage &amp; Limits</p>
-                <p className="text-xs text-zinc-500 mt-0.5">Current usage against your plan limits</p>
+                <p className="text-sm font-semibold text-zinc-100">{t('subscription.usage_and_limits')}</p>
+                <p className="text-xs text-zinc-500 mt-0.5">{t('subscription.usage_against_plan_limits')}</p>
               </div>
               <div className="divide-y divide-zinc-800">
                 {entitlementItems.map(e => (
@@ -719,7 +729,7 @@ export default function CurrentSubscriptionPage() {
               <LatestProofCard proof={latestProof} />
               {isOwner && latestProof.status === 'REJECTED' && (
                 <Btn size="sm" className="mt-3" onClick={() => setModal('resubmit-proof')}>
-                  Resubmit Proof
+                  {t('subscription.resubmit_proof')}
                 </Btn>
               )}
             </div>
@@ -728,15 +738,15 @@ export default function CurrentSubscriptionPage() {
           {/* Actions */}
           {isOwner && (
             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
-              <h3 className="text-sm font-semibold text-zinc-100 mb-1">Actions</h3>
+              <h3 className="text-sm font-semibold text-zinc-100 mb-1">{t('subscription.actions')}</h3>
               {isReferralOrTrial && (
                 <p className="text-xs text-zinc-500 mb-3">
-                  To upgrade to a paid plan, submit a payment proof. Our team will review and activate your plan.
+                  {t('subscription.upgrade_to_paid_plan_desc')}
                 </p>
               )}
               {isExpired && Number(plan.price) > 0 && (
                 <p className="text-xs text-zinc-500 mb-3">
-                  Your <span className="text-zinc-300">{plan.name}</span> subscription has expired. Submit your payment proof to reactivate it, or request an upgrade to a different plan.
+                  {t('subscription.your_prefix')} <span className="text-zinc-300">{plan.name}</span> {t('subscription.subscription_expired_desc')}
                 </p>
               )}
               <div className="flex flex-wrap gap-2">
@@ -746,7 +756,7 @@ export default function CurrentSubscriptionPage() {
                     <PendingProofBadge />
                   ) : (
                     <Btn size="sm" onClick={() => setModal('request-upgrade')}>
-                      Request Upgrade
+                      {t('subscription.request_upgrade')}
                     </Btn>
                   )
                 )}
@@ -758,10 +768,10 @@ export default function CurrentSubscriptionPage() {
                   ) : (
                     <>
                       <Btn size="sm" onClick={() => setModal('renew-proof')}>
-                        Pay to Reactivate
+                        {t('subscription.pay_to_reactivate')}
                       </Btn>
                       <Btn variant="secondary" size="sm" onClick={() => setModal('request-upgrade')}>
-                        Switch Plan
+                        {t('subscription.switch_plan')}
                       </Btn>
                     </>
                   )
@@ -775,7 +785,7 @@ export default function CurrentSubscriptionPage() {
                         <PendingProofBadge />
                       ) : (
                         <Btn size="sm" onClick={() => setModal('upgrade')}>
-                          Upgrade Plan
+                          {t('subscription.upgrade_plan')}
                         </Btn>
                       )
                     )}
@@ -786,7 +796,7 @@ export default function CurrentSubscriptionPage() {
                         upgrade lands, discarding it. */}
                     {hasLowerPlan && !sub.pending_downgrade_plan_id && pendingProofType !== ProofActionType.UPGRADE && (
                       <Btn variant="secondary" size="sm" onClick={() => setModal('downgrade')} disabled={downgradeMutation.isPending}>
-                        Downgrade Plan
+                        {t('subscription.downgrade_plan')}
                       </Btn>
                     )}
                     {sub.pending_downgrade_plan_id ? (
@@ -794,11 +804,11 @@ export default function CurrentSubscriptionPage() {
                         <PendingProofBadge />
                       ) : downgradeProofApproved || Number(pendingDowngradePlan?.price ?? -1) === 0 ? (
                         <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-green-500/10 border border-green-500/30 text-green-400">
-                          Downgrade to {pendingDowngradePlan?.name ?? 'lower plan'} scheduled{sub.expires_at ? ` for ${fmtDate(sub.expires_at)}` : ''}
+                          {t('subscription.downgrade_to_prefix')} {pendingDowngradePlan?.name ?? t('subscription.lower_plan')} {t('subscription.scheduled_suffix')}{sub.expires_at ? ` ${t('subscription.for_date_prefix')} ${fmtDate(sub.expires_at)}` : ''}
                         </span>
                       ) : (
                         <Btn variant="secondary" size="sm" onClick={() => setModal('renew-proof')}>
-                          Pay for {pendingDowngradePlan?.name ?? 'Downgrade Plan'}
+                          {t('subscription.pay_for_prefix')} {pendingDowngradePlan?.name ?? t('subscription.downgrade_plan')}
                         </Btn>
                       )
                     ) : (
@@ -806,7 +816,7 @@ export default function CurrentSubscriptionPage() {
                         <PendingProofBadge />
                       ) : (
                         <Btn variant="secondary" size="sm" onClick={() => setModal('renew-proof')}>
-                          Renew Now
+                          {t('subscription.renew_now')}
                         </Btn>
                       )
                     )}

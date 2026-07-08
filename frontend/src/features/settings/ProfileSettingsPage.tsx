@@ -11,6 +11,7 @@ import { ROLE_LABELS, ROLE_BADGE_STYLES } from '@/shared/constants/rbac'
 import { usersService } from '@/services/users/users.service'
 import { authService } from '@/services/auth/auth.service'
 import { useAuthStore } from '@/store/auth.store'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 function inputCls(err = false, disabled = false) {
   return cn(
@@ -31,37 +32,44 @@ function FormField({ label, error, children }: { label: string; error?: string; 
   )
 }
 
-const profileSchema = z.object({
-  first_name: z.string().min(1, 'Required'),
-  last_name:  z.string().min(1, 'Required'),
-  phone:      z.string().optional(),
-})
-type ProfileForm = z.infer<typeof profileSchema>
+function makeProfileSchema(t: (k: string) => string) {
+  return z.object({
+    first_name: z.string().min(1, t('settings.profile.required')),
+    last_name:  z.string().min(1, t('settings.profile.required')),
+    phone:      z.string().optional(),
+  })
+}
+type ProfileForm = z.infer<ReturnType<typeof makeProfileSchema>>
 
-const passwordSchema = z.object({
-  current_password: z.string().min(1, 'Required'),
-  new_password: newPasswordZodSchema,
-  confirm_password: z.string().min(1, 'Required'),
-}).refine(d => d.new_password === d.confirm_password, {
-  message: PASSWORDS_DO_NOT_MATCH_MESSAGE,
-  path: ['confirm_password'],
-})
-type PasswordForm = z.infer<typeof passwordSchema>
+function makePasswordSchema(t: (k: string) => string) {
+  return z.object({
+    current_password: z.string().min(1, t('settings.profile.required')),
+    new_password: newPasswordZodSchema,
+    confirm_password: z.string().min(1, t('settings.profile.required')),
+  }).refine(d => d.new_password === d.confirm_password, {
+    message: PASSWORDS_DO_NOT_MATCH_MESSAGE,
+    path: ['confirm_password'],
+  })
+}
+type PasswordForm = z.infer<ReturnType<typeof makePasswordSchema>>
 
-const emailSchema = z.object({
-  new_email: z.string().min(1, 'Required').email('Enter a valid email address'),
-  current_password: z.string().min(1, 'Required'),
-})
-type EmailForm = z.infer<typeof emailSchema>
+function makeEmailSchema(t: (k: string) => string) {
+  return z.object({
+    new_email: z.string().min(1, t('settings.profile.required')).email(t('settings.profile.invalid_email')),
+    current_password: z.string().min(1, t('settings.profile.required')),
+  })
+}
+type EmailForm = z.infer<ReturnType<typeof makeEmailSchema>>
 
 export default function ProfileSettingsPage() {
   const user = useAuthStore(s => s.user)
+  const t = useLocaleStore(s => s.t)
   const [showPassword, setShowPassword] = useState(false)
   const [showEmail, setShowEmail] = useState(false)
   const [isEditingProfile, setIsEditingProfile] = useState(false)
 
   const profileForm = useForm<ProfileForm>({
-    resolver: zodResolver(profileSchema),
+    resolver: zodResolver(makeProfileSchema(t)),
     defaultValues: {
       first_name: user?.first_name ?? '',
       last_name:  user?.last_name ?? '',
@@ -70,47 +78,47 @@ export default function ProfileSettingsPage() {
   })
 
   const passwordForm = useForm<PasswordForm>({
-    resolver: zodResolver(passwordSchema),
+    resolver: zodResolver(makePasswordSchema(t)),
     defaultValues: { current_password: '', new_password: '', confirm_password: '' },
   })
 
   const emailForm = useForm<EmailForm>({
-    resolver: zodResolver(emailSchema),
+    resolver: zodResolver(makeEmailSchema(t)),
     defaultValues: { new_email: '', current_password: '' },
   })
 
   const profileMutation = useMutation({
     mutationFn: (data: ProfileForm) => usersService.update(user!.id, data),
     onSuccess: (updatedUser) => {
-      toast.success('Profile updated')
+      toast.success(t('settings.profile.save_success'))
       // The logged-in user lives in this Zustand store, not React Query —
       // invalidating a query key here was a no-op and left stale name/phone
       // showing elsewhere in the app until the next login.
       useAuthStore.getState().setUser(updatedUser)
       setIsEditingProfile(false)
     },
-    onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to update profile'),
+    onError: (err) => toast.error(extractApiMsg(err) ?? t('settings.profile.save_error')),
   })
 
   const passwordMutation = useMutation({
     mutationFn: (data: PasswordForm) =>
       authService.changePassword({ current_password: data.current_password, new_password: data.new_password }),
     onSuccess: () => {
-      toast.success('Password changed successfully')
+      toast.success(t('settings.profile.password_changed'))
       passwordForm.reset()
       setShowPassword(false)
     },
-    onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to change password'),
+    onError: (err) => toast.error(extractApiMsg(err) ?? t('settings.profile.password_change_error')),
   })
 
   const emailMutation = useMutation({
     mutationFn: (data: EmailForm) => authService.requestEmailChange(data.new_email, data.current_password),
     onSuccess: (res) => {
-      toast.success(res.message ?? 'Check your new email for a confirmation link.')
+      toast.success(res.message ?? t('settings.profile.email_sent_default'))
       emailForm.reset()
       setShowEmail(false)
     },
-    onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to request email change'),
+    onError: (err) => toast.error(extractApiMsg(err) ?? t('settings.profile.email_change_error')),
   })
 
   if (!user) return null
@@ -136,11 +144,11 @@ export default function ProfileSettingsPage() {
             {user.role === 'BUSINESS_OWNER' && (
               user.email_verified_at ? (
                 <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-green-400">
-                  ✓ Verified
+                  ✓ {t('settings.profile.verified')}
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-red-400">
-                  ✗ Email Unverified
+                  ✗ {t('settings.profile.email_unverified')}
                 </span>
               )
             )}
@@ -157,22 +165,22 @@ export default function ProfileSettingsPage() {
       {/* Edit Profile */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
         <div className="px-5 py-3.5 border-b border-zinc-800">
-          <h3 className="text-sm font-semibold text-zinc-100">Edit Profile</h3>
-          <p className="text-xs text-zinc-500 mt-0.5">Update your name and phone number</p>
+          <h3 className="text-sm font-semibold text-zinc-100">{t('settings.profile.title_edit')}</h3>
+          <p className="text-xs text-zinc-500 mt-0.5">{t('settings.profile.edit_desc')}</p>
         </div>
         <form
           onSubmit={profileForm.handleSubmit(d => profileMutation.mutate(d))}
           className="p-5 space-y-4"
         >
           <div className="grid grid-cols-2 gap-3">
-            <FormField label="First Name" error={profileForm.formState.errors.first_name?.message}>
+            <FormField label={t('settings.profile.first_name')} error={profileForm.formState.errors.first_name?.message}>
               <input
                 {...profileForm.register('first_name')}
                 disabled={!isEditingProfile}
                 className={inputCls(!!profileForm.formState.errors.first_name, !isEditingProfile)}
               />
             </FormField>
-            <FormField label="Last Name" error={profileForm.formState.errors.last_name?.message}>
+            <FormField label={t('settings.profile.last_name')} error={profileForm.formState.errors.last_name?.message}>
               <input
                 {...profileForm.register('last_name')}
                 disabled={!isEditingProfile}
@@ -180,20 +188,20 @@ export default function ProfileSettingsPage() {
               />
             </FormField>
           </div>
-          <FormField label="Phone" error={profileForm.formState.errors.phone?.message}>
+          <FormField label={t('settings.phone')} error={profileForm.formState.errors.phone?.message}>
             <input
               {...profileForm.register('phone')}
               type="tel"
               inputMode="tel"
               autoComplete="tel"
-              placeholder="e.g. +1 234 567 8900"
+              placeholder={t('settings.profile.phone_placeholder')}
               disabled={!isEditingProfile}
               className={inputCls(!!profileForm.formState.errors.phone, !isEditingProfile)}
             />
           </FormField>
           <div className="flex justify-end gap-3 pt-1">
             {!isEditingProfile ? (
-              <Btn type="button" onClick={() => setIsEditingProfile(true)}>Edit</Btn>
+              <Btn type="button" onClick={() => setIsEditingProfile(true)}>{t('common.edit')}</Btn>
             ) : (
               <>
                 <Btn
@@ -201,10 +209,10 @@ export default function ProfileSettingsPage() {
                   variant="secondary"
                   onClick={() => { profileForm.reset(); setIsEditingProfile(false) }}
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </Btn>
                 <Btn type="submit" disabled={profileMutation.isPending}>
-                  {profileMutation.isPending ? <><Spinner size={14} /> Saving…</> : 'Save Changes'}
+                  {profileMutation.isPending ? <><Spinner size={14} /> {t('settings.saving')}</> : t('settings.save_changes')}
                 </Btn>
               </>
             )}
@@ -219,8 +227,8 @@ export default function ProfileSettingsPage() {
           onClick={() => setShowPassword(p => !p)}
         >
           <div>
-            <h3 className="text-sm font-semibold text-zinc-100">Change Password</h3>
-            <p className="text-xs text-zinc-500 mt-0.5">Update your login password</p>
+            <h3 className="text-sm font-semibold text-zinc-100">{t('settings.profile.change_password_title')}</h3>
+            <p className="text-xs text-zinc-500 mt-0.5">{t('settings.profile.change_password_desc')}</p>
           </div>
           <span className="text-zinc-500 text-sm">{showPassword ? '▲' : '▼'}</span>
         </button>
@@ -230,34 +238,34 @@ export default function ProfileSettingsPage() {
             onSubmit={passwordForm.handleSubmit(d => passwordMutation.mutate(d))}
             className="p-5 space-y-4"
           >
-            <FormField label="Current Password" error={passwordForm.formState.errors.current_password?.message}>
+            <FormField label={t('settings.profile.current_password')} error={passwordForm.formState.errors.current_password?.message}>
               <PasswordInput
                 {...passwordForm.register('current_password')}
-                placeholder="Enter current password"
+                placeholder={t('settings.profile.current_password_placeholder')}
                 inputClassName={inputCls(!!passwordForm.formState.errors.current_password)}
               />
             </FormField>
             <Divider />
-            <FormField label="New Password" error={passwordForm.formState.errors.new_password?.message}>
+            <FormField label={t('settings.profile.new_password')} error={passwordForm.formState.errors.new_password?.message}>
               <PasswordInput
                 {...passwordForm.register('new_password')}
-                placeholder="Min 8 chars, upper, lower, digit"
+                placeholder={t('settings.profile.new_password_placeholder')}
                 inputClassName={inputCls(!!passwordForm.formState.errors.new_password)}
               />
             </FormField>
-            <FormField label="Confirm New Password" error={passwordForm.formState.errors.confirm_password?.message}>
+            <FormField label={t('settings.profile.confirm_new_password')} error={passwordForm.formState.errors.confirm_password?.message}>
               <PasswordInput
                 {...passwordForm.register('confirm_password')}
-                placeholder="Repeat new password"
+                placeholder={t('settings.profile.confirm_new_password_placeholder')}
                 inputClassName={inputCls(!!passwordForm.formState.errors.confirm_password)}
               />
             </FormField>
             <div className="flex gap-3 justify-end pt-1">
               <Btn type="button" variant="secondary" onClick={() => { setShowPassword(false); passwordForm.reset() }}>
-                Cancel
+                {t('common.cancel')}
               </Btn>
               <Btn type="submit" disabled={passwordMutation.isPending}>
-                {passwordMutation.isPending ? <><Spinner size={14} /> Changing…</> : 'Change Password'}
+                {passwordMutation.isPending ? <><Spinner size={14} /> {t('settings.profile.changing')}</> : t('settings.profile.change_password_title')}
               </Btn>
             </div>
           </form>
@@ -271,8 +279,8 @@ export default function ProfileSettingsPage() {
           onClick={() => setShowEmail(p => !p)}
         >
           <div>
-            <h3 className="text-sm font-semibold text-zinc-100">Change Email</h3>
-            <p className="text-xs text-zinc-500 mt-0.5">Update the email address used to sign in</p>
+            <h3 className="text-sm font-semibold text-zinc-100">{t('settings.profile.change_email_title')}</h3>
+            <p className="text-xs text-zinc-500 mt-0.5">{t('settings.profile.change_email_desc')}</p>
           </div>
           <span className="text-zinc-500 text-sm">{showEmail ? '▲' : '▼'}</span>
         </button>
@@ -283,32 +291,31 @@ export default function ProfileSettingsPage() {
             className="p-5 space-y-4"
           >
             <p className="text-xs text-zinc-500 -mt-1">
-              We'll send a confirmation link to the new address — your email won't change until
-              you click it. Current: <span className="text-zinc-300">{user.email}</span>
+              {t('settings.profile.email_change_notice')} <span className="text-zinc-300">{user.email}</span>
             </p>
-            <FormField label="New Email" error={emailForm.formState.errors.new_email?.message}>
+            <FormField label={t('settings.profile.new_email')} error={emailForm.formState.errors.new_email?.message}>
               <input
                 {...emailForm.register('new_email')}
                 type="email"
                 autoComplete="email"
-                placeholder="you@example.com"
+                placeholder={t('settings.profile.new_email_placeholder')}
                 className={inputCls(!!emailForm.formState.errors.new_email)}
               />
             </FormField>
             <Divider />
-            <FormField label="Current Password" error={emailForm.formState.errors.current_password?.message}>
+            <FormField label={t('settings.profile.current_password')} error={emailForm.formState.errors.current_password?.message}>
               <PasswordInput
                 {...emailForm.register('current_password')}
-                placeholder="Confirm it's you"
+                placeholder={t('settings.profile.confirm_its_you')}
                 inputClassName={inputCls(!!emailForm.formState.errors.current_password)}
               />
             </FormField>
             <div className="flex gap-3 justify-end pt-1">
               <Btn type="button" variant="secondary" onClick={() => { setShowEmail(false); emailForm.reset() }}>
-                Cancel
+                {t('common.cancel')}
               </Btn>
               <Btn type="submit" disabled={emailMutation.isPending}>
-                {emailMutation.isPending ? <><Spinner size={14} /> Sending…</> : 'Send Confirmation'}
+                {emailMutation.isPending ? <><Spinner size={14} /> {t('settings.profile.sending')}</> : t('settings.profile.send_confirmation')}
               </Btn>
             </div>
           </form>

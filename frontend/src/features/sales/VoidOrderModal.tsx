@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { checkoutService } from '@/services/sales/sales.service'
 import { invalidateSalesMutationQueries } from '@/lib/salesQueryInvalidation'
+import { useLocaleStore } from '@/i18n/localeStore'
 import { Btn } from '@/components/ui'
 import { IconAlert, IconX } from '@/components/icons'
 import type { Order } from '@/shared/types'
@@ -14,13 +15,14 @@ interface Props {
 }
 
 export default function VoidOrderModal({ order, onClose, onSuccess }: Props) {
+  const t = useLocaleStore(s => s.t)
   const qc = useQueryClient()
   const [reason, setReason] = useState('')
 
   const mutation = useMutation({
     mutationFn: () => checkoutService.voidOrder(order.id, { reason: reason.trim() }),
     onSuccess: voided => {
-      toast.success(`Order ${voided.order_number} voided`)
+      toast.success(`${t('sales.order')} ${voided.order_number} ${t('sales.voided')}`)
       invalidateSalesMutationQueries(qc)
       if (voided.customer_id) {
         qc.invalidateQueries({ queryKey: ['customer', voided.customer_id] })
@@ -32,7 +34,7 @@ export default function VoidOrderModal({ order, onClose, onSuccess }: Props) {
       onClose()
     },
     onError: (err: any) => {
-      const msg = err?.response?.data?.error?.message ?? err?.response?.data?.detail ?? 'Failed to void order.'
+      const msg = err?.response?.data?.error?.message ?? err?.response?.data?.detail ?? t('sales.void_failed')
       toast.error(msg)
     },
   })
@@ -43,7 +45,7 @@ export default function VoidOrderModal({ order, onClose, onSuccess }: Props) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
           <div className="flex items-center gap-2">
             <IconAlert width="16" height="16" className="text-red-400" />
-            <h2 className="text-sm font-semibold text-zinc-100">Void Order</h2>
+            <h2 className="text-sm font-semibold text-zinc-100">{t('sales.void_order')}</h2>
           </div>
           <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300">
             <IconX width="16" height="16" />
@@ -52,15 +54,14 @@ export default function VoidOrderModal({ order, onClose, onSuccess }: Props) {
 
         <div className="px-5 py-4 flex flex-col gap-3">
           <p className="text-xs text-zinc-400">
-            Voiding <span className="text-amber-400 font-medium">{order.order_number}</span> permanently
-            cancels this sale, restores inventory, and marks any payments as refunded. This cannot be undone.
+            {t('sales.void_warning_prefix')} <span className="text-amber-400 font-medium">{order.order_number}</span> {t('sales.void_warning_suffix')}
           </p>
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-zinc-400">Reason (required)</label>
+            <label className="text-xs font-medium text-zinc-400">{t('sales.reason_required')}</label>
             <textarea
               value={reason}
               onChange={e => setReason(e.target.value)}
-              placeholder="e.g. Duplicate sale entered by mistake"
+              placeholder={t('sales.void_reason_placeholder')}
               rows={3}
               className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-amber-500 resize-none"
             />
@@ -68,7 +69,7 @@ export default function VoidOrderModal({ order, onClose, onSuccess }: Props) {
         </div>
 
         <div className="flex gap-3 px-5 py-4 border-t border-zinc-800">
-          <Btn variant="secondary" fullWidth onClick={onClose}>Cancel</Btn>
+          <Btn variant="secondary" fullWidth onClick={onClose}>{t('common.cancel')}</Btn>
           <Btn
             variant="danger"
             fullWidth
@@ -76,7 +77,7 @@ export default function VoidOrderModal({ order, onClose, onSuccess }: Props) {
             disabled={reason.trim().length === 0}
             onClick={() => mutation.mutate()}
           >
-            Void Order
+            {t('sales.void_order')}
           </Btn>
         </div>
       </div>

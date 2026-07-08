@@ -5,19 +5,21 @@ import { Spinner, Badge, Btn } from '@/components/ui'
 import { IconChevLeft, IconUser, IconPlus } from '@/components/icons'
 import { customersService } from '@/services/customers/customers.service'
 import { useAuthStore } from '@/store/auth.store'
-
-const TABS = [
-  { to: '',           end: true,  label: 'Overview'       },
-  { to: 'payments',              label: 'Debt Payments'  },
-  { to: 'statements',            label: 'Statement'      },
-]
+import { useLocaleStore } from '@/i18n/localeStore'
 
 export default function CustomerLayout() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const user = useAuthStore(s => s.user)
+  const t = useLocaleStore(s => s.t)
   // Cashiers get read-only lookup — see CustomersScreen.tsx for the same rule.
   const canManageCustomers = user?.role !== 'CASHIER'
+
+  const TABS = [
+    { to: '',           end: true,  label: t('customers.tab_overview')       },
+    { to: 'payments',              label: t('customers.tab_debt_payments')  },
+    { to: 'statements',            label: t('customers.tab_statement')      },
+  ]
 
   const { data: customer, isLoading } = useQuery({
     queryKey: ['customer', id],
@@ -36,7 +38,7 @@ export default function CustomerLayout() {
   if (!customer) {
     return (
       <div className="flex items-center justify-center h-full text-zinc-500 text-sm">
-        Customer not found.
+        {t('customers.not_found')}
       </div>
     )
   }
@@ -52,7 +54,7 @@ export default function CustomerLayout() {
           <button
             onClick={() => navigate('/app/customers')}
             className="text-zinc-500 hover:text-zinc-200 p-1.5 rounded-lg hover:bg-zinc-800 transition-colors flex-shrink-0"
-            aria-label="Back to customers"
+            aria-label={t('customers.back_to_customers')}
           >
             <IconChevLeft width="16" height="16" />
           </button>
@@ -65,7 +67,7 @@ export default function CustomerLayout() {
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-sm sm:text-base font-semibold text-zinc-100 truncate">{customer.name}</h1>
               <Badge variant={customer.is_active ? 'success' : 'default'} size="xs" dot>
-                {customer.is_active ? 'Active' : 'Inactive'}
+                {customer.is_active ? t('status.active') : t('status.inactive')}
               </Badge>
             </div>
             <p className="text-xs text-zinc-500 truncate">
@@ -79,12 +81,12 @@ export default function CustomerLayout() {
               onClick={() => navigate(`/app/customers/${id}/new-sale`)}
               className="flex-shrink-0"
             >
-              <IconPlus width="11" height="11" /> New Order
+              <IconPlus width="11" height="11" /> {t('customers.new_order')}
             </Btn>
           )}
 
           <div className="flex-shrink-0 text-right">
-            <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Balance</p>
+            <p className="text-[10px] text-zinc-600 uppercase tracking-wider">{t('customers.balance')}</p>
             <p className={cn('font-mono font-bold text-sm sm:text-base leading-tight', balance > 0 ? 'text-amber-400' : 'text-zinc-500')}>
               {fmt(customer.balance)}
             </p>

@@ -11,6 +11,7 @@ import { useTenantStore } from '@/store/tenant.store'
 import { fmt, cn, genId } from '@/lib/utils'
 import { Btn, Spinner } from '@/components/ui'
 import { IconSearch, IconPlus, IconMinus, IconTrash } from '@/components/icons'
+import { useLocaleStore } from '@/i18n/localeStore'
 import type { Product } from '@/shared/types'
 
 interface SaleItem {
@@ -19,13 +20,6 @@ interface SaleItem {
   unit_price: number
 }
 
-const PAYMENT_METHODS = [
-  { value: 'CASH', label: 'Cash' },
-  { value: 'CARD', label: 'Card' },
-  { value: 'BANK_TRANSFER', label: 'Bank Transfer' },
-  { value: 'KBZPAY', label: 'KBZPay' },
-]
-
 interface SaleItemRowProps {
   item: SaleItem
   onUpdateQty: (productId: string, qty: number) => void
@@ -33,6 +27,7 @@ interface SaleItemRowProps {
 }
 
 function SaleItemRow({ item, onUpdateQty, onRemove }: SaleItemRowProps) {
+  const t = useLocaleStore(s => s.t)
   const [localQty, setLocalQty] = useState(String(item.quantity))
   useEffect(() => { setLocalQty(String(item.quantity)) }, [item.quantity])
 
@@ -40,13 +35,13 @@ function SaleItemRow({ item, onUpdateQty, onRemove }: SaleItemRowProps) {
     <div className="flex items-center gap-2">
       <div className="min-w-0 flex-1">
         <p className="text-sm text-zinc-200 truncate leading-tight">{item.product.name}</p>
-        <p className="text-[11px] text-zinc-500 font-mono">{fmt(String(item.unit_price))} ea</p>
+        <p className="text-[11px] text-zinc-500 font-mono">{fmt(String(item.unit_price))} {t('customers.each_suffix')}</p>
       </div>
 
       <div className="flex items-center gap-1 flex-shrink-0">
         <button
           onClick={() => onUpdateQty(item.product.id, item.quantity - 1)}
-          aria-label="Decrease quantity"
+          aria-label={t('customers.decrease_quantity')}
           className="w-6 h-6 rounded-lg bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 flex items-center justify-center transition-colors"
         >
           <IconMinus width="10" height="10" />
@@ -71,7 +66,7 @@ function SaleItemRow({ item, onUpdateQty, onRemove }: SaleItemRowProps) {
         />
         <button
           onClick={() => onUpdateQty(item.product.id, item.quantity + 1)}
-          aria-label="Increase quantity"
+          aria-label={t('customers.increase_quantity')}
           className="w-6 h-6 rounded-lg bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 flex items-center justify-center transition-colors"
         >
           <IconPlus width="10" height="10" />
@@ -84,7 +79,7 @@ function SaleItemRow({ item, onUpdateQty, onRemove }: SaleItemRowProps) {
 
       <button
         onClick={() => onRemove(item.product.id)}
-        aria-label="Remove item"
+        aria-label={t('customers.remove_item')}
         className="text-zinc-600 hover:text-red-400 transition-colors flex-shrink-0"
       >
         <IconTrash width="14" height="14" />
@@ -99,6 +94,14 @@ export default function CustomerSaleFormPage() {
   const qc = useQueryClient()
   const { activeSession } = useSessionStore()
   const { selectedBranch } = useTenantStore()
+  const t = useLocaleStore(s => s.t)
+
+  const PAYMENT_METHODS = [
+    { value: 'CASH', label: t('customers.payment_cash') },
+    { value: 'CARD', label: t('customers.payment_card') },
+    { value: 'BANK_TRANSFER', label: t('customers.payment_bank_transfer') },
+    { value: 'KBZPAY', label: t('customers.payment_kbzpay') },
+  ]
 
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -148,7 +151,7 @@ export default function CustomerSaleFormPage() {
       const existing = prev.find(i => i.product.id === product.id)
       if (existing) {
         if (existing.quantity >= stock) {
-          toast.error(`Only ${stock} in stock`)
+          toast.error(`${t('customers.only_in_stock_prefix')} ${stock} ${t('customers.only_in_stock_suffix')}`)
           return prev
         }
         return prev.map(i =>
@@ -156,7 +159,7 @@ export default function CustomerSaleFormPage() {
         )
       }
       if (stock <= 0) {
-        toast.error('Out of stock')
+        toast.error(t('status.out_of_stock'))
         return prev
       }
       return [...prev, { product, quantity: 1, unit_price: parseFloat(product.selling_price) }]
@@ -170,7 +173,7 @@ export default function CustomerSaleFormPage() {
   function updateQty(productId: string, qty: number) {
     if (qty <= 0) { removeItem(productId); return }
     const stock = inventoryMap.get(productId) ?? 0
-    if (qty > stock) { toast.error(`Only ${stock} in stock`); return }
+    if (qty > stock) { toast.error(`${t('customers.only_in_stock_prefix')} ${stock} ${t('customers.only_in_stock_suffix')}`); return }
     setItems(prev => prev.map(i => i.product.id === productId ? { ...i, quantity: qty } : i))
   }
 
@@ -204,7 +207,7 @@ export default function CustomerSaleFormPage() {
       })
     },
     onSuccess: order => {
-      toast.success(`Order #${order.order_number} created`)
+      toast.success(`${t('customers.order_created_prefix')}${order.order_number}${t('customers.order_created_suffix')}`)
       qc.invalidateQueries({ queryKey: ['customer', id] })
       qc.invalidateQueries({ queryKey: ['customer-ledger', id] })
       qc.invalidateQueries({ queryKey: ['customer-statement', id] })
@@ -213,36 +216,36 @@ export default function CustomerSaleFormPage() {
       navigate(`/app/customers/${id}`)
     },
     onError: (err: any) => {
-      toast.error(err?.response?.data?.error?.message ?? 'Failed to create order')
+      toast.error(err?.response?.data?.error?.message ?? t('customers.order_create_failed'))
     },
   })
 
   if (!activeSession) {
     return (
       <div className="p-8 flex flex-col items-center justify-center gap-3 text-center">
-        <p className="text-zinc-500 text-sm">A cashier session must be open to create orders.</p>
-        <Btn size="sm" onClick={() => navigate('/app/session-open')}>Open Session</Btn>
+        <p className="text-zinc-500 text-sm">{t('customers.session_required')}</p>
+        <Btn size="sm" onClick={() => navigate('/app/session-open')}>{t('customers.open_session')}</Btn>
       </div>
     )
   }
 
   const submitLabel =
     items.length === 0
-      ? 'Add items to continue'
+      ? t('customers.add_items_to_continue')
       : paid >= subtotal && subtotal > 0
-        ? 'Create Order — Paid in Full'
+        ? t('customers.order_paid_in_full')
         : paid > 0
-          ? 'Create Order — Partially Paid'
-          : 'Create Order — On Account'
+          ? t('customers.order_partially_paid')
+          : t('customers.order_on_account')
 
   return (
     <div className="p-4 sm:p-6 space-y-4">
       {/* Header row */}
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-zinc-200">New Order</h2>
+        <h2 className="text-sm font-semibold text-zinc-200">{t('customers.new_order')}</h2>
         {customer && (
           <div className="text-right flex-shrink-0">
-            <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Current Balance</p>
+            <p className="text-[10px] text-zinc-600 uppercase tracking-wider">{t('customers.current_balance')}</p>
             <p className={cn(
               'font-mono text-sm font-bold',
               currentBalance > 0 ? 'text-amber-400' : 'text-zinc-500',
@@ -256,7 +259,7 @@ export default function CustomerSaleFormPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/*  Left: product search */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 space-y-3">
-          <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Products</h3>
+          <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">{t('products.title')}</h3>
 
           {/* Search */}
           <div className="relative">
@@ -267,7 +270,7 @@ export default function CustomerSaleFormPage() {
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search products…"
+              placeholder={t('products.search')}
               className="w-full bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 placeholder-zinc-600 text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 py-2 pl-8 pr-3 transition-all"
             />
           </div>
@@ -277,7 +280,7 @@ export default function CustomerSaleFormPage() {
             {productsLoading ? (
               <div className="flex justify-center py-6"><Spinner size={20} /></div>
             ) : products.length === 0 ? (
-              <p className="text-center text-zinc-600 text-sm py-6">No products found</p>
+              <p className="text-center text-zinc-600 text-sm py-6">{t('products.empty')}</p>
             ) : (
               products.map(product => {
                 const stock = inventoryMap.get(product.id) ?? 0
@@ -299,7 +302,7 @@ export default function CustomerSaleFormPage() {
                   >
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium leading-tight">{product.name}</p>
-                      <p className="text-[11px] text-zinc-500 mt-0.5">{product.sku} · Stock: {stock}</p>
+                      <p className="text-[11px] text-zinc-500 mt-0.5">{product.sku} · {t('customers.stock_prefix')} {stock}</p>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <span className="font-mono text-amber-400 text-xs">{fmt(product.selling_price)}</span>
@@ -324,11 +327,11 @@ export default function CustomerSaleFormPage() {
         <div className="space-y-4">
           {/* Order items */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 space-y-3">
-            <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Order Items</h3>
+            <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">{t('customers.order_items')}</h3>
 
             {items.length === 0 ? (
               <p className="text-center text-zinc-600 text-sm py-4">
-                Select products from the list
+                {t('customers.select_products_from_list')}
               </p>
             ) : (
               <div className="space-y-2">
@@ -343,7 +346,7 @@ export default function CustomerSaleFormPage() {
 
                 {/* Subtotal row */}
                 <div className="border-t border-zinc-800 pt-2 flex items-center justify-between">
-                  <span className="text-sm text-zinc-500">Sale Total</span>
+                  <span className="text-sm text-zinc-500">{t('customers.sale_total')}</span>
                   <span className="font-mono font-bold text-zinc-200">{fmt(String(subtotal))}</span>
                 </div>
               </div>
@@ -352,12 +355,12 @@ export default function CustomerSaleFormPage() {
 
           {/* Payment panel */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 space-y-3">
-            <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Payment</h3>
+            <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">{t('customers.payment')}</h3>
 
             <div className="space-y-3">
               {/* Paid now */}
               <div>
-                <label className="text-xs text-zinc-500 block mb-1">Paid Now</label>
+                <label className="text-xs text-zinc-500 block mb-1">{t('customers.paid_now')}</label>
                 <div className="flex gap-2">
                   <input
                     type="number"
@@ -366,7 +369,7 @@ export default function CustomerSaleFormPage() {
                     min={0}
                     max={subtotal}
                     step="0.01"
-                    placeholder="0 = on account"
+                    placeholder={t('customers.on_account_placeholder')}
                     className="flex-1 bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 placeholder-zinc-600 text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 py-2 px-3 transition-all"
                   />
                   <Btn
@@ -375,7 +378,7 @@ export default function CustomerSaleFormPage() {
                     disabled={subtotal === 0}
                     onClick={() => setPaidAmount(subtotal.toFixed(2))}
                   >
-                    Full
+                    {t('customers.full')}
                   </Btn>
                   <Btn
                     size="sm"
@@ -383,7 +386,7 @@ export default function CustomerSaleFormPage() {
                     disabled={subtotal === 0}
                     onClick={() => setPaidAmount('')}
                   >
-                    None
+                    {t('customers.none')}
                   </Btn>
                 </div>
               </div>
@@ -391,7 +394,7 @@ export default function CustomerSaleFormPage() {
               {/* Payment method — only visible when something is being paid */}
               {paid > 0 && (
                 <div>
-                  <label className="text-xs text-zinc-500 block mb-1">Payment Method</label>
+                  <label className="text-xs text-zinc-500 block mb-1">{t('customers.payment_method')}</label>
                   <select
                     value={paymentMethod}
                     onChange={e => setPaymentMethod(e.target.value)}
@@ -406,12 +409,12 @@ export default function CustomerSaleFormPage() {
 
               {/* Notes */}
               <div>
-                <label className="text-xs text-zinc-500 block mb-1">Notes (optional)</label>
+                <label className="text-xs text-zinc-500 block mb-1">{t('customers.notes_optional')}</label>
                 <input
                   type="text"
                   value={notes}
                   onChange={e => setNotes(e.target.value)}
-                  placeholder="Order notes…"
+                  placeholder={t('customers.order_notes_placeholder')}
                   className="w-full bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 placeholder-zinc-600 text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 py-2 px-3 transition-all"
                 />
               </div>
@@ -421,21 +424,21 @@ export default function CustomerSaleFormPage() {
             {items.length > 0 && (
               <div className="border-t border-zinc-800 pt-3 space-y-1.5">
                 <div className="flex justify-between text-xs text-zinc-500">
-                  <span>Sale total</span>
+                  <span>{t('customers.sale_total')}</span>
                   <span className="font-mono">{fmt(String(subtotal))}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-zinc-500">Paying now</span>
+                  <span className="text-zinc-500">{t('customers.paying_now')}</span>
                   <span className="font-mono text-green-400">{fmt(String(paid))}</span>
                 </div>
                 {remaining === 0 && items.length > 0 && (
                   <div className="flex justify-between text-xs text-green-400">
-                    <span>Fully settled</span>
+                    <span>{t('customers.fully_settled')}</span>
                     <span className="font-mono">✓</span>
                   </div>
                 )}
                 <div className="flex justify-between text-sm font-semibold pt-1 border-t border-zinc-800">
-                  <span className="text-zinc-300">Remaining Balance</span>
+                  <span className="text-zinc-300">{t('customers.remaining_balance')}</span>
                   <span className={cn('font-mono', newBalance > 0 ? 'text-amber-400' : 'text-zinc-400')}>
                     {fmt(String(newBalance))}
                   </span>

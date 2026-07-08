@@ -9,8 +9,9 @@ import { useAuthStore } from '@/store/auth.store'
 import { subscriptionsService } from '@/services/subscriptions/subscriptions.service'
 import { apiClient } from '@/app/lib/axios'
 import type { PaymentProofCreateRequest } from '@/shared/types'
+import { useLocaleStore } from '@/i18n/localeStore'
 
-async function openProofFile(url: string) {
+async function openProofFile(url: string, t: (k: string) => string) {
   const token = localStorage.getItem('sawyunpos_access_token') ?? ''
   try {
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
@@ -20,7 +21,7 @@ async function openProofFile(url: string) {
     window.open(blobUrl, '_blank', 'noopener,noreferrer')
     setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
   } catch {
-    toast.error('Could not load proof file')
+    toast.error(t('subscription.could_not_load_proof_file'))
   }
 }
 
@@ -46,8 +47,34 @@ const CHANGE_VARIANT: Record<string, 'success' | 'info' | 'warning' | 'danger' |
 const ACCEPTED_TYPES = 'image/jpeg,image/png,application/pdf'
 const MAX_MB = 10
 
+function proofStatusLabel(status: string, t: (k: string) => string) {
+  const map: Record<string, string> = {
+    APPROVED: t('subscription.status_approved'),
+    PENDING: t('status.pending'),
+    REJECTED: t('subscription.status_rejected'),
+  }
+  return map[status] ?? status
+}
+
+function changeTypeLabel(type: string, t: (k: string) => string) {
+  const map: Record<string, string> = {
+    ACTIVATED: t('subscription.change_type_activated'),
+    RENEWED: t('subscription.change_type_renewed'),
+    UPGRADED: t('subscription.change_type_upgraded'),
+    DOWNGRADED: t('subscription.change_type_downgraded'),
+    TRIAL_STARTED: t('subscription.change_type_trial_started'),
+    EXPIRED: t('subscription.change_type_expired'),
+    SUSPENDED: t('subscription.change_type_suspended'),
+    CANCELLED: t('subscription.change_type_cancelled'),
+    EXTENDED: t('subscription.change_type_extended'),
+    PLAN_CHANGED: t('subscription.change_type_plan_changed'),
+  }
+  return map[type] ?? type.replace(/_/g, ' ')
+}
+
 function SubmitProofModal({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient()
+  const t = useLocaleStore(s => s.t)
   const [amount, setAmount] = useState('')
   const [currency, setCurrency] = useState('MMK')
   const [reference, setReference] = useState('')
@@ -63,12 +90,12 @@ function SubmitProofModal({ onClose }: { onClose: () => void }) {
     setUploadProgress('idle')
     if (!f) { setFile(null); return }
     if (!['image/jpeg', 'image/png', 'application/pdf'].includes(f.type)) {
-      setFileError('Only JPG, PNG, or PDF files are accepted')
+      setFileError(t('subscription.file_type_error'))
       setFile(null)
       return
     }
     if (f.size > MAX_MB * 1024 * 1024) {
-      setFileError(`File must be under ${MAX_MB} MB`)
+      setFileError(`${t('subscription.file_size_error_prefix')} ${MAX_MB} MB`)
       setFile(null)
       return
     }
@@ -79,10 +106,10 @@ function SubmitProofModal({ onClose }: { onClose: () => void }) {
     mutationFn: subscriptionsService.submitPaymentProof,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['subscription', 'proofs'] })
-      toast.success('Payment proof submitted')
+      toast.success(t('subscription.payment_proof_submitted'))
       onClose()
     },
-    onError: err => toast.error(extractApiMsg(err) ?? 'Failed to submit'),
+    onError: err => toast.error(extractApiMsg(err) ?? t('subscription.failed_to_submit')),
   })
 
   async function handleSubmit() {
@@ -97,7 +124,7 @@ function SubmitProofModal({ onClose }: { onClose: () => void }) {
         setUploadProgress('done')
       } catch (err: any) {
         setUploadProgress('idle')
-        toast.error(extractApiMsg(err) ?? 'File upload failed')
+        toast.error(extractApiMsg(err) ?? t('subscription.file_upload_failed'))
         return
       }
     }
@@ -116,31 +143,31 @@ function SubmitProofModal({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
-          <h3 className="text-base font-semibold text-zinc-100">Submit Payment Proof</h3>
-          <button onClick={onClose} aria-label="Close" className="text-zinc-500 hover:text-zinc-200 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-800">
+          <h3 className="text-base font-semibold text-zinc-100">{t('subscription.submit_payment_proof')}</h3>
+          <button onClick={onClose} aria-label={t('common.close')} className="text-zinc-500 hover:text-zinc-200 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-800">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
           </button>
         </div>
         <div className="p-5 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-zinc-400 mb-1">Amount *</label>
+              <label className="block text-xs text-zinc-400 mb-1">{t('subscription.amount_required')}</label>
               <input type="number" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00"
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-amber-500" />
             </div>
             <div>
-              <label className="block text-xs text-zinc-400 mb-1">Currency</label>
-              <input type="text" value={currency} onChange={e => setCurrency(e.target.value)} placeholder="Kyats"
+              <label className="block text-xs text-zinc-400 mb-1">{t('settings.currency')}</label>
+              <input type="text" value={currency} onChange={e => setCurrency(e.target.value)} placeholder={t('currency.mmk')}
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-amber-500" />
             </div>
           </div>
           <div>
-            <label className="block text-xs text-zinc-400 mb-1">Reference Number</label>
+            <label className="block text-xs text-zinc-400 mb-1">{t('subscription.reference_number')}</label>
             <input type="text" value={reference} onChange={e => setReference(e.target.value)} placeholder="TXN-12345"
               className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-amber-500" />
           </div>
           <div>
-            <label className="block text-xs text-zinc-400 mb-1">Receipt File * (JPG, PNG, PDF — max {MAX_MB} MB)</label>
+            <label className="block text-xs text-zinc-400 mb-1">{t('subscription.receipt_file_required')} (JPG, PNG, PDF — {t('subscription.max_size_prefix')} {MAX_MB} MB)</label>
             <label className="block w-full cursor-pointer">
               <input
                 type="file"
@@ -159,14 +186,14 @@ function SubmitProofModal({ onClose }: { onClose: () => void }) {
                     <p className="text-xs text-zinc-500 mt-0.5">
                       {(file.size / 1024).toFixed(0)} KB ·{' '}
                       {uploadProgress === 'done' ? (
-                        <span className="text-green-400">Uploaded</span>
+                        <span className="text-green-400">{t('subscription.uploaded')}</span>
                       ) : (
-                        <span className="text-zinc-400">Click to change</span>
+                        <span className="text-zinc-400">{t('subscription.click_to_change')}</span>
                       )}
                     </p>
                   </div>
                 ) : (
-                  <p className="text-sm text-zinc-500">Click to select a receipt file</p>
+                  <p className="text-sm text-zinc-500">{t('subscription.click_to_select_receipt')}</p>
                 )}
               </div>
             </label>
@@ -174,13 +201,13 @@ function SubmitProofModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
         <div className="px-5 py-4 border-t border-zinc-800 flex gap-2 justify-end">
-          <Btn variant="secondary" size="sm" onClick={onClose} disabled={busy}>Cancel</Btn>
+          <Btn variant="secondary" size="sm" onClick={onClose} disabled={busy}>{t('common.cancel')}</Btn>
           <Btn
             size="sm"
             disabled={!amount || !file || busy}
             onClick={handleSubmit}
           >
-            {uploadProgress === 'uploading' ? 'Uploading…' : submitMutation.isPending ? 'Submitting…' : 'Submit'}
+            {uploadProgress === 'uploading' ? t('subscription.uploading') : submitMutation.isPending ? t('subscription.submitting') : t('subscription.submit')}
           </Btn>
         </div>
       </div>
@@ -190,6 +217,7 @@ function SubmitProofModal({ onClose }: { onClose: () => void }) {
 
 export default function BillingHistoryPage() {
   const user = useAuthStore(s => s.user)
+  const t = useLocaleStore(s => s.t)
   const isOwner = user?.role === 'BUSINESS_OWNER'
   const [tab, setTab] = useState<'history' | 'proofs'>('proofs')
   const [showModal, setShowModal] = useState(false)
@@ -232,25 +260,25 @@ export default function BillingHistoryPage() {
         {/* Sub-tab bar */}
         <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-zinc-800">
           <div className="flex gap-1">
-            {(['proofs', 'history'] as const).map(t => (
+            {(['proofs', 'history'] as const).map(tabKey => (
               <button
-                key={t}
-                onClick={() => setTab(t)}
+                key={tabKey}
+                onClick={() => setTab(tabKey)}
                 className={cn(
                   'px-3 py-1.5 text-sm rounded-lg font-medium transition-colors',
-                  tab === t ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-200',
+                  tab === tabKey ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-200',
                 )}
               >
-                {t === 'proofs' ? 'Payment Proofs' : 'Change History'}
+                {tabKey === 'proofs' ? t('subscription.payment_proofs') : t('subscription.change_history')}
               </button>
             ))}
           </div>
           {isOwner && tab === 'proofs' && !latestProofQuery.isLoading && canSubmitProof && (
-            <Btn size="sm" onClick={() => setShowModal(true)}>Submit Proof</Btn>
+            <Btn size="sm" onClick={() => setShowModal(true)}>{t('subscription.submit_proof')}</Btn>
           )}
           {isOwner && tab === 'proofs' && needsResubmitOnPlanPage && (
             <Link to="/app/subscription/current" className="text-xs text-amber-400 hover:text-amber-300 font-medium">
-              Resubmit from Current Plan →
+              {t('subscription.resubmit_from_current_plan')}
             </Link>
           )}
         </div>
@@ -263,7 +291,7 @@ export default function BillingHistoryPage() {
                 {proofsQuery.isLoading ? (
                   <div className="flex justify-center py-12"><Spinner size={28} /></div>
                 ) : !proofsQuery.data?.items.length ? (
-                  <Empty title="No payment proofs yet" />
+                  <Empty title={t('subscription.no_payment_proofs_yet')} />
                 ) : (
                   <div className="space-y-3">
                     {proofsQuery.data.items.map(proof => (
@@ -274,18 +302,18 @@ export default function BillingHistoryPage() {
                         <div className="flex items-start justify-between gap-3 flex-wrap">
                           <div className="space-y-0.5">
                             <p className="text-sm font-semibold text-zinc-100">
-                              {Number(proof.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {proof.currency === 'MMK' ? 'Kyats' : proof.currency}
+                              {Number(proof.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {proof.currency === 'MMK' ? t('currency.mmk') : proof.currency}
                             </p>
                             {proof.target_plan_name && (
                               <p className="text-xs text-green-400 font-medium">→ {proof.target_plan_name}</p>
                             )}
                             {proof.reference_number && (
-                              <p className="text-sm text-zinc-400">Ref: {proof.reference_number}</p>
+                              <p className="text-sm text-zinc-400">{t('subscription.ref_prefix')} {proof.reference_number}</p>
                             )}
                             <p className="text-sm text-zinc-500">{fmtDate(proof.created_at)}</p>
                           </div>
                           <Badge variant={PROOF_VARIANT[proof.status] ?? 'default'} dot>
-                            {proof.status}
+                            {proofStatusLabel(proof.status, t)}
                           </Badge>
                         </div>
 
@@ -297,22 +325,22 @@ export default function BillingHistoryPage() {
                               : 'bg-red-900/20 border border-red-800/40 text-red-300'
                           }`}>
                             <p className="font-medium">
-                              {proof.status === 'APPROVED' ? '✓ Approved' : '✗ Rejected'} · {fmtDate(proof.reviewed_at)}
+                              {proof.status === 'APPROVED' ? `✓ ${t('subscription.status_approved')}` : `✗ ${t('subscription.status_rejected')}`} · {fmtDate(proof.reviewed_at)}
                             </p>
                             {proof.review_notes ? (
                               <p className="mt-0.5 text-xs opacity-90">{proof.review_notes}</p>
                             ) : (
-                              <p className="mt-0.5 text-xs opacity-60 italic">No notes provided.</p>
+                              <p className="mt-0.5 text-xs opacity-60 italic">{t('subscription.no_notes_provided')}</p>
                             )}
                           </div>
                         )}
 
                         {proof.proof_file_url && (
                           <button
-                            onClick={() => openProofFile(proof.proof_file_url)}
+                            onClick={() => openProofFile(proof.proof_file_url, t)}
                             className="inline-flex items-center gap-1.5 mt-3 text-sm font-medium text-amber-400 hover:text-amber-300"
                           >
-                            View proof
+                            {t('subscription.view_proof')}
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                           </button>
                         )}
@@ -320,9 +348,9 @@ export default function BillingHistoryPage() {
                     ))}
                     {proofsQuery.data.total_pages > 1 && (
                       <div className="flex justify-center gap-2 pt-2">
-                        <Btn variant="secondary" size="xs" disabled={proofsPage === 1} onClick={() => setProofsPage(p => p - 1)}>Prev</Btn>
+                        <Btn variant="secondary" size="xs" disabled={proofsPage === 1} onClick={() => setProofsPage(p => p - 1)}>{t('common.prev')}</Btn>
                         <span className="text-xs text-zinc-500 self-center">{proofsPage} / {proofsQuery.data.total_pages}</span>
-                        <Btn variant="secondary" size="xs" disabled={!proofsQuery.data.has_next} onClick={() => setProofsPage(p => p + 1)}>Next</Btn>
+                        <Btn variant="secondary" size="xs" disabled={!proofsQuery.data.has_next} onClick={() => setProofsPage(p => p + 1)}>{t('common.next')}</Btn>
                       </div>
                     )}
                   </div>
@@ -336,13 +364,13 @@ export default function BillingHistoryPage() {
                 {historyQuery.isLoading ? (
                   <div className="flex justify-center py-12"><Spinner size={28} /></div>
                 ) : !historyQuery.data?.items.length ? (
-                  <Empty title="No subscription history" />
+                  <Empty title={t('subscription.no_subscription_history')} />
                 ) : (
                   <div className="space-y-2">
                     {historyQuery.data.items.map(h => (
                       <div key={h.id} className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 flex items-center gap-3">
                         <Badge variant={CHANGE_VARIANT[h.change_type] ?? 'default'} size="xs">
-                          {h.change_type.replace(/_/g, ' ')}
+                          {changeTypeLabel(h.change_type, t)}
                         </Badge>
                         <div className="flex-1 min-w-0">
                           {h.note && <p className="text-xs text-zinc-400 truncate">{h.note}</p>}
@@ -352,9 +380,9 @@ export default function BillingHistoryPage() {
                     ))}
                     {historyQuery.data.total_pages > 1 && (
                       <div className="flex justify-center gap-2 pt-2">
-                        <Btn variant="secondary" size="xs" disabled={historyPage === 1} onClick={() => setHistoryPage(p => p - 1)}>Prev</Btn>
+                        <Btn variant="secondary" size="xs" disabled={historyPage === 1} onClick={() => setHistoryPage(p => p - 1)}>{t('common.prev')}</Btn>
                         <span className="text-xs text-zinc-500 self-center">{historyPage} / {historyQuery.data.total_pages}</span>
-                        <Btn variant="secondary" size="xs" disabled={!historyQuery.data.has_next} onClick={() => setHistoryPage(p => p + 1)}>Next</Btn>
+                        <Btn variant="secondary" size="xs" disabled={!historyQuery.data.has_next} onClick={() => setHistoryPage(p => p + 1)}>{t('common.next')}</Btn>
                       </div>
                     )}
                   </div>

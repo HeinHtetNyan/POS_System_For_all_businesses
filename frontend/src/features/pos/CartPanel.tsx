@@ -41,14 +41,14 @@ export default function CartPanel({ onBackToProducts }: { onBackToProducts?: () 
               <button
                 onClick={onBackToProducts}
                 className="lg:hidden flex items-center gap-1 text-xs text-zinc-500 hover:text-amber-400 transition-colors mr-1"
-                title="Back to products"
+                title={t('pos.back_to_products')}
               >
                 <IconChevLeft width="14" height="14" />
-                Products
+                {t('nav.products')}
               </button>
             )}
             <IconCart width="16" height="16" className="text-amber-400" />
-            <span className="text-sm font-semibold text-zinc-100">Order</span>
+            <span className="text-sm font-semibold text-zinc-100">{t('pos.order')}</span>
             {totals.itemCount > 0 && (
               <span className="w-5 h-5 rounded-full bg-amber-500 text-black text-[10px] font-bold flex items-center justify-center">
                 {totals.itemCount}
@@ -60,7 +60,7 @@ export default function CartPanel({ onBackToProducts }: { onBackToProducts?: () 
               <button
                 onClick={() => setShowRefund(true)}
                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border border-zinc-700 bg-zinc-800 text-zinc-300 hover:text-amber-400 hover:border-amber-500/50 transition-colors"
-                title="Process a refund"
+                title={t('pos.process_refund')}
               >
                 <IconRefund width="13" height="13" />
                 {t('pos.refund')}
@@ -84,9 +84,9 @@ export default function CartPanel({ onBackToProducts }: { onBackToProducts?: () 
             <div className="flex flex-col items-center justify-center h-full gap-3 py-16">
               <IconCart width="40" height="40" className="text-zinc-800" />
               <p className="text-xs text-zinc-600 text-center">
-                Cart is empty
+                {t('pos.cart_empty')}
                 <br />
-                <span className="text-zinc-700">Tap a product to add</span>
+                <span className="text-zinc-700">{t('pos.tap_to_add')}</span>
               </p>
             </div>
           ) : (
@@ -107,13 +107,13 @@ export default function CartPanel({ onBackToProducts }: { onBackToProducts?: () 
             {discount > 0 && (
               <div className="flex flex-col gap-1.5 text-xs">
                 <div className="flex justify-between text-zinc-500">
-                  <span>Subtotal</span>
+                  <span>{t('pos.subtotal')}</span>
                   <span className="font-mono">{fmt(totals.itemSubtotal + totals.orderDiscAmt)}</span>
                 </div>
                 <div className="flex justify-between text-amber-500">
                   <span>
-                    Discount ({discountType === 'amount'
-                      ? `${discount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Ks`
+                    {t('pos.discount')} ({discountType === 'amount'
+                      ? `${discount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${t('pos.ks')}`
                       : `${discount}%`})
                   </span>
                   <span className="font-mono">-{fmt(totals.orderDiscAmt)}</span>
@@ -124,10 +124,10 @@ export default function CartPanel({ onBackToProducts }: { onBackToProducts?: () 
             <div className="flex justify-between text-xs text-zinc-500">
               <span>
                 {totals.taxEnabled && totals.taxInclusive
-                  ? `${totals.taxName} (included)`
+                  ? `${totals.taxName} (${t('pos.included')})`
                   : totals.taxEnabled
                     ? `${totals.taxName} (${totals.taxRate}%)`
-                    : 'Tax'}
+                    : t('pos.tax')}
               </span>
               <span className="font-mono">
                 {totals.taxEnabled ? fmt(totals.tax) : '-'}
@@ -135,7 +135,7 @@ export default function CartPanel({ onBackToProducts }: { onBackToProducts?: () 
             </div>
 
             <div className="flex items-center justify-between py-1.5 border-t border-zinc-800 mt-0.5">
-              <span className="text-sm font-semibold text-zinc-200">Total</span>
+              <span className="text-sm font-semibold text-zinc-200">{t('pos.total')}</span>
               <span className="font-mono text-lg font-bold text-amber-400">
                 {fmt(totals.total)}
               </span>
@@ -145,15 +145,15 @@ export default function CartPanel({ onBackToProducts }: { onBackToProducts?: () 
               onClick={() => setCheckoutStep('payment')}
               className="w-full h-14 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-black font-bold text-base transition-all duration-150 shadow-lg shadow-amber-900/30 active:scale-[0.98]"
             >
-              Checkout
+              {t('pos.checkout')}
             </button>
 
             <div className="flex items-center justify-center gap-3 mt-0.5">
               <span className="flex items-center gap-1 text-zinc-700 text-[10px]">
-                <Kbd keys="F9" /> checkout
+                <Kbd keys="F9" /> {t('pos.hint_checkout')}
               </span>
               <span className="flex items-center gap-1 text-zinc-700 text-[10px]">
-                <Kbd keys="Esc" /> clear
+                <Kbd keys="Esc" /> {t('pos.hint_clear')}
               </span>
             </div>
           </div>

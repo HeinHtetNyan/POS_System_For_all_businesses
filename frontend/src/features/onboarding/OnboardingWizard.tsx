@@ -6,11 +6,12 @@ import { ROLE_HOME } from '@/shared/constants/rbac'
 import { Btn, Input, Spinner } from '@/components/ui/index'
 import { tenantService } from '@/services/tenant/tenant.service'
 import { subscriptionsService } from '@/services/subscriptions/subscriptions.service'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 type Step = 1 | 2 | 3
 
-function fmtLimit(limit: number | null | undefined): string {
-  return limit === null || limit === undefined ? 'Unlimited' : String(limit)
+function fmtLimit(limit: number | null | undefined, t: (key: string) => string): string {
+  return limit === null || limit === undefined ? t('onboarding.unlimited') : String(limit)
 }
 
 function StepIndicator({ current, total }: { current: number; total: number }) {
@@ -31,6 +32,7 @@ function StepIndicator({ current, total }: { current: number; total: number }) {
 export default function OnboardingWizard() {
   const navigate = useNavigate()
   const { user, fetchMe } = useAuthStore()
+  const t = useLocaleStore(s => s.t)
 
   const [step, setStep] = useState<Step>(1)
   const [isSaving, setIsSaving] = useState(false)
@@ -60,7 +62,7 @@ export default function OnboardingWizard() {
 
   async function handleStep1Next() {
     if (!businessName.trim()) {
-      setError('Business name is required')
+      setError(t('onboarding.business_name_required'))
       return
     }
     if (!user?.tenant_id) {
@@ -78,7 +80,7 @@ export default function OnboardingWizard() {
       } as any)
       setStep(2)
     } catch (err: any) {
-      setError(err?.response?.data?.error?.message ?? 'Failed to save business info. Please try again.')
+      setError(err?.response?.data?.error?.message ?? t('onboarding.save_business_failed'))
     } finally {
       setIsSaving(false)
     }
@@ -86,7 +88,7 @@ export default function OnboardingWizard() {
 
   async function handleStep2Next() {
     if (!branchName.trim()) {
-      setError('Branch name is required')
+      setError(t('onboarding.branch_name_required'))
       return
     }
     if (!user?.tenant_id) {
@@ -109,7 +111,7 @@ export default function OnboardingWizard() {
       await fetchMe()
       setStep(3)
     } catch (err: any) {
-      setError(err?.response?.data?.error?.message ?? 'Failed to save branch info. Please try again.')
+      setError(err?.response?.data?.error?.message ?? t('onboarding.save_branch_failed'))
     } finally {
       setIsSaving(false)
     }
@@ -127,8 +129,8 @@ export default function OnboardingWizard() {
       <div className="w-full max-w-lg">
         <div className="text-center mb-6">
           <img src="/logo-icon.png" alt="SawYunPos" className="inline-block w-14 h-14 rounded-2xl shadow-2xl shadow-blue-900/50 mb-3" />
-          <h1 className="text-xl font-bold text-zinc-100">Welcome to SawYunPos</h1>
-          <p className="text-zinc-500 text-sm mt-1">Let's get your business set up</p>
+          <h1 className="text-xl font-bold text-zinc-100">{t('onboarding.welcome_title')}</h1>
+          <p className="text-zinc-500 text-sm mt-1">{t('onboarding.welcome_subtitle')}</p>
         </div>
 
         <StepIndicator current={step} total={3} />
@@ -142,20 +144,20 @@ export default function OnboardingWizard() {
 
           {step === 1 && (
             <div>
-              <h2 className="text-base font-semibold text-zinc-100 mb-1">Business Information</h2>
-              <p className="text-zinc-500 text-sm mb-5">Confirm your business details</p>
+              <h2 className="text-base font-semibold text-zinc-100 mb-1">{t('settings.business_info')}</h2>
+              <p className="text-zinc-500 text-sm mb-5">{t('onboarding.step1_desc')}</p>
 
               <div className="space-y-3">
                 <Input
-                  label="Business Name"
+                  label={t('settings.business_name')}
                   value={businessName}
                   onChange={e => setBusinessName(e.target.value)}
-                  placeholder="My Business Co."
+                  placeholder={t('onboarding.business_name_placeholder')}
                 />
 
                 <div>
                   <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider block mb-1.5">
-                    Timezone
+                    {t('settings.timezone')}
                   </label>
                   <select
                     value={timezone}
@@ -180,14 +182,14 @@ export default function OnboardingWizard() {
 
                 <div>
                   <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider block mb-1.5">
-                    Currency
+                    {t('settings.currency')}
                   </label>
                   <select
                     value={currency}
                     onChange={e => setCurrency(e.target.value)}
                     className="w-full bg-zinc-900 border border-zinc-700 rounded-xl text-zinc-100 px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500"
                   >
-                    <option value="MMK">Kyats — Myanmar Kyat</option>
+                    <option value="MMK">{t('currency.mmk')} — Myanmar Kyat</option>
                     <option value="USD">USD — US Dollar</option>
                     <option value="EUR">EUR — Euro</option>
                     <option value="GBP">GBP — British Pound</option>
@@ -214,25 +216,25 @@ export default function OnboardingWizard() {
                 onClick={handleStep1Next}
                 disabled={isSaving}
               >
-                {isSaving ? <Spinner size={16} /> : 'Continue →'}
+                {isSaving ? <Spinner size={16} /> : t('common.next')}
               </Btn>
             </div>
           )}
 
           {step === 2 && (
             <div>
-              <h2 className="text-base font-semibold text-zinc-100 mb-1">Branch Information</h2>
-              <p className="text-zinc-500 text-sm mb-5">Your default branch has been created. Customize it here.</p>
+              <h2 className="text-base font-semibold text-zinc-100 mb-1">{t('onboarding.step2_title')}</h2>
+              <p className="text-zinc-500 text-sm mb-5">{t('onboarding.step2_desc')}</p>
 
               <div className="space-y-3">
                 <Input
-                  label="Branch Name"
+                  label={t('onboarding.branch_name_label')}
                   value={branchName}
                   onChange={e => setBranchName(e.target.value)}
-                  placeholder="Main Branch"
+                  placeholder={t('onboarding.branch_name_placeholder')}
                 />
                 <Input
-                  label="Branch Phone (optional)"
+                  label={t('onboarding.branch_phone_label')}
                   type="tel"
                   inputMode="tel"
                   autoComplete="tel"
@@ -244,10 +246,10 @@ export default function OnboardingWizard() {
 
               <div className="flex gap-3 mt-5">
                 <Btn variant="secondary" size="lg" fullWidth onClick={() => { setError(null); setStep(1) }} disabled={isSaving}>
-                  ← Back
+                  {t('common.prev')}
                 </Btn>
                 <Btn variant="primary" size="lg" fullWidth onClick={handleStep2Next} disabled={isSaving}>
-                  {isSaving ? <Spinner size={16} /> : 'Continue →'}
+                  {isSaving ? <Spinner size={16} /> : t('common.next')}
                 </Btn>
               </div>
             </div>
@@ -257,18 +259,18 @@ export default function OnboardingWizard() {
             <div>
               <div className="text-center py-4">
                 <div className="text-5xl mb-4">🎉</div>
-                <h2 className="text-lg font-semibold text-zinc-100 mb-2">You're all set!</h2>
+                <h2 className="text-lg font-semibold text-zinc-100 mb-2">{t('onboarding.all_set_title')}</h2>
                 <p className="text-zinc-400 text-sm mb-6">
-                  Your {trialStatus ? `${trialStatus.days_remaining}-day` : ''} free trial has started. Here's what's included:
+                  {t('onboarding.your_trial')} {trialStatus ? `${trialStatus.days_remaining}${t('onboarding.day_suffix')}` : ''} {t('onboarding.trial_active_desc')}
                 </p>
 
                 <div className="text-left bg-zinc-800/60 rounded-xl p-4 mb-6 space-y-2.5">
                   {[
-                    { icon: '🏪', label: 'POS Checkout', desc: 'Start selling immediately' },
-                    { icon: '📦', label: 'Inventory Management', desc: 'Track products & stock levels' },
-                    { icon: '👥', label: 'Customer Management', desc: 'Build your customer database' },
-                    { icon: '📊', label: 'Analytics & Reports', desc: 'Understand your business' },
-                    { icon: '🛒', label: 'Procurement', desc: 'Manage suppliers & purchase orders' },
+                    { icon: '🏪', label: t('onboarding.feature_pos_title'), desc: t('onboarding.feature_pos_desc') },
+                    { icon: '📦', label: t('onboarding.feature_inventory_title'), desc: t('onboarding.feature_inventory_desc') },
+                    { icon: '👥', label: t('onboarding.feature_customers_title'), desc: t('onboarding.feature_customers_desc') },
+                    { icon: '📊', label: t('onboarding.feature_analytics_title'), desc: t('onboarding.feature_analytics_desc') },
+                    { icon: '🛒', label: t('qa.procurement'), desc: t('onboarding.feature_procurement_desc') },
                   ].map(item => (
                     <div key={item.label} className="flex items-start gap-3">
                       <span className="text-lg flex-shrink-0 mt-0.5">{item.icon}</span>
@@ -276,21 +278,21 @@ export default function OnboardingWizard() {
                         <p className="text-sm font-medium text-zinc-200">{item.label}</p>
                         <p className="text-xs text-zinc-500">{item.desc}</p>
                       </div>
-                      <span className="ml-auto text-green-400 text-xs font-medium flex-shrink-0">✓ Included</span>
+                      <span className="ml-auto text-green-400 text-xs font-medium flex-shrink-0">✓ {t('onboarding.included')}</span>
                     </div>
                   ))}
                 </div>
 
                 <Btn variant="primary" size="lg" fullWidth onClick={handleFinish}>
-                  Go to Dashboard →
+                  {t('onboarding.go_to_dashboard')}
                 </Btn>
 
                 {trialStatus && (
                   <p className="text-xs text-zinc-600 mt-3">
-                    Trial limits: {fmtLimit(trialStatus.usage.products?.limit)} products
-                    {' '}· {fmtLimit(trialStatus.usage.staff?.limit)} staff
-                    {' '}· {fmtLimit(trialStatus.usage.branches?.limit)} branch
-                    {' '}· {fmtLimit(trialStatus.usage.customers?.limit)} customers
+                    {t('onboarding.trial_limits_prefix')} {fmtLimit(trialStatus.usage.products?.limit, t)} {t('onboarding.trial_limits_products')}
+                    {' '}· {fmtLimit(trialStatus.usage.staff?.limit, t)} {t('onboarding.trial_limits_staff')}
+                    {' '}· {fmtLimit(trialStatus.usage.branches?.limit, t)} {t('onboarding.trial_limits_branch')}
+                    {' '}· {fmtLimit(trialStatus.usage.customers?.limit, t)} {t('onboarding.trial_limits_customers')}
                   </p>
                 )}
               </div>
@@ -303,7 +305,7 @@ export default function OnboardingWizard() {
             onClick={completeOnboarding}
             className="text-zinc-600 hover:text-zinc-400 underline-offset-2 hover:underline"
           >
-            Skip setup, go to dashboard
+            {t('onboarding.skip_setup')}
           </button>
         </p>
       </div>

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/auth.store'
+import { useLocaleStore } from '@/i18n/localeStore'
 import { canAccess } from '@/shared/constants/rbac'
 import { notificationsService } from '@/services/notifications/notifications.service'
 import { analyticsService } from '@/services/analytics/analytics.service'
@@ -12,6 +13,7 @@ import { DashboardSection } from './DashboardSection'
 export function ActionCenter() {
   const user = useAuthStore(s => s.user)
   const navigate = useNavigate()
+  const t = useLocaleStore(s => s.t)
   const role = user?.role ?? 'CASHIER'
 
   const notifQuery = useQuery({
@@ -44,10 +46,10 @@ export function ActionCenter() {
   if (unread > 0) {
     alerts.push({
       id: 'notifications',
-      label: `${unread} unread notification${unread !== 1 ? 's' : ''}`,
-      sub: 'Review your notification inbox',
+      label: `${unread} ${t('reseller.unread_notification')}${unread !== 1 ? 's' : ''}`,
+      sub: t('dash.review_notification_inbox'),
       severity: unread > 5 ? 'warning' : 'info',
-      action: { label: 'View', path: '/app/notifications' },
+      action: { label: t('dash.view'), path: '/app/notifications' },
     })
   }
 
@@ -55,10 +57,10 @@ export function ActionCenter() {
   if (lowStockCount > 0) {
     alerts.push({
       id: 'low-stock',
-      label: `${lowStockCount} product${lowStockCount !== 1 ? 's' : ''} below reorder point`,
-      sub: 'Inventory needs attention',
+      label: `${lowStockCount} ${t('products.col.product')}${lowStockCount !== 1 ? 's' : ''} ${t('dash.below_reorder_point')}`,
+      sub: t('dash.inventory_needs_attention'),
       severity: lowStockCount > 10 ? 'critical' : 'warning',
-      action: { label: 'Inventory', path: '/app/inventory' },
+      action: { label: t('qa.inventory'), path: '/app/inventory' },
     })
   }
 
@@ -66,10 +68,10 @@ export function ActionCenter() {
   if (pendingPOs > 0) {
     alerts.push({
       id: 'pending-po',
-      label: `${pendingPOs} pending purchase order${pendingPOs !== 1 ? 's' : ''}`,
-      sub: 'Awaiting approval or fulfillment',
+      label: `${pendingPOs} ${t('status.pending')} ${t('procurement.purchase_order')}${pendingPOs !== 1 ? 's' : ''}`,
+      sub: t('dash.awaiting_approval_fulfillment'),
       severity: 'info',
-      action: { label: 'Procurement', path: '/app/procurement/purchase-orders' },
+      action: { label: t('qa.procurement'), path: '/app/procurement/purchase-orders' },
     })
   }
 
@@ -77,26 +79,26 @@ export function ActionCenter() {
   if (sub?.status === 'TRIAL') {
     alerts.push({
       id: 'trial',
-      label: 'Trial subscription active',
-      sub: 'Upgrade to a paid plan to retain access after the trial ends',
+      label: t('dash.trial_subscription_active'),
+      sub: t('dash.upgrade_to_paid_plan'),
       severity: 'warning',
-      action: { label: 'Upgrade', path: '/app/subscription/current' },
+      action: { label: t('dash.upgrade'), path: '/app/subscription/current' },
     })
   } else if (sub?.status === 'EXPIRED') {
     alerts.push({
       id: 'sub-expired',
-      label: 'Subscription has expired',
-      sub: 'Renew your plan to restore full access',
+      label: t('dash.subscription_expired'),
+      sub: t('dash.renew_plan_restore_access'),
       severity: 'critical',
-      action: { label: 'Renew', path: '/app/subscription/current' },
+      action: { label: t('dash.renew'), path: '/app/subscription/current' },
     })
   } else if (sub?.status === 'SUSPENDED') {
     alerts.push({
       id: 'sub-suspended',
-      label: 'Subscription is suspended',
-      sub: 'Contact support or renew to restore access',
+      label: t('dash.subscription_suspended'),
+      sub: t('dash.contact_support_renew'),
       severity: 'critical',
-      action: { label: 'Subscription', path: '/app/subscription/current' },
+      action: { label: t('qa.subscription'), path: '/app/subscription/current' },
     })
   }
 
@@ -104,10 +106,10 @@ export function ActionCenter() {
 
   return (
     <DashboardSection
-      title="Action Center"
+      title={t('dash.action_center')}
       action={
         alerts.length > 0
-          ? { label: 'Notifications', onClick: () => navigate('/app/notifications') }
+          ? { label: t('qa.notifications'), onClick: () => navigate('/app/notifications') }
           : undefined
       }
     >

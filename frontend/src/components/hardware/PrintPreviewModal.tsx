@@ -11,6 +11,7 @@ import { tenantService } from '@/services/tenant/tenant.service'
 import { thermalPrinterService } from '@/services/thermal/printer.service'
 import { serialPrinterService } from '@/services/thermal/serial.service'
 import apiClient from '@/app/lib/axios'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 type ReceiptSize = '58mm' | '80mm'
 type LabelSize = '40x30' | '50x30'
@@ -51,6 +52,7 @@ interface ReceiptPreviewProps {
 }
 
 export function ReceiptPrintPreviewModal({ receipt, onClose, autoTrigger = false }: ReceiptPreviewProps) {
+  const t = useLocaleStore(s => s.t)
   const [size, setSize] = useState<ReceiptSize>(
     () => (localStorage.getItem(RECEIPT_SIZE_KEY) as ReceiptSize) ?? '58mm'
   )
@@ -91,7 +93,7 @@ export function ReceiptPrintPreviewModal({ receipt, onClose, autoTrigger = false
   })
   const taxInclusive     = taxSettings?.tax_inclusive ?? false
   const ex               = taxSettings?.extra_settings as Record<string, unknown> | undefined
-  const taxName          = (ex?.tax_name as string) || 'Tax'
+  const taxName          = (ex?.tax_name as string) || t('receipt.tax')
   const hasLogo          = !!ex?.receipt_logo_url
   const showTaxOnReceipt = (ex?.show_tax_on_receipt as boolean) ?? true
 
@@ -174,7 +176,7 @@ export function ReceiptPrintPreviewModal({ receipt, onClose, autoTrigger = false
         try {
           await thermalPrinterService.connect()
           setUsbConnected(true)
-          toast.success(`Connected: ${thermalPrinterService.deviceName}`)
+          toast.success(`${t('print.connected')}: ${thermalPrinterService.deviceName}`)
           return
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : ''
@@ -187,10 +189,10 @@ export function ReceiptPrintPreviewModal({ receipt, onClose, autoTrigger = false
         setDetecting(true)
         await serialPrinterService.connect()
         setSerialConnected(true)
-        toast.success(`Connected: ${serialPrinterService.portName}`)
+        toast.success(`${t('print.connected')}: ${serialPrinterService.portName}`)
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Connection failed'
+      const msg = err instanceof Error ? err.message : t('print.connection_failed')
       if (!msg.includes('No port selected') && !msg.includes('cancelled')) toast.error(msg)
     } finally {
       setConnecting(false)
@@ -223,10 +225,10 @@ export function ReceiptPrintPreviewModal({ receipt, onClose, autoTrigger = false
         await serialPrinterService.printReceipt(receipt, size, printOpts)
         if (!serialPrinterService.isConnected) setSerialConnected(false)
       }
-      toast.success('Sent to printer — check that it printed')
+      toast.success(t('print.sent_to_printer'))
       onClose()
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Print failed')
+      toast.error(err instanceof Error ? err.message : t('print.print_failed'))
     } finally {
       setDirectPrinting(false)
     }
@@ -253,7 +255,7 @@ export function ReceiptPrintPreviewModal({ receipt, onClose, autoTrigger = false
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 flex-shrink-0">
           <div>
-            <h2 className="text-base font-bold text-zinc-100">Print Receipt</h2>
+            <h2 className="text-base font-bold text-zinc-100">{t('print.print_receipt')}</h2>
             <p className="text-xs text-zinc-500">{receipt.receipt_number}</p>
           </div>
           <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200 text-xl leading-none">×</button>
@@ -263,7 +265,7 @@ export function ReceiptPrintPreviewModal({ receipt, onClose, autoTrigger = false
         <div className="px-5 py-3 border-b border-zinc-800 flex-shrink-0 flex flex-col gap-3">
           {/* Paper size */}
           <div className="flex items-center gap-2">
-            <span className="text-xs text-zinc-500 w-20 flex-shrink-0">Paper size</span>
+            <span className="text-xs text-zinc-500 w-20 flex-shrink-0">{t('print.paper_size')}</span>
             <div className="flex gap-2">
               {(['58mm', '80mm'] as ReceiptSize[]).map(s => (
                 <button
@@ -284,18 +286,18 @@ export function ReceiptPrintPreviewModal({ receipt, onClose, autoTrigger = false
           {/* Direct printer row */}
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-zinc-500 w-20 flex-shrink-0">Printer</span>
+              <span className="text-xs text-zinc-500 w-20 flex-shrink-0">{t('print.printer')}</span>
               {usbConnected ? (
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
                   <span className="text-xs text-green-400 truncate">{thermalPrinterService.deviceName}</span>
-                  <button onClick={handleDisconnect} className="text-xs text-zinc-600 hover:text-zinc-400 flex-shrink-0 ml-1">Disconnect</button>
+                  <button onClick={handleDisconnect} className="text-xs text-zinc-600 hover:text-zinc-400 flex-shrink-0 ml-1">{t('print.disconnect')}</button>
                 </div>
               ) : serialConnected ? (
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
                   <span className="text-xs text-green-400 truncate">{serialPrinterService.portName}</span>
-                  <button onClick={handleDisconnect} className="text-xs text-zinc-600 hover:text-zinc-400 flex-shrink-0 ml-1">Disconnect</button>
+                  <button onClick={handleDisconnect} className="text-xs text-zinc-600 hover:text-zinc-400 flex-shrink-0 ml-1">{t('print.disconnect')}</button>
                 </div>
               ) : directSupported ? (
                 <button
@@ -304,16 +306,16 @@ export function ReceiptPrintPreviewModal({ receipt, onClose, autoTrigger = false
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-zinc-700 bg-zinc-900 text-zinc-300 hover:text-zinc-100 hover:border-zinc-600 transition-colors disabled:opacity-50"
                 >
                   <IconUsb className="w-3.5 h-3.5" />
-                  {detecting ? 'Detecting speed…' : connecting ? 'Connecting…' : 'Connect Printer'}
+                  {detecting ? t('print.detecting_speed') : connecting ? t('print.connecting') : t('print.connect_printer')}
                 </button>
               ) : (
-                <span className="text-xs text-zinc-600">Direct print requires Chrome or Edge</span>
+                <span className="text-xs text-zinc-600">{t('print.direct_print_requires_chrome')}</span>
               )}
             </div>
             {/* Windows hint — shown only when not yet connected */}
             {!usbConnected && !serialConnected && directSupported && navigator.userAgent.includes('Windows') && (
               <p className="text-[11px] text-zinc-500 ml-[88px]">
-                On Windows, use the <span className="text-zinc-300">Bluetooth</span> COM port — USB is blocked by the Windows printer driver.
+                {t('print.windows_bluetooth_hint_prefix')} <span className="text-zinc-300">{t('print.bluetooth')}</span> {t('print.windows_bluetooth_hint_suffix')}
               </p>
             )}
           </div>
@@ -335,7 +337,7 @@ export function ReceiptPrintPreviewModal({ receipt, onClose, autoTrigger = false
             onClick={onClose}
             className="py-2.5 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm font-medium transition-colors"
           >
-            Cancel
+            {t('common.cancel')}
           </button>
 
           {/* Browser print — always available as fallback when direct is connected */}
@@ -343,9 +345,9 @@ export function ReceiptPrintPreviewModal({ receipt, onClose, autoTrigger = false
             <button
               onClick={handleBrowserPrint}
               className="py-2.5 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm font-medium transition-colors"
-              title="Open browser print dialog"
+              title={t('print.open_browser_print_dialog')}
             >
-              Browser Print
+              {t('print.browser_print')}
             </button>
           )}
 
@@ -356,14 +358,14 @@ export function ReceiptPrintPreviewModal({ receipt, onClose, autoTrigger = false
               disabled={directPrinting}
               className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-black text-sm font-bold transition-colors disabled:opacity-60"
             >
-              {directPrinting ? 'Printing…' : 'Print Direct'}
+              {directPrinting ? t('print.printing') : t('print.print_direct')}
             </button>
           ) : (
             <button
               onClick={handleBrowserPrint}
               className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-black text-sm font-bold transition-colors"
             >
-              Print Receipt
+              {t('print.print_receipt')}
             </button>
           )}
         </div>
@@ -383,6 +385,7 @@ interface LabelPreviewProps {
 }
 
 export function LabelPrintPreviewModal({ product, businessName, quantity = 1, onClose }: LabelPreviewProps) {
+  const t = useLocaleStore(s => s.t)
   const [size, setSize]           = useState<LabelSize>('50x30')
   const [qty, setQty]             = useState(quantity)
   const [showPrice, setShowPrice] = useState(true)
@@ -396,7 +399,7 @@ export function LabelPrintPreviewModal({ product, businessName, quantity = 1, on
     const labelHtml = area.querySelector('.label-instance')?.outerHTML ?? area.innerHTML
     const labels = Array(qty).fill(labelHtml).join('')
     const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8"/><title>Label ${product.sku}</title>
+<html><head><meta charset="utf-8"/><title>${t('print.label')} ${product.sku}</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 ${pageRule}
@@ -406,7 +409,7 @@ img { max-width: 100%; display: block; }
 </style></head>
 <body>${labels}</body></html>`
     const win = window.open('', '_blank', 'width=300,height=400')
-    if (!win) { alert('Allow pop-ups to enable printing.'); return }
+    if (!win) { alert(t('print.allow_popups')); return }
     win.document.write(html)
     win.document.close()
     setTimeout(() => {
@@ -424,7 +427,7 @@ img { max-width: 100%; display: block; }
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 flex-shrink-0">
           <div>
-            <h2 className="text-base font-bold text-zinc-100">Print Label</h2>
+            <h2 className="text-base font-bold text-zinc-100">{t('products.detail.print')}</h2>
             <p className="text-xs text-zinc-500">{product.name}</p>
           </div>
           <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200 text-xl leading-none">×</button>
@@ -446,7 +449,7 @@ img { max-width: 100%; display: block; }
             ))}
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-xs text-zinc-500">Qty:</label>
+            <label className="text-xs text-zinc-500">{t('print.qty')}</label>
             <input
               type="number"
               min={1}
@@ -463,7 +466,7 @@ img { max-width: 100%; display: block; }
               onChange={e => setShowPrice(e.target.checked)}
               className="accent-amber-500"
             />
-            Show price
+            {t('print.show_price')}
           </label>
         </div>
 
@@ -477,7 +480,7 @@ img { max-width: 100%; display: block; }
         </div>
 
         {qty > 1 && (
-          <p className="text-center text-xs text-zinc-600 pb-2">{qty} labels will print</p>
+          <p className="text-center text-xs text-zinc-600 pb-2">{qty} {t('print.labels_will_print')}</p>
         )}
 
         {/* Actions */}
@@ -486,13 +489,13 @@ img { max-width: 100%; display: block; }
             onClick={onClose}
             className="flex-1 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm font-medium transition-colors"
           >
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             onClick={handlePrint}
             className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-sm font-bold transition-colors"
           >
-            Print {qty > 1 ? `${qty} Labels` : 'Label'}
+            {t('common.print')} {qty > 1 ? `${qty} ${t('print.labels')}` : t('print.label')}
           </button>
         </div>
       </div>

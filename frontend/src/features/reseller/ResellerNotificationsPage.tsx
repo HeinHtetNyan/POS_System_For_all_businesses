@@ -6,6 +6,7 @@ import { timeAgo, extractApiMsg } from '@/lib/utils'
 import { Badge, Btn, Spinner } from '@/components/ui'
 import { notificationsService } from '@/services/notifications/notifications.service'
 import type { Notification } from '@/shared/types'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 const PRIORITY_VARIANT: Record<string, 'danger' | 'warning' | 'info' | 'default'> = {
   CRITICAL: 'danger',
@@ -17,6 +18,7 @@ const PRIORITY_VARIANT: Record<string, 'danger' | 'warning' | 'info' | 'default'
 export default function ResellerNotificationsPage() {
   const navigate = useNavigate()
   const qc = useQueryClient()
+  const t = useLocaleStore(s => s.t)
   const [readFilter, setReadFilter] = useState<boolean | undefined>(undefined)
   const [page, setPage] = useState(1)
 
@@ -33,15 +35,15 @@ export default function ResellerNotificationsPage() {
     mutationFn: () => notificationsService.markAllRead(),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['reseller-notifications'] })
-      toast.success('All notifications marked as read')
+      toast.success(useLocaleStore.getState().t('reseller.all_marked_read'))
     },
-    onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed'),
+    onError: (err) => toast.error(extractApiMsg(err) ?? useLocaleStore.getState().t('reseller.failed_generic')),
   })
 
   const markReadMutation = useMutation({
     mutationFn: (id: string) => notificationsService.markRead(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['reseller-notifications'] }),
-    onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to mark as read'),
+    onError: (err) => toast.error(extractApiMsg(err) ?? useLocaleStore.getState().t('reseller.failed_mark_read')),
   })
 
   const notifications = data?.items ?? []
@@ -52,8 +54,8 @@ export default function ResellerNotificationsPage() {
     <div className="h-full overflow-y-auto p-6">
       <div className="mb-6 flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-100">Notifications</h1>
-          <p className="text-zinc-500 text-sm mt-1">{total} notification{total !== 1 ? 's' : ''}</p>
+          <h1 className="text-2xl font-bold text-zinc-100">{t('nav.notifications')}</h1>
+          <p className="text-zinc-500 text-sm mt-1">{total} {t('reseller.notification_word')}{total !== 1 ? 's' : ''}</p>
         </div>
         <Btn
           variant="ghost"
@@ -61,16 +63,16 @@ export default function ResellerNotificationsPage() {
           onClick={() => markAllMutation.mutate()}
           disabled={markAllMutation.isPending}
         >
-          Mark all read
+          {t('reseller.mark_all_read')}
         </Btn>
       </div>
 
       {/* Read/Unread filter */}
       <div className="flex gap-2 mb-6">
         {[
-          { label: 'All', value: undefined as boolean | undefined },
-          { label: 'Unread', value: false },
-          { label: 'Read', value: true },
+          { label: t('reseller.filter_all'), value: undefined as boolean | undefined },
+          { label: t('reseller.filter_unread'), value: false },
+          { label: t('reseller.filter_read'), value: true },
         ].map(f => (
           <button
             key={String(f.label)}
@@ -92,7 +94,7 @@ export default function ResellerNotificationsPage() {
           <Spinner size={28} />
         </div>
       ) : notifications.length === 0 ? (
-        <div className="text-center py-16 text-zinc-600">No notifications found.</div>
+        <div className="text-center py-16 text-zinc-600">{t('reseller.no_notifications')}</div>
       ) : (
         <div className="space-y-2">
           {notifications.map(n => (
@@ -136,11 +138,11 @@ export default function ResellerNotificationsPage() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between mt-6">
-          <span className="text-xs text-zinc-500">{total} total</span>
+          <span className="text-xs text-zinc-500">{total} {t('reseller.total_word')}</span>
           <div className="flex items-center gap-2">
-            <Btn variant="ghost" size="xs" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Prev</Btn>
+            <Btn variant="ghost" size="xs" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>{t('reseller.prev_label')}</Btn>
             <span className="text-xs text-zinc-400">{page} / {totalPages}</span>
-            <Btn variant="ghost" size="xs" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Next</Btn>
+            <Btn variant="ghost" size="xs" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>{t('reseller.next_label')}</Btn>
           </div>
         </div>
       )}

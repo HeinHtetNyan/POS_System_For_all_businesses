@@ -9,12 +9,14 @@ import { ROLE_LABELS, ROLE_BADGE_STYLES } from '@/shared/constants/rbac'
 import { fmt, fmtDateTime, extractApiMsg } from '@/lib/utils'
 import { Btn, Divider, Spinner } from '@/components/ui/index'
 import { IconLogout, IconCash, IconCard, IconAlert } from '@/components/icons'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 export default function SessionCloseScreen() {
   const navigate   = useNavigate()
   const qc         = useQueryClient()
   const { user } = useAuthStore()
   const { activeSession, clearSession } = useSessionStore()
+  const t = useLocaleStore(s => s.t)
 
   const [actualCash, setActualCash] = useState('')
   const [notes, setNotes]           = useState('')
@@ -30,7 +32,7 @@ export default function SessionCloseScreen() {
   if (!activeSession || !user) {
     return (
       <div className="min-h-full flex items-center justify-center bg-zinc-950">
-        <p className="text-zinc-500 text-sm">No active session.</p>
+        <p className="text-zinc-500 text-sm">{t('auth.session_close.no_active_session')}</p>
       </div>
     )
   }
@@ -57,15 +59,15 @@ export default function SessionCloseScreen() {
   }
 
   function discLabel() {
-    if (discrepancy === null) return 'Enter actual cash to see discrepancy'
-    if (Math.abs(discrepancy) < 0.01) return 'Cash balanced — no discrepancy'
-    if (discrepancy < 0) return `Short by ${fmt(Math.abs(discrepancy))}`
-    return `Over by ${fmt(discrepancy)}`
+    if (discrepancy === null) return t('auth.session_close.enter_cash_prompt')
+    if (Math.abs(discrepancy) < 0.01) return t('auth.session_close.balanced')
+    if (discrepancy < 0) return `${t('auth.session_close.short_by')} ${fmt(Math.abs(discrepancy))}`
+    return `${t('auth.session_close.over_by')} ${fmt(discrepancy)}`
   }
 
   async function handleClose() {
     if (!actualCash) {
-      toast.error('Please enter the actual cash in drawer.')
+      toast.error(t('auth.session_close.enter_cash_error'))
       return
     }
     setLoading(true)
@@ -76,10 +78,10 @@ export default function SessionCloseScreen() {
       })
       clearSession()
       qc.clear()
-      toast.success('Session closed successfully')
+      toast.success(t('auth.session_close.success'))
       navigate('/app/session-open', { replace: true })
     } catch (err: unknown) {
-      const msg = extractApiMsg(err) ?? 'Failed to close session'
+      const msg = extractApiMsg(err) ?? t('auth.session_close.failed')
       toast.error(msg)
     } finally {
       setLoading(false)
@@ -94,11 +96,11 @@ export default function SessionCloseScreen() {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-red-950 border border-red-800 text-red-400 mb-4">
             <IconLogout width="26" height="26" />
           </div>
-          <h1 className="text-xl font-bold text-zinc-100">Close Session</h1>
+          <h1 className="text-xl font-bold text-zinc-100">{t('auth.session_close.title')}</h1>
           <div className="flex items-center justify-center gap-2 mt-1">
             <span className="font-mono text-amber-400 text-sm">{activeSession.id.slice(0, 8)}…</span>
             <span className="text-zinc-600 text-xs">·</span>
-            <span className="text-zinc-500 text-xs">Started {fmtDateTime(activeSession.opened_at)}</span>
+            <span className="text-zinc-500 text-xs">{t('auth.session_close.started_prefix')} {fmtDateTime(activeSession.opened_at)}</span>
           </div>
         </div>
 
@@ -122,15 +124,15 @@ export default function SessionCloseScreen() {
             {/* Stats */}
             <div className="grid grid-cols-3 gap-3">
               <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-center">
-                <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Orders</p>
+                <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">{t('auth.session_close.orders')}</p>
                 <p className="text-2xl font-bold font-mono text-zinc-100">{sessionOrders.length}</p>
               </div>
               <div className="rounded-xl border border-amber-800/40 bg-amber-500/5 p-3 text-center">
-                <p className="text-xs text-amber-600 uppercase tracking-wider mb-1">Revenue</p>
+                <p className="text-xs text-amber-600 uppercase tracking-wider mb-1">{t('auth.session_close.revenue')}</p>
                 <p className="text-xl font-bold font-mono text-amber-400">{fmt(totalRevenue)}</p>
               </div>
               <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-center">
-                <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Opening</p>
+                <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">{t('auth.session_close.opening')}</p>
                 <p className="text-xl font-bold font-mono text-zinc-100">{fmt(openingBal)}</p>
               </div>
             </div>
@@ -139,19 +141,19 @@ export default function SessionCloseScreen() {
 
             {/* Cash reconciliation */}
             <div>
-              <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-3">Cash Reconciliation</p>
+              <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-3">{t('auth.session_close.cash_reconciliation')}</p>
               <div className="space-y-2">
                 <div className="flex items-center justify-between py-2 border-b border-zinc-800">
                   <div className="flex items-center gap-2 text-zinc-400 text-sm">
                     <IconCash width="15" height="15" className="text-zinc-600" />
-                    Opening Float
+                    {t('auth.session_close.opening_float')}
                   </div>
                   <span className="font-mono text-zinc-200 text-sm">{fmt(openingBal)}</span>
                 </div>
                 <div className="flex items-center justify-between py-2 border-b border-zinc-800">
                   <div className="flex items-center gap-2 text-zinc-300 text-sm font-medium">
                     <IconCard width="15" height="15" className="text-zinc-500" />
-                    Expected in Drawer
+                    {t('auth.session_close.expected_in_drawer')}
                   </div>
                   <span className="font-mono text-zinc-100 text-sm font-semibold">{fmt(expectedCash)}</span>
                 </div>
@@ -161,7 +163,7 @@ export default function SessionCloseScreen() {
             {/* Actual cash input */}
             <div>
               <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider block mb-2">
-                Actual Cash in Drawer
+                {t('auth.session_close.actual_cash')}
               </label>
               <div className="relative flex items-center">
                 <span className="absolute left-4 text-amber-500 text-base font-bold pointer-events-none">$</span>
@@ -191,13 +193,13 @@ export default function SessionCloseScreen() {
             {/* Notes */}
             <div>
               <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider block mb-2">
-                Notes (optional)
+                {t('auth.session_close.notes_optional')}
               </label>
               <textarea
                 rows={2}
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
-                placeholder="Any notes for this session close…"
+                placeholder={t('auth.session_close.notes_placeholder')}
                 className="w-full bg-zinc-950 border border-zinc-700 rounded-xl text-zinc-100 text-sm
                   focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 transition-all
                   px-4 py-3 resize-none placeholder-zinc-600"
@@ -215,7 +217,7 @@ export default function SessionCloseScreen() {
                 onClick={() => navigate('/app/pos')}
                 disabled={loading}
               >
-                Cancel
+                {t('common.cancel')}
               </Btn>
               <Btn
                 variant="danger"
@@ -225,9 +227,9 @@ export default function SessionCloseScreen() {
                 disabled={loading || !actualCash}
               >
                 {loading ? (
-                  <><Spinner size={16} /> Closing…</>
+                  <><Spinner size={16} /> {t('auth.session_close.closing')}</>
                 ) : (
-                  <><IconLogout width="16" height="16" /> Close Session</>
+                  <><IconLogout width="16" height="16" /> {t('auth.session_close.title')}</>
                 )}
               </Btn>
             </div>

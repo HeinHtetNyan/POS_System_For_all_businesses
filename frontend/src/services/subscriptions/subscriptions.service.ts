@@ -11,6 +11,7 @@ import type {
   PublicTrialPlan,
   TrialStatus,
   SubscriptionPaymentMethod,
+  AppDownloadLinks,
 } from '@/shared/types'
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api/v1'
@@ -150,4 +151,13 @@ export const subscriptionsService = {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then(r => r.data.icon_url)
   },
+
+  getPublicAppDownloadLinks: () =>
+    axios.get<AppDownloadLinks>(`${BASE_URL}/public/app-download-links`).then(r => r.data),
+
+  adminGetPlatformAppDownloadLinks: () =>
+    apiClient.get<AppDownloadLinks>('/subscriptions/admin/platform/app-download-links').then(r => r.data),
+
+  adminSetPlatformAppDownloadLinks: (links: AppDownloadLinks) =>
+    apiClient.put<AppDownloadLinks>('/subscriptions/admin/platform/app-download-links', links).then(r => r.data),
 }

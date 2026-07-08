@@ -3,6 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import type { Product, CartItem } from '@/types'
 import { Empty } from '@/components/ui'
 import { IconProducts } from '@/components/icons'
+import { useLocaleStore } from '@/i18n/localeStore'
 import ProductCard from '@/features/pos/ProductCard'
 
 const CARD_MIN_W = 120
@@ -17,6 +18,7 @@ interface ProductGridProps {
 }
 
 export default function ProductGrid({ products, cartItems, onAdd }: ProductGridProps) {
+  const t = useLocaleStore(s => s.t)
   const cartQtyMap = useMemo(() => {
     const m = new Map<string, number>()
     for (const item of cartItems) m.set(item.id, item.qty)
@@ -60,8 +62,8 @@ export default function ProductGrid({ products, cartItems, onAdd }: ProductGridP
       <div ref={parentRef} className="h-full flex items-center justify-center">
         <Empty
           icon={<IconProducts width="48" height="48" />}
-          title="No products found"
-          subtitle="Try a different search or category"
+          title={t('products.empty')}
+          subtitle={t('pos.no_products_sub')}
         />
       </div>
     )

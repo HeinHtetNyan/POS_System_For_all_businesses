@@ -144,11 +144,11 @@ export default function ProductsScreen() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => productsService.delete(id),
     onSuccess: () => {
-      toast.success('Product deleted')
+      toast.success(t('products.deleted'))
       setSelectedId(null)
       qc.invalidateQueries({ queryKey: ['products'] })
     },
-    onError: () => toast.error('Failed to delete product'),
+    onError: () => toast.error(t('products.delete_failed')),
   })
 
   const products = productsData?.items ?? []

@@ -59,10 +59,10 @@ export default function StaffDashboardPage() {
       {/* Header */}
       <div className="flex-shrink-0 px-4 py-3.5 border-b border-zinc-800">
         <h2 className="text-base font-semibold text-zinc-100">
-          Good {getGreeting()}, {user?.first_name ?? 'there'}
+          {t(`dash.greeting_${getGreeting()}`)}, {user?.first_name ?? t('dash.there_fallback')}
         </h2>
         <p className="text-xs text-zinc-500 mt-0.5">
-          {isInventoryStaff ? 'Inventory staff' : 'Cashier'}{myBranchName ? ` · ${myBranchName}` : ''}
+          {isInventoryStaff ? t('dash.inventory_staff_role') : t('dash.cashier_role')}{myBranchName ? ` · ${myBranchName}` : ''}
         </p>
       </div>
 
@@ -72,36 +72,36 @@ export default function StaffDashboardPage() {
         {activeSession && (
           <div className="bg-green-950/30 border border-green-800/40 rounded-2xl px-4 py-3.5 flex items-center justify-between gap-3 flex-wrap">
             <div>
-              <p className="text-sm font-medium text-green-400">Session Open</p>
+              <p className="text-sm font-medium text-green-400">{t('dash.session_open_title')}</p>
               <p className="text-xs text-green-300/70 mt-0.5">
-                Started {timeAgo(activeSession.opened_at)} · Opening: {fmt(activeSession.opening_balance)}
+                {t('auth.session_close.started_prefix')} {timeAgo(activeSession.opened_at)} · {t('dash.opening_colon')} {fmt(activeSession.opening_balance)}
               </p>
             </div>
             <button
               onClick={() => navigate('/app/pos')}
               className="bg-green-600 hover:bg-green-500 text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors flex-shrink-0"
             >
-              Continue Selling →
+              {t('dash.continue_selling')}
             </button>
           </div>
         )}
 
         {/* KPI Row */}
-        <DashboardSection title="Today at a Glance">
+        <DashboardSection title={t('dash.today_at_glance')}>
           {isInventoryStaff ? (
             <div className="grid grid-cols-2 gap-3">
               <KpiCard
-                label="Orders Today"
+                label={t('dash.orders_today')}
                 value={kpi?.orders_today ?? '—'}
-                sub="transactions"
+                sub={t('dash.transactions_word')}
                 icon="🧾"
                 isLoading={kpiQuery.isLoading}
                 isError={kpiQuery.isError}
               />
               <KpiCard
-                label="Low Stock"
+                label={t('status.low_stock')}
                 value={lowStock.length}
-                sub={lowStock.length > 0 ? 'need restock' : 'all stocked'}
+                sub={lowStock.length > 0 ? t('dash.need_restock') : t('dash.all_stocked')}
                 icon="⚠️"
                 isLoading={lowStockQuery.isLoading}
                 isError={lowStockQuery.isError}
@@ -110,7 +110,7 @@ export default function StaffDashboardPage() {
           ) : (
             <div className="grid grid-cols-2 gap-3">
               <KpiCard
-                label="Sales Today"
+                label={t('analytics.sales_today')}
                 value={fmt(kpi?.sales_today)}
                 icon="💰"
                 accent
@@ -118,9 +118,9 @@ export default function StaffDashboardPage() {
                 isError={kpiQuery.isError}
               />
               <KpiCard
-                label="This Month"
+                label={t('dash.this_month')}
                 value={fmt(kpi?.sales_this_month)}
-                sub={`${kpi?.orders_this_month ?? 0} orders`}
+                sub={`${kpi?.orders_this_month ?? 0} ${t('sales.orders_word')}`}
                 icon="📅"
                 isLoading={kpiQuery.isLoading}
                 isError={kpiQuery.isError}
@@ -140,8 +140,8 @@ export default function StaffDashboardPage() {
         {/* Low Stock (Inventory Staff only) */}
         {isInventoryStaff && lowStock.length > 0 && (
           <DashboardSection
-            title={`Low Stock Alerts (${lowStock.length})`}
-            action={{ label: 'Manage', onClick: () => navigate('/app/inventory') }}
+            title={`${t('dash.low_stock_alerts_prefix')} (${lowStock.length})`}
+            action={{ label: t('dash.manage'), onClick: () => navigate('/app/inventory') }}
           >
             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl divide-y divide-zinc-800">
               {lowStock.slice(0, 10).map(item => (
@@ -149,17 +149,17 @@ export default function StaffDashboardPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-zinc-200 truncate">{item.product_name}</p>
                     <p className="text-xs text-zinc-500 mt-0.5">
-                      {item.sku ? `SKU: ${item.sku} · ` : ''}{item.branch_name}
+                      {item.sku ? `${t('dash.sku_prefix')} ${item.sku} · ` : ''}{item.branch_name}
                     </p>
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0">
                     <div className="text-right">
                       <p className="text-sm font-semibold text-red-400 tabular-nums">{item.quantity_on_hand}</p>
-                      <p className="text-[10px] text-zinc-600">in stock</p>
+                      <p className="text-[10px] text-zinc-600">{t('dash.in_stock')}</p>
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-medium text-zinc-400 tabular-nums">{item.reorder_point}</p>
-                      <p className="text-[10px] text-zinc-600">reorder at</p>
+                      <p className="text-[10px] text-zinc-600">{t('dash.reorder_at')}</p>
                     </div>
                   </div>
                 </div>

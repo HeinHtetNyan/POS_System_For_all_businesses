@@ -1,17 +1,19 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { cn } from '@/lib/utils'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 const TABS = [
-  { to: '/app/analytics/dashboard', label: 'Dashboard' },
-  { to: '/app/analytics/sales',     label: 'Sales'     },
-  { to: '/app/analytics/inventory', label: 'Inventory' },
-  { to: '/app/analytics/customers', label: 'Customers' },
-  { to: '/app/analytics/financial', label: 'Financial' },
-  { to: '/app/analytics/staff',     label: 'Staff'     },
-  { to: '/app/analytics/exports',   label: 'Exports'   },
+  { to: '/app/analytics/dashboard', labelKey: 'nav.dashboard' },
+  { to: '/app/analytics/sales',     labelKey: 'nav.sales'     },
+  { to: '/app/analytics/inventory', labelKey: 'nav.inventory' },
+  { to: '/app/analytics/customers', labelKey: 'qa.customers'  },
+  { to: '/app/analytics/financial', labelKey: 'analytics.tab_financial' },
+  { to: '/app/analytics/staff',     labelKey: 'settings.tab.staff' },
+  { to: '/app/analytics/exports',   labelKey: 'analytics.tab_exports'  },
 ]
 
 export default function AnalyticsLayout() {
+  const t = useLocaleStore(s => s.t)
   const location = useLocation()
 
   return (
@@ -30,7 +32,7 @@ export default function AnalyticsLayout() {
                   : 'text-zinc-500 border-transparent hover:text-zinc-200',
               )}
             >
-              {tab.label}
+              {t(tab.labelKey)}
             </NavLink>
           ))}
         </nav>

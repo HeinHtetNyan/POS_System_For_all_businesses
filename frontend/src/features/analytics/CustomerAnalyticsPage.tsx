@@ -4,11 +4,13 @@ import { fmt } from '@/lib/utils'
 import { StatCard, Table, Th, Td, Badge } from '@/components/ui'
 import { analyticsService } from '@/services/analytics/analytics.service'
 import { customersService } from '@/services/customers/customers.service'
+import { useLocaleStore } from '@/i18n/localeStore'
 import { useAnalyticsFilters, AnalyticsFilters, ChartCard } from './analyticsHelpers'
 
 const PAGE_SIZE = 30
 
 export default function CustomerAnalyticsPage() {
+  const t = useLocaleStore(s => s.t)
   const filters = useAnalyticsFilters()
   const [custPage, setCustPage] = useState(1)
 
@@ -52,7 +54,7 @@ export default function CustomerAnalyticsPage() {
     <div className="p-4 sm:p-6 space-y-5">
       {/* Header */}
       <div className="flex flex-col gap-3">
-        <h2 className="text-base font-semibold text-zinc-100">Customer Analytics</h2>
+        <h2 className="text-base font-semibold text-zinc-100">{t('analytics.customer_analytics_title')}</h2>
         <AnalyticsFilters {...filters} showDateRange={false} />
       </div>
 
@@ -64,29 +66,29 @@ export default function CustomerAnalyticsPage() {
           ))
         ) : (
           <>
-            <StatCard label="Total Customers"  value={totalCount.toLocaleString()} />
-            <StatCard label="Active Customers" value={activeCount.toLocaleString()} accent />
-            <StatCard label="New This Month"   value={(dashboard?.new_customers_month ?? 0).toLocaleString()} accent />
-            <StatCard label="Inactive"         value={(totalCount - activeCount).toLocaleString()} />
+            <StatCard label={t('analytics.total_customers')}  value={totalCount.toLocaleString()} />
+            <StatCard label={t('analytics.active_customers')} value={activeCount.toLocaleString()} accent />
+            <StatCard label={t('analytics.new_this_month')}   value={(dashboard?.new_customers_month ?? 0).toLocaleString()} accent />
+            <StatCard label={t('status.inactive')}             value={(totalCount - activeCount).toLocaleString()} />
           </>
         )}
       </div>
 
       {/* Top Customers by Balance */}
       <ChartCard
-        title="Top Customers by Outstanding Balance"
+        title={t('analytics.top_customers_outstanding')}
         isLoading={topCustomersQ.isLoading}
         isEmpty={topCustomers.length === 0}
-        emptyMessage="No customers with outstanding balances"
+        emptyMessage={t('analytics.no_customers_outstanding')}
       >
         <Table>
           <thead>
             <tr>
               <Th>#</Th>
-              <Th>Customer</Th>
-              <Th>Phone</Th>
-              <Th>Status</Th>
-              <Th right>Outstanding</Th>
+              <Th>{t('analytics.customer')}</Th>
+              <Th>{t('settings.phone')}</Th>
+              <Th>{t('products.col.status')}</Th>
+              <Th right>{t('analytics.outstanding')}</Th>
             </tr>
           </thead>
           <tbody>
@@ -97,7 +99,7 @@ export default function CustomerAnalyticsPage() {
                 <Td muted mono>{c.phone}</Td>
                 <Td>
                   <Badge variant={c.is_active ? 'success' : 'default'} size="xs">
-                    {c.is_active ? 'Active' : 'Inactive'}
+                    {c.is_active ? t('status.active') : t('status.inactive')}
                   </Badge>
                 </Td>
                 <Td right>
@@ -109,20 +111,20 @@ export default function CustomerAnalyticsPage() {
         </Table>
         <div className="px-4 py-2.5 border-t border-zinc-800 flex items-center justify-between gap-3">
           <p className="text-xs text-zinc-500">
-            {topCustomers.length === 0 ? '0 customers' : `${(custPage - 1) * PAGE_SIZE + 1}–${Math.min(custPage * PAGE_SIZE, topCustomers.length)} of ${topCustomers.length}`}
+            {topCustomers.length === 0 ? `0 ${t('analytics.noun_customers')}` : `${(custPage - 1) * PAGE_SIZE + 1}–${Math.min(custPage * PAGE_SIZE, topCustomers.length)} ${t('analytics.of')} ${topCustomers.length}`}
           </p>
           <div className="flex items-center gap-1">
             <button onClick={() => setCustPage(p => Math.max(1, p - 1))} disabled={custPage === 1}
-              className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">‹ Prev</button>
+              className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">{t('common.prev')}</button>
             <span className="text-xs text-zinc-500 px-2">{custPage} / {custTotalPages}</span>
             <button onClick={() => setCustPage(p => Math.min(custTotalPages, p + 1))} disabled={custPage >= custTotalPages}
-              className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">Next ›</button>
+              className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">{t('common.next')}</button>
           </div>
         </div>
       </ChartCard>
 
       <div className="text-xs text-zinc-600 bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3">
-        Customer spending trends and receivable history require a dedicated customer analytics API endpoint — not yet available in the backend.
+        {t('analytics.customer_trends_note')}
       </div>
     </div>
   )

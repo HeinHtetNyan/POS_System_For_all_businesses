@@ -9,10 +9,11 @@ import { Btn, Spinner, SectionHeader } from '@/components/ui'
 import { procurementService } from '@/services/procurement/procurement.service'
 import { extractApiMsg } from '@/lib/utils'
 import { inputCls, FormField } from './procurementHelpers'
+import { useLocaleStore } from '@/i18n/localeStore'
 
-const schema = z.object({
-  name:    z.string().min(1, 'Name is required'),
-  email:   z.string().email('Invalid email').or(z.literal('')),
+const makeSchema = (t: (key: string) => string) => z.object({
+  name:    z.string().min(1, t('procurement.validation_name_required')),
+  email:   z.string().email(t('procurement.validation_invalid_email')).or(z.literal('')),
   phone:   z.string(),
   address: z.string(),
   city:    z.string(),
@@ -21,12 +22,13 @@ const schema = z.object({
   notes:   z.string(),
 })
 
-type FormValues = z.infer<typeof schema>
+type FormValues = z.infer<ReturnType<typeof makeSchema>>
 
 export default function SupplierFormPage() {
   const { id } = useParams<{ id?: string }>()
   const navigate = useNavigate()
   const qc = useQueryClient()
+  const t = useLocaleStore(s => s.t)
   const isEdit = !!id
 
   const { data: existing, isLoading: loadingExisting } = useQuery({
@@ -36,7 +38,7 @@ export default function SupplierFormPage() {
   })
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormValues>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(makeSchema(t)),
     defaultValues: { name: '', email: '', phone: '', address: '', city: '', country: '', website: '', notes: '' },
   })
 
@@ -67,11 +69,11 @@ export default function SupplierFormPage() {
       notes:   data.notes || undefined,
     }),
     onSuccess: (supplier) => {
-      toast.success('Supplier created')
+      toast.success(t('procurement.supplier_created'))
       qc.invalidateQueries({ queryKey: ['suppliers'] })
       navigate(`/app/procurement/suppliers/${supplier.id}`)
     },
-    onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to create supplier'),
+    onError: (err) => toast.error(extractApiMsg(err) ?? t('procurement.failed_create_supplier')),
   })
 
   const updateMutation = useMutation({
@@ -86,12 +88,12 @@ export default function SupplierFormPage() {
       notes:   data.notes || null,
     }),
     onSuccess: () => {
-      toast.success('Supplier updated')
+      toast.success(t('procurement.supplier_updated'))
       qc.invalidateQueries({ queryKey: ['supplier', id] })
       qc.invalidateQueries({ queryKey: ['suppliers'] })
       navigate(`/app/procurement/suppliers/${id}`)
     },
-    onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to update supplier'),
+    onError: (err) => toast.error(extractApiMsg(err) ?? t('procurement.failed_update_supplier')),
   })
 
   function onSubmit(data: FormValues) {
@@ -108,44 +110,44 @@ export default function SupplierFormPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <SectionHeader
-        title={isEdit ? 'Edit Supplier' : 'New Supplier'}
-        subtitle={isEdit ? existing?.name : 'Add a supplier to your procurement network'}
+        title={isEdit ? t('procurement.edit_supplier') : t('procurement.new_supplier')}
+        subtitle={isEdit ? existing?.name : t('procurement.new_supplier_subtitle')}
       />
 
       <div className="flex-1 overflow-y-auto">
         <form onSubmit={handleSubmit(onSubmit)} className="max-w-lg mx-auto p-4 sm:p-6 space-y-4">
-          <FormField label="Supplier Name" error={errors.name?.message} required>
+          <FormField label={t('procurement.supplier_name')} error={errors.name?.message} required>
             <input {...register('name')} placeholder="Acme Corp" className={inputCls(!!errors.name)} />
           </FormField>
 
           <div className="grid grid-cols-2 gap-4">
-            <FormField label="Phone" error={errors.phone?.message}>
+            <FormField label={t('settings.phone')} error={errors.phone?.message}>
               <input {...register('phone')} type="tel" inputMode="tel" autoComplete="tel" placeholder="+1 555 000 0000" className={inputCls(!!errors.phone)} />
             </FormField>
-            <FormField label="Email" error={errors.email?.message}>
+            <FormField label={t('settings.email')} error={errors.email?.message}>
               <input {...register('email')} type="email" placeholder="contact@supplier.com" className={inputCls(!!errors.email)} />
             </FormField>
           </div>
 
-          <FormField label="Address">
-            <textarea {...register('address')} placeholder="Street address" rows={2} className={`${inputCls(false)} resize-none`} />
+          <FormField label={t('settings.address')}>
+            <textarea {...register('address')} placeholder={t('procurement.street_address_placeholder')} rows={2} className={`${inputCls(false)} resize-none`} />
           </FormField>
 
           <div className="grid grid-cols-2 gap-4">
-            <FormField label="City">
-              <input {...register('city')} placeholder="City" className={inputCls(false)} />
+            <FormField label={t('settings.city')}>
+              <input {...register('city')} placeholder={t('settings.city')} className={inputCls(false)} />
             </FormField>
-            <FormField label="Country">
-              <input {...register('country')} placeholder="Country" className={inputCls(false)} />
+            <FormField label={t('settings.country')}>
+              <input {...register('country')} placeholder={t('settings.country')} className={inputCls(false)} />
             </FormField>
           </div>
 
-          <FormField label="Website">
+          <FormField label={t('procurement.website')}>
             <input {...register('website')} placeholder="https://supplier.com" className={inputCls(false)} />
           </FormField>
 
-          <FormField label="Notes">
-            <textarea {...register('notes')} placeholder="Internal notes…" rows={3} className={`${inputCls(false)} resize-none`} />
+          <FormField label={t('procurement.notes')}>
+            <textarea {...register('notes')} placeholder={t('procurement.internal_notes_placeholder')} rows={3} className={`${inputCls(false)} resize-none`} />
           </FormField>
 
           <div className="flex gap-3 pt-2">
@@ -154,10 +156,10 @@ export default function SupplierFormPage() {
               variant="secondary"
               onClick={() => navigate(isEdit ? `/app/procurement/suppliers/${id}` : '/app/procurement/suppliers')}
             >
-              Cancel
+              {t('common.cancel')}
             </Btn>
             <Btn type="submit" disabled={pending} fullWidth>
-              {pending ? <Spinner size={16} /> : isEdit ? 'Save Changes' : 'Create Supplier'}
+              {pending ? <Spinner size={16} /> : isEdit ? t('common.save_changes') : t('procurement.create_supplier')}
             </Btn>
           </div>
         </form>

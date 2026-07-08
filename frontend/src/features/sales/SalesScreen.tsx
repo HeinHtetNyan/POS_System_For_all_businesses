@@ -6,6 +6,7 @@ import { useTenantStore } from '@/store/tenant.store'
 import { useAuthStore } from '@/store/auth.store'
 import { fmt, fmtDateTime, timeAgo } from '@/lib/utils'
 import { getPaymentMethodLabel } from '@/lib/paymentMethod'
+import { useLocaleStore } from '@/i18n/localeStore'
 import { StatCard, Table, Th, Td, Badge, Empty, Divider, Spinner } from '@/components/ui'
 import { IconSales, IconSearch, IconRefund, IconPrint, IconAlert } from '@/components/icons'
 import { ReceiptPrintPreviewModal } from '@/components/hardware/PrintPreviewModal'
@@ -28,7 +29,21 @@ const PAYMENT_VARIANT: Record<string, 'success' | 'warning' | 'danger'> = {
   PENDING: 'danger',
 }
 
+function orderStatusLabel(status: string, t: (key: string) => string): string {
+  const map: Record<string, string> = {
+    COMPLETED:          t('status.completed'),
+    PENDING:            t('status.pending'),
+    CANCELLED:          t('status.cancelled'),
+    REFUNDED:           t('status.refunded'),
+    PARTIALLY_REFUNDED: t('sales.status_partially_refunded'),
+    VOIDED:             t('sales.status_voided'),
+    DRAFT:              t('sales.status_draft'),
+  }
+  return map[status] ?? (status.charAt(0) + status.slice(1).toLowerCase().replace('_', ' '))
+}
+
 export default function SalesScreen() {
+  const t = useLocaleStore(s => s.t)
   const { selectedBranch, availableBranches } = useTenantStore()
 
   const [search, setSearch]               = useState('')
@@ -94,9 +109,9 @@ export default function SalesScreen() {
     return (
       <div className="flex h-full items-center justify-center flex-col gap-3 p-6">
         <IconSales width="48" height="48" className="text-zinc-700" />
-        <p className="text-zinc-400 font-medium">No branch selected</p>
+        <p className="text-zinc-400 font-medium">{t('sales.no_branch_selected')}</p>
         <p className="text-zinc-600 text-sm text-center max-w-xs">
-          Select a branch from the sidebar to view sales history.
+          {t('sales.no_branch_selected_sub')}
         </p>
       </div>
     )
@@ -111,7 +126,7 @@ export default function SalesScreen() {
         {/* Page header */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 px-4 sm:px-6 py-3 sm:py-4 border-b border-zinc-800 flex-shrink-0">
           <div className="flex items-center gap-3 flex-1 min-w-0">
-            <h2 className="text-base font-semibold text-zinc-100 flex-shrink-0">Sales History</h2>
+            <h2 className="text-base font-semibold text-zinc-100 flex-shrink-0">{t('qa.sales_history')}</h2>
             {branchName && (
               <span className="flex items-center gap-1.5 text-xs text-zinc-400 bg-zinc-800 border border-zinc-700 rounded-lg px-2.5 py-1 truncate">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" />
@@ -125,7 +140,7 @@ export default function SalesScreen() {
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder={tab === 'REFUNDED' ? 'Search refunds…' : 'Search orders…'}
+              placeholder={tab === 'REFUNDED' ? t('sales.search_refunds_placeholder') : t('sales.search_orders_placeholder')}
               className="bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-600 text-sm
                 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 transition-all
                 py-2 pl-8 pr-4 w-full sm:w-56"
@@ -137,31 +152,31 @@ export default function SalesScreen() {
           {/* Stats (orders only) */}
           {tab !== 'REFUNDED' && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-              <StatCard label="Total Orders"    value={orders.length} />
-              <StatCard label="Revenue"         value={fmt(totalRevenue)} accent />
-              <StatCard label="Refunded"        value={fmt(totalRefunded)} />
-              <StatCard label="Avg Order Value" value={fmt(avgOrder)} />
+              <StatCard label={t('sales.stat.total_orders')}    value={orders.length} />
+              <StatCard label={t('sales.stat.revenue')}         value={fmt(totalRevenue)} accent />
+              <StatCard label={t('status.refunded')}            value={fmt(totalRefunded)} />
+              <StatCard label={t('sales.stat.avg_order_value')} value={fmt(avgOrder)} />
             </div>
           )}
           {tab === 'REFUNDED' && (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
-              <StatCard label="Total Refunds" value={refunds.length} />
-              <StatCard label="Refunded Total" value={fmt(refunds.reduce((s, r) => s + parseFloat(r.amount), 0))} accent />
-              <StatCard label="Avg Refund" value={fmt(refunds.length > 0 ? refunds.reduce((s, r) => s + parseFloat(r.amount), 0) / refunds.length : 0)} />
+              <StatCard label={t('sales.stat.total_refunds')} value={refunds.length} />
+              <StatCard label={t('sales.stat.refunded_total')} value={fmt(refunds.reduce((s, r) => s + parseFloat(r.amount), 0))} accent />
+              <StatCard label={t('sales.stat.avg_refund')} value={fmt(refunds.length > 0 ? refunds.reduce((s, r) => s + parseFloat(r.amount), 0) / refunds.length : 0)} />
             </div>
           )}
 
           {/* Tab filter */}
           <div className="flex gap-1 bg-zinc-900 border border-zinc-800 rounded-xl p-1 w-fit">
-            {(['all', 'COMPLETED', 'REFUNDED'] as const).map(t => (
+            {(['all', 'COMPLETED', 'REFUNDED'] as const).map(tabValue => (
               <button
-                key={t}
-                onClick={() => { setTab(t); setSelectedOrder(null); setSelectedRefund(null) }}
+                key={tabValue}
+                onClick={() => { setTab(tabValue); setSelectedOrder(null); setSelectedRefund(null) }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                  tab === t ? 'bg-amber-500 text-black' : 'text-zinc-400 hover:text-zinc-200'
+                  tab === tabValue ? 'bg-amber-500 text-black' : 'text-zinc-400 hover:text-zinc-200'
                 }`}
               >
-                {t === 'all' ? 'All' : t === 'REFUNDED' ? 'Refunded' : 'Completed'}
+                {tabValue === 'all' ? t('sales.tab_all') : tabValue === 'REFUNDED' ? t('status.refunded') : t('status.completed')}
               </button>
             ))}
           </div>
@@ -175,26 +190,26 @@ export default function SalesScreen() {
                 <Table>
                   <thead>
                     <tr>
-                      <Th>Order #</Th>
-                      <Th>Date</Th>
-                      <Th right>Total</Th>
-                      <Th>Status</Th>
-                      <Th>Payment</Th>
-                      <Th>By</Th>
-                      <Th>Customer</Th>
+                      <Th>{t('sales.col.order_number')}</Th>
+                      <Th>{t('sales.col.date')}</Th>
+                      <Th right>{t('sales.col.total')}</Th>
+                      <Th>{t('products.col.status')}</Th>
+                      <Th>{t('sales.col.payment')}</Th>
+                      <Th>{t('sales.col.by')}</Th>
+                      <Th>{t('sales.col.customer')}</Th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredOrders.length === 0 ? (
                       <tr>
                         <td colSpan={7}>
-                          <Empty icon={<IconSales width="40" height="40" />} title="No orders found" subtitle="Adjust your search or filter" />
+                          <Empty icon={<IconSales width="40" height="40" />} title={t('sales.no_orders_found')} subtitle={t('products.empty_sub')} />
                         </td>
                       </tr>
                     ) : filteredOrders.map(order => {
                       const isActive = selectedOrder?.id === order.id
                       const paymentLabel = order.payment_status
-                        ? order.payment_status.charAt(0) + order.payment_status.slice(1).toLowerCase()
+                        ? t(`status.${order.payment_status.toLowerCase()}`)
                         : null
                       return (
                         <tr
@@ -211,14 +226,14 @@ export default function SalesScreen() {
                           </Td>
                           <Td>
                             <Badge variant={STATUS_VARIANT[order.order_status] ?? 'warning'} dot>
-                              {order.order_status.charAt(0) + order.order_status.slice(1).toLowerCase().replace('_', ' ')}
+                              {orderStatusLabel(order.order_status, t)}
                             </Badge>
                           </Td>
                           <Td>
                             <div className="flex flex-col gap-0.5">
                               {order.payments && order.payments.length > 0 ? (
                                 <span className="text-xs font-medium text-green-400">
-                                  Paid via {order.payments.map(p => {
+                                  {t('sales.paid_via')} {order.payments.map(p => {
                                     const label = getPaymentMethodLabel(p.payment_method)
                                     return p.notes ? `${label} (${p.notes})` : label
                                   }).join(' + ')}
@@ -246,7 +261,7 @@ export default function SalesScreen() {
                 </Table>
               )}
               <div className="px-4 py-2.5 border-t border-zinc-800 flex-shrink-0">
-                <p className="text-xs text-zinc-500">{filteredOrders.length} of {orders.length} orders</p>
+                <p className="text-xs text-zinc-500">{filteredOrders.length} {t('sales.of')} {orders.length} {t('sales.orders_word')}</p>
               </div>
             </div>
           )}
@@ -260,19 +275,19 @@ export default function SalesScreen() {
                 <Table>
                   <thead>
                     <tr>
-                      <Th>Refund #</Th>
-                      <Th>Date</Th>
-                      <Th>Type</Th>
-                      <Th right>Amount</Th>
-                      <Th>By</Th>
-                      <Th>Reason</Th>
+                      <Th>{t('sales.col.refund_number')}</Th>
+                      <Th>{t('sales.col.date')}</Th>
+                      <Th>{t('sales.col.type')}</Th>
+                      <Th right>{t('sales.col.amount')}</Th>
+                      <Th>{t('sales.col.by')}</Th>
+                      <Th>{t('sales.col.reason')}</Th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredRefunds.length === 0 ? (
                       <tr>
                         <td colSpan={6}>
-                          <Empty icon={<IconRefund width="40" height="40" />} title="No refunds found" subtitle="Processed refunds will appear here" />
+                          <Empty icon={<IconRefund width="40" height="40" />} title={t('sales.no_refunds_found')} subtitle={t('sales.no_refunds_sub')} />
                         </td>
                       </tr>
                     ) : filteredRefunds.map(refund => {
@@ -294,8 +309,8 @@ export default function SalesScreen() {
                           <Td muted className="whitespace-nowrap text-xs">{fmtDateTime(refund.processed_at)}</Td>
                           <Td>
                             {refund.refund_type === 'REPLACEMENT'
-                              ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-950 border border-violet-800 text-violet-400">Replace</span>
-                              : <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-950 border border-blue-800 text-blue-400">Cash</span>
+                              ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-950 border border-violet-800 text-violet-400">{t('sales.replace_short')}</span>
+                              : <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-950 border border-blue-800 text-blue-400">{t('sales.cash_short')}</span>
                             }
                           </Td>
                           <Td right mono>
@@ -316,7 +331,7 @@ export default function SalesScreen() {
                 </Table>
               )}
               <div className="px-4 py-2.5 border-t border-zinc-800 flex-shrink-0">
-                <p className="text-xs text-zinc-500">{filteredRefunds.length} of {refunds.length} refunds</p>
+                <p className="text-xs text-zinc-500">{filteredRefunds.length} {t('sales.of')} {refunds.length} {t('sales.refunds_word')}</p>
               </div>
             </div>
           )}
@@ -345,6 +360,7 @@ export default function SalesScreen() {
 // Order Detail Panel
 
 function OrderDetailPanel({ order, onClose }: { order: Order; onClose: () => void }) {
+  const t = useLocaleStore(s => s.t)
   const [showReprint, setShowReprint] = useState(false)
   const [showVoid, setShowVoid] = useState(false)
   const role = useAuthStore(s => s.user?.role)
@@ -366,7 +382,7 @@ function OrderDetailPanel({ order, onClose }: { order: Order; onClose: () => voi
   return (
     <div className="fixed inset-0 z-50 lg:relative lg:inset-auto lg:z-auto w-full lg:w-96 flex-shrink-0 lg:border-l border-zinc-800 bg-zinc-950 flex flex-col overflow-y-auto">
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 flex-shrink-0">
-        <span className="text-sm font-semibold text-zinc-100">Order Receipt</span>
+        <span className="text-sm font-semibold text-zinc-100">{t('sales.order_receipt')}</span>
         <button onClick={onClose} className="flex items-center justify-center w-8 h-8 rounded-full bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-zinc-100 transition-colors text-xl leading-none">
           ×
         </button>
@@ -376,28 +392,28 @@ function OrderDetailPanel({ order, onClose }: { order: Order; onClose: () => voi
         <div className="flex items-center justify-between">
           <span className="font-mono text-sm font-bold text-amber-400">{order.order_number}</span>
           <Badge variant={STATUS_VARIANT[order.order_status] ?? 'warning'} dot>
-            {order.order_status.charAt(0) + order.order_status.slice(1).toLowerCase().replace('_', ' ')}
+            {orderStatusLabel(order.order_status, t)}
           </Badge>
         </div>
         <p className="text-xs text-zinc-400">{fmtDateTime(order.created_at)}</p>
         <p className="text-xs text-zinc-600">{timeAgo(order.created_at)}</p>
         {(order.branch_name || detail?.branch_name) && (
-          <p className="text-xs text-zinc-500">Branch <span className="text-blue-400 font-medium">{order.branch_name ?? detail?.branch_name}</span></p>
+          <p className="text-xs text-zinc-500">{t('sales.branch')} <span className="text-blue-400 font-medium">{order.branch_name ?? detail?.branch_name}</span></p>
         )}
         {order.cashier_name && (
-          <p className="text-xs text-zinc-500">By <span className="text-zinc-300">{order.cashier_name}</span></p>
+          <p className="text-xs text-zinc-500">{t('sales.col.by')} <span className="text-zinc-300">{order.cashier_name}</span></p>
         )}
         {order.customer_name && (
-          <p className="text-xs text-zinc-500">Customer <span className="text-amber-400 font-medium">{order.customer_name}</span></p>
+          <p className="text-xs text-zinc-500">{t('sales.col.customer')} <span className="text-amber-400 font-medium">{order.customer_name}</span></p>
         )}
       </div>
 
       <div className="px-4 py-3 border-b border-zinc-800 flex-shrink-0">
-        <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mb-2">Items</p>
+        <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mb-2">{t('sales.items')}</p>
         {isLoading ? (
           <div className="flex justify-center py-4"><Spinner size={20} /></div>
         ) : items.length === 0 ? (
-          <p className="text-xs text-zinc-600 py-2">No items found.</p>
+          <p className="text-xs text-zinc-600 py-2">{t('sales.no_items')}</p>
         ) : (
           <div className="flex flex-col gap-2">
             {items.map((item, idx) => (
@@ -427,28 +443,28 @@ function OrderDetailPanel({ order, onClose }: { order: Order; onClose: () => voi
       <div className="px-4 py-3 border-b border-zinc-800 flex-shrink-0">
         <div className="flex flex-col gap-1.5">
           <div className="flex justify-between text-xs text-zinc-500">
-            <span>Subtotal</span>
+            <span>{t('sales.subtotal')}</span>
             <span className="font-mono">{fmt(parseFloat(order.subtotal), order.currency)}</span>
           </div>
           {parseFloat(order.discount_amount) > 0 && (
             <div className="flex justify-between text-xs text-amber-500">
-              <span>Discount</span>
+              <span>{t('products.detail.discount')}</span>
               <span className="font-mono">−{fmt(parseFloat(order.discount_amount), order.currency)}</span>
             </div>
           )}
           <div className="flex justify-between text-xs text-zinc-500">
-            <span>Tax</span>
+            <span>{t('sales.tax')}</span>
             <span className="font-mono">{fmt(parseFloat(order.tax_amount), order.currency)}</span>
           </div>
           {detail?.refunded_amount && parseFloat(detail.refunded_amount) > 0 && (
             <div className="flex justify-between text-xs text-red-400">
-              <span>Refunded</span>
+              <span>{t('status.refunded')}</span>
               <span className="font-mono">−{fmt(parseFloat(detail.refunded_amount), order.currency)}</span>
             </div>
           )}
           <Divider />
           <div className="flex justify-between text-sm font-bold text-zinc-100">
-            <span>Total</span>
+            <span>{t('sales.col.total')}</span>
             <span className="font-mono text-amber-400">{fmt(parseFloat(order.total_amount), order.currency)}</span>
           </div>
         </div>
@@ -456,7 +472,7 @@ function OrderDetailPanel({ order, onClose }: { order: Order; onClose: () => voi
 
       {/* Payment methods breakdown */}
       <div className="px-4 py-3 border-b border-zinc-800 flex-shrink-0">
-        <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mb-2">Payment</p>
+        <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mb-2">{t('sales.col.payment')}</p>
         {detail?.payments && detail.payments.length > 0 ? (
           <div className="flex flex-col gap-1.5">
             {(detail.payments as OrderPayment[]).map((p, i) => (
@@ -478,8 +494,8 @@ function OrderDetailPanel({ order, onClose }: { order: Order; onClose: () => voi
         ) : (
           detail?.payment_status && (
             <div className="flex justify-between text-xs">
-              <span className="text-zinc-500">Status</span>
-              <span className="text-zinc-300 capitalize">{detail.payment_status.toLowerCase()}</span>
+              <span className="text-zinc-500">{t('products.col.status')}</span>
+              <span className="text-zinc-300 capitalize">{t(`status.${detail.payment_status.toLowerCase()}`)}</span>
             </div>
           )
         )}
@@ -487,7 +503,7 @@ function OrderDetailPanel({ order, onClose }: { order: Order; onClose: () => voi
 
       {order.notes && (
         <div className="px-4 py-3 border-b border-zinc-800 flex-shrink-0">
-          <p className="text-xs text-zinc-500 mb-1">Notes</p>
+          <p className="text-xs text-zinc-500 mb-1">{t('sales.notes')}</p>
           <p className="text-xs text-zinc-300">{order.notes}</p>
         </div>
       )}
@@ -502,7 +518,7 @@ function OrderDetailPanel({ order, onClose }: { order: Order; onClose: () => voi
           className="w-full h-9 flex items-center justify-center gap-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-sm font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <IconPrint width="14" height="14" />
-          Reprint Receipt
+          {t('sales.reprint_receipt')}
         </button>
         {role && VOID_ALLOWED_ROLES.has(role) && (detail?.order_status ?? order.order_status) === 'COMPLETED' && (
           <button
@@ -510,7 +526,7 @@ function OrderDetailPanel({ order, onClose }: { order: Order; onClose: () => voi
             className="w-full h-9 flex items-center justify-center gap-2 rounded-xl bg-red-950 hover:bg-red-900 border border-red-800 text-red-400 text-sm font-semibold transition-all"
           >
             <IconAlert width="14" height="14" />
-            Void Order
+            {t('sales.void_order')}
           </button>
         )}
       </div>
@@ -537,10 +553,11 @@ function OrderDetailPanel({ order, onClose }: { order: Order; onClose: () => voi
 // Refund Detail Panel
 
 function RefundDetailPanel({ refund, onClose }: { refund: RefundRecord; onClose: () => void }) {
+  const t = useLocaleStore(s => s.t)
   return (
     <div className="fixed inset-0 z-50 lg:relative lg:inset-auto lg:z-auto w-full lg:w-96 flex-shrink-0 lg:border-l border-zinc-800 bg-zinc-950 flex flex-col overflow-y-auto">
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 flex-shrink-0">
-        <span className="text-sm font-semibold text-zinc-100">Refund Detail</span>
+        <span className="text-sm font-semibold text-zinc-100">{t('sales.refund_detail')}</span>
         <button onClick={onClose} className="flex items-center justify-center w-8 h-8 rounded-full bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-zinc-100 transition-colors text-xl leading-none">
           ×
         </button>
@@ -551,21 +568,21 @@ function RefundDetailPanel({ refund, onClose }: { refund: RefundRecord; onClose:
         <div className="flex items-center justify-between">
           <span className="font-mono text-sm font-bold text-amber-400">{refund.refund_number}</span>
           {refund.refund_type === 'REPLACEMENT'
-            ? <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-950 border border-violet-800 text-violet-400 font-semibold">Replacement</span>
-            : <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-950 border border-blue-800 text-blue-400 font-semibold">Cash Refund</span>
+            ? <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-950 border border-violet-800 text-violet-400 font-semibold">{t('sales.replacement')}</span>
+            : <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-950 border border-blue-800 text-blue-400 font-semibold">{t('sales.cash_refund')}</span>
           }
         </div>
         <div className="flex justify-between text-xs text-zinc-500 mt-1">
-          <span>Order ID</span>
+          <span>{t('sales.order_id')}</span>
           <span className="font-mono text-zinc-400">{refund.order_id.slice(0, 8)}…</span>
         </div>
         <div className="flex justify-between text-xs text-zinc-500">
-          <span>Refund Date</span>
+          <span>{t('sales.refund_date')}</span>
           <span className="text-zinc-300">{fmtDateTime(refund.processed_at)}</span>
         </div>
         {refund.processed_by_name && (
           <div className="flex justify-between text-xs text-zinc-500">
-            <span>Processed By</span>
+            <span>{t('sales.processed_by')}</span>
             <span className="text-zinc-300">{refund.processed_by_name}</span>
           </div>
         )}
@@ -576,9 +593,9 @@ function RefundDetailPanel({ refund, onClose }: { refund: RefundRecord; onClose:
 
       {/* Refunded items */}
       <div className="px-4 py-3 border-b border-zinc-800 flex-shrink-0">
-        <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mb-2">Refunded Items</p>
+        <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mb-2">{t('sales.refunded_items')}</p>
         {refund.items.length === 0 ? (
-          <p className="text-xs text-zinc-600 py-1">No item details available.</p>
+          <p className="text-xs text-zinc-600 py-1">{t('sales.no_item_details')}</p>
         ) : (
           <div className="flex flex-col gap-2">
             {refund.items.map((item, idx) => (
@@ -603,7 +620,7 @@ function RefundDetailPanel({ refund, onClose }: { refund: RefundRecord; onClose:
       <div className="px-4 py-3 border-b border-zinc-800 flex-shrink-0">
         <div className="flex justify-between text-sm font-bold">
           <span className="text-zinc-400">
-            {refund.refund_type === 'REPLACEMENT' ? 'Item Value' : 'Refunded Total'}
+            {refund.refund_type === 'REPLACEMENT' ? t('sales.item_value') : t('sales.stat.refunded_total')}
           </span>
           <span className={`font-mono ${refund.refund_type === 'REPLACEMENT' ? 'text-violet-400' : 'text-red-400'}`}>
             {refund.refund_type === 'REPLACEMENT' ? '' : '−'}{fmt(parseFloat(refund.amount))}
@@ -613,11 +630,11 @@ function RefundDetailPanel({ refund, onClose }: { refund: RefundRecord; onClose:
 
       {/* Reason + Notes */}
       <div className="px-4 py-3 flex-shrink-0">
-        <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mb-1">Reason</p>
+        <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mb-1">{t('sales.col.reason')}</p>
         <p className="text-xs text-zinc-300">{refund.reason}</p>
         {refund.notes && (
           <>
-            <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mt-3 mb-1">Notes</p>
+            <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mt-3 mb-1">{t('sales.notes')}</p>
             <p className="text-xs text-zinc-400">{refund.notes}</p>
           </>
         )}

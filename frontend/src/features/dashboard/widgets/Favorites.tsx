@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useWorkspaceStore } from '@/store/workspace.store'
+import { useLocaleStore } from '@/i18n/localeStore'
 import { DashboardSection } from './DashboardSection'
 
 const TYPE_ICONS: Record<string, string> = {
@@ -11,12 +12,13 @@ const TYPE_ICONS: Record<string, string> = {
 
 export function Favorites() {
   const navigate = useNavigate()
+  const t = useLocaleStore(s => s.t)
   const { favorites, removeFavorite } = useWorkspaceStore()
 
   if (!favorites.length) return null
 
   return (
-    <DashboardSection title="Pinned">
+    <DashboardSection title={t('dash.pinned')}>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
         {favorites.map(item => (
           <div
@@ -40,7 +42,7 @@ export function Favorites() {
             <button
               onClick={() => removeFavorite(item.id)}
               className="opacity-0 group-hover:opacity-100 w-4 h-4 flex items-center justify-center text-zinc-600 hover:text-zinc-400 transition-all flex-shrink-0 text-xs"
-              title="Unpin"
+              title={t('dash.unpin')}
             >
               ×
             </button>

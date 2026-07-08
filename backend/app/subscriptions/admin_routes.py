@@ -16,6 +16,8 @@ from app.subscriptions.entitlements import (
 from app.subscriptions.services import PlatformSettingsService
 from app.subscriptions.schemas import (
     AdminChangePlanRequest,
+    AppDownloadLinksResponse,
+    AppDownloadLinksUpdateRequest,
     EffectiveEntitlementResponse,
     ExtendSubscriptionRequest,
     PaginatedAdminSubscriptions,
@@ -357,6 +359,27 @@ async def update_platform_payment_methods(
     svc = PlatformSettingsService(db)
     methods = await svc.set_payment_methods(data.payment_methods)
     return PlatformPaymentMethodsResponse(payment_methods=methods)
+
+
+@router.get("/platform/app-download-links", response_model=AppDownloadLinksResponse)
+async def get_platform_app_download_links(
+    db: DbSession,
+    _: Annotated[User, Depends(require_super_admin)],
+) -> AppDownloadLinksResponse:
+    svc = PlatformSettingsService(db)
+    links = await svc.get_app_download_links()
+    return AppDownloadLinksResponse(**links)
+
+
+@router.put("/platform/app-download-links", response_model=AppDownloadLinksResponse)
+async def update_platform_app_download_links(
+    db: DbSession,
+    _: Annotated[User, Depends(require_super_admin)],
+    data: AppDownloadLinksUpdateRequest,
+) -> AppDownloadLinksResponse:
+    svc = PlatformSettingsService(db)
+    links = await svc.set_app_download_links(data.model_dump())
+    return AppDownloadLinksResponse(**links)
 
 
 @router.post("/platform/payment-method-icon", response_model=PaymentMethodIconResponse)

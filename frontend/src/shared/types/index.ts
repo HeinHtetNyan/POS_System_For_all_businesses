@@ -582,6 +582,12 @@ export interface SubscriptionPaymentMethod {
   icon_url?: string | null
 }
 
+export interface AppDownloadLinks {
+  android: string
+  ios: string
+  windows: string
+}
+
 export interface Plan {
   id: string
   name: string

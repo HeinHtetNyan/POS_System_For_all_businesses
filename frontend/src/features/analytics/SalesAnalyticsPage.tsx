@@ -6,29 +6,32 @@ import { analyticsService } from '@/services/analytics/analytics.service'
 import { useAnalyticsFilters, AnalyticsFilters, ChartCard } from './analyticsHelpers'
 import { getPaymentMethodLabel } from '@/lib/paymentMethod'
 import type { PaymentMethodStat } from '@/shared/types'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 const PAGE_SIZE = 30
 
 function PaginationBar({ page, totalPages, total, setPage, noun }: {
   page: number; totalPages: number; total: number; setPage: React.Dispatch<React.SetStateAction<number>>; noun: string
 }) {
+  const t = useLocaleStore(s => s.t)
   return (
     <div className="flex items-center justify-between gap-3">
       <p className="text-xs text-zinc-500">
-        {total === 0 ? `0 ${noun}` : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, total)} of ${total}`}
+        {total === 0 ? `0 ${noun}` : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, total)} ${t('analytics.of')} ${total}`}
       </p>
       <div className="flex items-center gap-1">
         <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-          className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">‹ Prev</button>
+          className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">{t('common.prev')}</button>
         <span className="text-xs text-zinc-500 px-2">{page} / {totalPages}</span>
         <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
-          className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">Next ›</button>
+          className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">{t('common.next')}</button>
       </div>
     </div>
   )
 }
 
 export default function SalesAnalyticsPage() {
+  const t = useLocaleStore(s => s.t)
   const filters = useAnalyticsFilters()
   const { from, to, branch, apiParams } = filters
   const [productsPage, setProductsPage] = useState(1)
@@ -69,7 +72,7 @@ export default function SalesAnalyticsPage() {
     <div className="p-4 sm:p-6 space-y-5">
       {/* Header + Filters */}
       <div className="flex flex-col gap-3">
-        <h2 className="text-base font-semibold text-zinc-100">Sales Analytics</h2>
+        <h2 className="text-base font-semibold text-zinc-100">{t('analytics.sales_analytics_title')}</h2>
         <AnalyticsFilters {...filters} />
       </div>
 
@@ -81,13 +84,13 @@ export default function SalesAnalyticsPage() {
           ))
         ) : summary ? (
           <>
-            <StatCard label="Orders"      value={summary.order_count.toLocaleString()} />
-            <StatCard label="Gross Sales" value={fmt(summary.gross_sales)} accent />
-            <StatCard label="Net Sales"   value={fmt(summary.net_sales)} />
-            <StatCard label="Avg Order"   value={fmt(summary.average_order_value)} />
-            <StatCard label="Customers"   value={summary.unique_customers.toLocaleString()} />
+            <StatCard label={t('analytics.field_orders')}      value={summary.order_count.toLocaleString()} />
+            <StatCard label={t('analytics.field_gross_sales')} value={fmt(summary.gross_sales)} accent />
+            <StatCard label={t('analytics.field_net_sales')}   value={fmt(summary.net_sales)} />
+            <StatCard label={t('analytics.avg_order')}   value={fmt(summary.average_order_value)} />
+            <StatCard label={t('qa.customers')}   value={summary.unique_customers.toLocaleString()} />
             <StatCard
-              label="Refunds"
+              label={t('analytics.refunds')}
               value={fmt(summary.refund_amount)}
               accent={parseFloat(summary.refund_amount) > 0}
             />
@@ -97,7 +100,7 @@ export default function SalesAnalyticsPage() {
 
       {/* Payment Method Breakdown */}
       <div>
-        <h3 className="text-sm font-semibold text-zinc-300 mb-3">Revenue by Payment Method</h3>
+        <h3 className="text-sm font-semibold text-zinc-300 mb-3">{t('analytics.revenue_by_payment_method')}</h3>
         {paymentMethodsQ.isLoading ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -105,7 +108,7 @@ export default function SalesAnalyticsPage() {
             ))}
           </div>
         ) : paymentMethods.length === 0 ? (
-          <p className="text-sm text-zinc-600 py-2">No payment data for this period.</p>
+          <p className="text-sm text-zinc-600 py-2">{t('analytics.no_payment_data')}</p>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {(paymentMethods as PaymentMethodStat[]).map(pm => (
@@ -118,7 +121,7 @@ export default function SalesAnalyticsPage() {
                 </p>
                 <p className="font-mono text-lg font-bold text-amber-400">{fmt(parseFloat(pm.amount))}</p>
                 <div className="flex items-center justify-between text-[10px] text-zinc-500">
-                  <span>{pm.transaction_count} txn{pm.transaction_count !== 1 ? 's' : ''}</span>
+                  <span>{pm.transaction_count} {t('analytics.txn')}{pm.transaction_count !== 1 ? t('analytics.txn_plural_suffix') : ''}</span>
                   <span className="font-semibold text-zinc-400">{parseFloat(pm.percentage).toFixed(1)}%</span>
                 </div>
                 {/* Mini progress bar */}
@@ -137,7 +140,7 @@ export default function SalesAnalyticsPage() {
       {/* Top Products */}
       <div className="space-y-2">
         <ChartCard
-          title="Top Products"
+          title={t('analytics.top_products')}
           isLoading={topProductsQ.isLoading}
           isEmpty={topProducts.length === 0}
         >
@@ -145,11 +148,11 @@ export default function SalesAnalyticsPage() {
             <thead>
               <tr>
                 <Th>#</Th>
-                <Th>Product</Th>
-                <Th>SKU</Th>
-                <Th right>Qty Sold</Th>
-                <Th right>Revenue</Th>
-                <Th right>Profit Est.</Th>
+                <Th>{t('products.col.product')}</Th>
+                <Th>{t('products.col.sku')}</Th>
+                <Th right>{t('analytics.field_qty_sold')}</Th>
+                <Th right>{t('analytics.field_revenue')}</Th>
+                <Th right>{t('analytics.field_profit_est')}</Th>
               </tr>
             </thead>
             <tbody>
@@ -167,25 +170,25 @@ export default function SalesAnalyticsPage() {
           </Table>
         </ChartCard>
         {!topProductsQ.isLoading && topProducts.length > 0 && (
-          <PaginationBar page={productsPage} totalPages={productsTotalPages} total={topProducts.length} setPage={setProductsPage} noun="products" />
+          <PaginationBar page={productsPage} totalPages={productsTotalPages} total={topProducts.length} setPage={setProductsPage} noun={t('analytics.noun_products')} />
         )}
       </div>
 
       {/* By Cashier */}
       <div className="space-y-2">
         <ChartCard
-          title="Sales by Cashier"
+          title={t('analytics.sales_by_cashier')}
           isLoading={byCashierQ.isLoading}
           isEmpty={cashiers.length === 0}
         >
           <Table>
             <thead>
               <tr>
-                <Th>Cashier</Th>
-                <Th right>Orders</Th>
-                <Th right>Sales</Th>
-                <Th right>Refunds</Th>
-                <Th right>Avg Ticket</Th>
+                <Th>{t('analytics.field_cashier')}</Th>
+                <Th right>{t('analytics.field_orders')}</Th>
+                <Th right>{t('nav.sales')}</Th>
+                <Th right>{t('analytics.refunds')}</Th>
+                <Th right>{t('analytics.avg_ticket')}</Th>
               </tr>
             </thead>
             <tbody>
@@ -202,7 +205,7 @@ export default function SalesAnalyticsPage() {
           </Table>
         </ChartCard>
         {!byCashierQ.isLoading && cashiers.length > 0 && (
-          <PaginationBar page={cashiersPage} totalPages={cashiersTotalPages} total={cashiers.length} setPage={setCashiersPage} noun="cashiers" />
+          <PaginationBar page={cashiersPage} totalPages={cashiersTotalPages} total={cashiers.length} setPage={setCashiersPage} noun={t('analytics.noun_cashiers')} />
         )}
       </div>
     </div>

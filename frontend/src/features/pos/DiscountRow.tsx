@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useCartStore, useCartTotals } from '@/store/cartStore'
 import { IconDiscount, IconX, IconCheck } from '@/components/icons'
 import { cn } from '@/lib/utils'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 export default function DiscountRow() {
   const discount     = useCartStore(s => s.discount)
@@ -9,6 +10,7 @@ export default function DiscountRow() {
   const setDiscount     = useCartStore(s => s.setDiscount)
   const setDiscountType = useCartStore(s => s.setDiscountType)
   const totals = useCartTotals()
+  const t = useLocaleStore(s => s.t)
 
   const [expanded, setExpanded] = useState(false)
   const [inputVal, setInputVal] = useState(discount > 0 ? String(discount) : '')
@@ -42,7 +44,7 @@ export default function DiscountRow() {
   function discountLabel(): string {
     if (discount <= 0) return ''
     if (discountType === 'percent') return `${discount}%`
-    return `${discount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kyats`
+    return `${discount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${t('currency.mmk')}`
   }
 
   if (!expanded) {
@@ -53,9 +55,9 @@ export default function DiscountRow() {
       >
         <IconDiscount width="13" height="13" />
         {discount > 0 ? (
-          <span className="text-amber-400 font-semibold">Discount: {discountLabel()}</span>
+          <span className="text-amber-400 font-semibold">{t('pos.discount')}: {discountLabel()}</span>
         ) : (
-          <span>Add discount</span>
+          <span>{t('pos.add_discount')}</span>
         )}
       </button>
     )
@@ -83,7 +85,7 @@ export default function DiscountRow() {
               localType === 'amount' ? 'bg-amber-500 text-black' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-100',
             )}
           >
-            Ks
+            {t('pos.ks')}
           </button>
         </div>
 
@@ -107,20 +109,20 @@ export default function DiscountRow() {
             )}
           />
           <span className="absolute right-2 text-zinc-500 text-xs pointer-events-none">
-            {localType === 'percent' ? '%' : 'Ks'}
+            {localType === 'percent' ? '%' : t('pos.ks')}
           </span>
         </div>
         <button
           onClick={handleApply}
           className="w-7 h-7 rounded-lg bg-amber-500 hover:bg-amber-400 flex items-center justify-center transition-colors text-black flex-shrink-0"
-          aria-label="Apply discount"
+          aria-label={t('pos.apply_discount')}
         >
           <IconCheck width="12" height="12" />
         </button>
         <button
           onClick={handleClose}
           className="w-7 h-7 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 flex items-center justify-center transition-colors text-zinc-400 hover:text-zinc-100 flex-shrink-0"
-          aria-label="Cancel"
+          aria-label={t('common.cancel')}
         >
           <IconX width="12" height="12" />
         </button>

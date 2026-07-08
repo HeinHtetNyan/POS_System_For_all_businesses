@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { notificationsService } from '@/services/notifications/notifications.service'
 import { useAuthStore } from '@/store/auth.store'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 function notificationsPath(role?: string) {
   if (role === 'SUPER_ADMIN') return '/super-admin/notifications'
@@ -12,6 +13,7 @@ function notificationsPath(role?: string) {
 export default function NotificationBell() {
   const navigate = useNavigate()
   const { isAuthenticated, user } = useAuthStore()
+  const t = useLocaleStore(s => s.t)
 
   const { data } = useQuery({
     queryKey: ['notifications', 'unread-count'],
@@ -26,7 +28,7 @@ export default function NotificationBell() {
   return (
     <button
       onClick={() => navigate(notificationsPath(user?.role))}
-      aria-label={count > 0 ? `View notifications (${count} unread)` : 'View notifications'}
+      aria-label={count > 0 ? `${t('shared.notification_bell.view_notifications')} (${count} ${t('shared.notification_bell.unread_suffix')})` : t('shared.notification_bell.view_notifications')}
       className="relative w-8 h-8 flex items-center justify-center rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
     >
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

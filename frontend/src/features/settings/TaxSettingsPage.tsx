@@ -5,17 +5,20 @@ import { z } from 'zod'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/store/auth.store'
+import { useLocaleStore } from '@/i18n/localeStore'
 import { tenantService } from '@/services/tenant/tenant.service'
 import { Btn, Spinner } from '@/components/ui'
 import { extractApiMsg } from '@/lib/utils'
 
-const schema = z.object({
-  tax_enabled:    z.boolean(),
-  tax_rate:       z.string().refine(v => !v || (parseFloat(v) >= 0 && parseFloat(v) <= 100), 'Must be 0–100'),
-  tax_inclusive:  z.boolean(),
-  tax_name:       z.string().max(50),
-})
-type FormValues = z.infer<typeof schema>
+function makeSchema(t: (k: string) => string) {
+  return z.object({
+    tax_enabled:    z.boolean(),
+    tax_rate:       z.string().refine(v => !v || (parseFloat(v) >= 0 && parseFloat(v) <= 100), t('settings.tax.rate_range_error')),
+    tax_inclusive:  z.boolean(),
+    tax_name:       z.string().max(50),
+  })
+}
+type FormValues = z.infer<ReturnType<typeof makeSchema>>
 
 function inputCls(err = false) {
   return `w-full bg-zinc-950 border rounded-xl text-zinc-100 placeholder-zinc-600 text-sm focus:outline-none focus:ring-1 focus:ring-amber-500/20 transition-all py-2.5 px-3 ${err ? 'border-red-500' : 'border-zinc-700 focus:border-amber-500'}`
@@ -35,6 +38,7 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 
 export default function TaxSettingsPage() {
   const user = useAuthStore(s => s.user)
+  const t = useLocaleStore(s => s.t)
   const qc = useQueryClient()
   const tenantId = user?.tenant_id
 
@@ -45,7 +49,7 @@ export default function TaxSettingsPage() {
   })
 
   const { register, handleSubmit, reset, watch, setValue, formState: { isDirty, isSubmitting, errors } } = useForm<FormValues>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(makeSchema(t)),
     defaultValues: { tax_enabled: false, tax_rate: '', tax_inclusive: false, tax_name: 'Tax' },
   })
 
@@ -69,10 +73,10 @@ export default function TaxSettingsPage() {
         extra_settings: { tax_name: values.tax_name || 'Tax' },
       }),
     onSuccess: () => {
-      toast.success('Tax settings saved')
+      toast.success(t('settings.tax.save_success'))
       qc.invalidateQueries({ queryKey: ['tenant-settings', tenantId] })
     },
-    onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to save'),
+    onError: (err) => toast.error(extractApiMsg(err) ?? t('settings.tax.save_error')),
   })
 
   const taxEnabled  = watch('tax_enabled')
@@ -90,8 +94,8 @@ export default function TaxSettingsPage() {
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-zinc-100">Enable Tax</p>
-              <p className="text-xs text-zinc-500 mt-0.5">Apply tax to all sales transactions</p>
+              <p className="text-sm font-medium text-zinc-100">{t('settings.tax.enable_tax')}</p>
+              <p className="text-xs text-zinc-500 mt-0.5">{t('settings.tax.enable_tax_desc')}</p>
             </div>
             <Toggle checked={taxEnabled} onChange={v => setValue('tax_enabled', v, { shouldDirty: true })} />
           </div>
@@ -100,17 +104,17 @@ export default function TaxSettingsPage() {
             <>
               <div className="border-t border-zinc-800 pt-4 space-y-4">
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Tax Name</label>
+                  <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">{t('settings.tax.tax_name')}</label>
                   <input
                     {...register('tax_name')}
-                    placeholder="e.g. GST, VAT, Sales Tax"
+                    placeholder={t('settings.tax.tax_name_placeholder')}
                     className={inputCls()}
                   />
-                  <p className="text-xs text-zinc-600">Label shown on receipts and invoices.</p>
+                  <p className="text-xs text-zinc-600">{t('settings.tax.tax_name_desc')}</p>
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Tax Rate (%)</label>
+                  <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">{t('settings.tax.tax_rate')}</label>
                   <div className="relative">
                     <input
                       {...register('tax_rate')}
@@ -118,7 +122,7 @@ export default function TaxSettingsPage() {
                       min="0"
                       max="100"
                       step="0.01"
-                      placeholder="e.g. 5"
+                      placeholder={t('settings.tax.tax_rate_placeholder')}
                       className={`${inputCls(!!errors.tax_rate)} pr-8`}
                     />
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 text-sm">%</span>
@@ -128,8 +132,8 @@ export default function TaxSettingsPage() {
 
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-zinc-100">Tax Inclusive Pricing</p>
-                    <p className="text-xs text-zinc-500 mt-0.5">Prices already include tax (e.g. $10.00 includes 10% tax)</p>
+                    <p className="text-sm font-medium text-zinc-100">{t('settings.tax.inclusive_pricing')}</p>
+                    <p className="text-xs text-zinc-500 mt-0.5">{t('settings.tax.inclusive_pricing_desc')}</p>
                   </div>
                   <Toggle checked={taxInclusive} onChange={v => setValue('tax_inclusive', v, { shouldDirty: true })} />
                 </div>
@@ -137,12 +141,12 @@ export default function TaxSettingsPage() {
 
               {taxRate && (
                 <div className="bg-zinc-800/50 rounded-xl p-3 text-xs space-y-1">
-                  <p className="text-zinc-400 font-medium">Example</p>
+                  <p className="text-zinc-400 font-medium">{t('settings.tax.example_label')}</p>
                   <p className="text-zinc-300">
-                    Item price: 100.00 Kyats →{' '}
+                    {t('settings.tax.item_price_label')}: 100.00 {t('currency.mmk')} →{' '}
                     {taxInclusive
-                      ? `${taxName} included: ${(100 * parseFloat(taxRate) / (100 + parseFloat(taxRate))).toFixed(2)} Kyats`
-                      : `+ ${taxName} ${taxRate}%: ${(100 * parseFloat(taxRate) / 100).toFixed(2)} Kyats = ${(100 + 100 * parseFloat(taxRate) / 100).toFixed(2)} Kyats total`
+                      ? `${taxName} ${t('settings.tax.included_label')}: ${(100 * parseFloat(taxRate) / (100 + parseFloat(taxRate))).toFixed(2)} ${t('currency.mmk')}`
+                      : `+ ${taxName} ${taxRate}%: ${(100 * parseFloat(taxRate) / 100).toFixed(2)} ${t('currency.mmk')} = ${(100 + 100 * parseFloat(taxRate) / 100).toFixed(2)} ${t('currency.mmk')} ${t('settings.tax.total_label')}`
                     }
                   </p>
                 </div>
@@ -152,7 +156,7 @@ export default function TaxSettingsPage() {
         </div>
 
         <Btn type="submit" disabled={!isDirty || isSubmitting || mutation.isPending}>
-          {mutation.isPending ? <Spinner size={16} /> : 'Save Tax Settings'}
+          {mutation.isPending ? <Spinner size={16} /> : t('settings.tax.save_btn')}
         </Btn>
       </form>
     </div>

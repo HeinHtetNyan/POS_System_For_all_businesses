@@ -1,18 +1,19 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth.store'
-
-const ALL_TABS = [
-  { to: '/app/procurement/dashboard',       label: 'Overview',        managerOnly: false },
-  { to: '/app/procurement/suppliers',       label: 'Suppliers',       managerOnly: false },
-  { to: '/app/procurement/purchase-orders', label: 'Purchase Orders', managerOnly: false },
-  { to: '/app/procurement/payments',        label: 'Payments',        managerOnly: true },
-]
+import { useLocaleStore } from '@/i18n/localeStore'
 
 export default function ProcurementLayout() {
   const user = useAuthStore(s => s.user)
+  const t = useLocaleStore(s => s.t)
   const isInventoryStaff = user?.role === 'INVENTORY_STAFF'
-  const tabs = ALL_TABS.filter(t => !(t.managerOnly && isInventoryStaff))
+  const ALL_TABS = [
+    { to: '/app/procurement/dashboard',       label: t('procurement.tab_overview'),        managerOnly: false },
+    { to: '/app/procurement/suppliers',       label: t('procurement.tab_suppliers'),       managerOnly: false },
+    { to: '/app/procurement/purchase-orders', label: t('procurement.tab_purchase_orders'), managerOnly: false },
+    { to: '/app/procurement/payments',        label: t('procurement.tab_payments'),        managerOnly: true },
+  ]
+  const tabs = ALL_TABS.filter(tab => !(tab.managerOnly && isInventoryStaff))
 
   return (
     <div className="flex flex-col h-full overflow-hidden">

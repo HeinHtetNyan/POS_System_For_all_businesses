@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { cn, extractApiMsg } from '@/lib/utils'
 import { Spinner, SectionHeader } from '@/components/ui'
 import { notificationsService } from '@/services/notifications/notifications.service'
+import { useLocaleStore } from '@/i18n/localeStore'
 import type { NotificationPreference } from '@/shared/types'
 
 
@@ -74,46 +75,47 @@ type PrefKey = keyof Pick<NotificationPreference,
   'customer_enabled' | 'subscription_enabled' | 'security_enabled'
 >
 
-const PREF_ROWS: { key: PrefKey; icon: string; label: string; description: string }[] = [
+const PREF_ROWS: { key: PrefKey; icon: string; labelKey: string; descriptionKey: string }[] = [
   {
     key: 'email_enabled',
     icon: '📧',
-    label: 'Email Notifications',
-    description: 'Receive notifications via email in addition to in-app alerts',
+    labelKey: 'notif.pref.email',
+    descriptionKey: 'notif.pref.email_desc',
   },
   {
     key: 'inventory_enabled',
     icon: '📦',
-    label: 'Inventory Alerts',
-    description: 'Low stock warnings and reorder level notifications',
+    labelKey: 'notif.pref.inventory',
+    descriptionKey: 'notif.pref.inventory_desc',
   },
   {
     key: 'procurement_enabled',
     icon: '🛒',
-    label: 'Procurement Alerts',
-    description: 'Purchase order approvals, goods receipts, and overdue payables',
+    labelKey: 'notif.pref.procurement',
+    descriptionKey: 'notif.pref.procurement_desc',
   },
   {
     key: 'customer_enabled',
     icon: '👥',
-    label: 'Customer Alerts',
-    description: 'High outstanding customer balances and credit limit warnings',
+    labelKey: 'notif.pref.customer',
+    descriptionKey: 'notif.pref.customer_desc',
   },
   {
     key: 'subscription_enabled',
     icon: '💳',
-    label: 'Subscription Alerts',
-    description: 'Trial expiry, subscription renewal reminders, and billing updates',
+    labelKey: 'notif.pref.subscription',
+    descriptionKey: 'notif.pref.subscription_desc',
   },
   {
     key: 'security_enabled',
     icon: '🔐',
-    label: 'Security Alerts',
-    description: 'Suspicious login attempts and security-related system events',
+    labelKey: 'notif.pref.security',
+    descriptionKey: 'notif.pref.security_desc',
   },
 ]
 
 export default function NotificationPreferencesPage() {
+  const t = useLocaleStore(s => s.t)
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [savingKey, setSavingKey] = useState<PrefKey | null>(null)
@@ -145,7 +147,7 @@ export default function NotificationPreferencesPage() {
       setSavingKey(null)
     },
     onError: (err, _, context) => {
-      toast.error(extractApiMsg(err) ?? 'Failed to save preference')
+      toast.error(extractApiMsg(err) ?? t('notif.failed_save_preference'))
       // revert optimistic update
       if (context && prefs) {
         setLocalPrefs({
@@ -172,7 +174,7 @@ export default function NotificationPreferencesPage() {
       <div className="flex items-center gap-3 px-4 py-3.5 border-b border-zinc-800 flex-shrink-0">
         <button
           onClick={() => navigate('/app/notifications')}
-          aria-label="Go back"
+          aria-label={t('notif.go_back')}
           className="text-zinc-500 hover:text-zinc-200 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-zinc-800 transition-colors"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -180,8 +182,8 @@ export default function NotificationPreferencesPage() {
           </svg>
         </button>
         <div>
-          <h2 className="text-base font-semibold text-zinc-100">Notification Preferences</h2>
-          <p className="text-xs text-zinc-500">Changes save automatically</p>
+          <h2 className="text-base font-semibold text-zinc-100">{t('notif.preferences_title')}</h2>
+          <p className="text-xs text-zinc-500">{t('notif.changes_save_automatically')}</p>
         </div>
       </div>
 
@@ -192,7 +194,7 @@ export default function NotificationPreferencesPage() {
               <Spinner size={28} />
             </div>
           ) : !prefs ? (
-            <p className="text-zinc-500 text-sm text-center py-10">Failed to load preferences</p>
+            <p className="text-zinc-500 text-sm text-center py-10">{t('notif.failed_load_preferences')}</p>
           ) : (
             <>
               <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden divide-y divide-zinc-800">
@@ -200,8 +202,8 @@ export default function NotificationPreferencesPage() {
                   <PrefRow
                     key={row.key}
                     icon={row.icon}
-                    label={row.label}
-                    description={row.description}
+                    label={t(row.labelKey)}
+                    description={t(row.descriptionKey)}
                     checked={localPrefs[row.key] ?? false}
                     onChange={v => handleToggle(row.key, v)}
                     saving={savingKey === row.key && mutation.isPending}
@@ -210,7 +212,7 @@ export default function NotificationPreferencesPage() {
               </div>
 
               <p className="text-xs text-zinc-600 text-center">
-                Preferences apply to all branches. Email delivery requires a configured mail provider.
+                {t('notif.pref_footer_note')}
               </p>
             </>
           )}

@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils'
 import { useNavigate } from 'react-router-dom'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 export interface AlertItem {
   id: string
@@ -26,6 +27,7 @@ function SkeletonAlert() {
 
 export function AlertPanel({ items, isLoading }: { items: AlertItem[]; isLoading?: boolean }) {
   const navigate = useNavigate()
+  const t = useLocaleStore(s => s.t)
 
   if (isLoading) {
     return (
@@ -38,7 +40,7 @@ export function AlertPanel({ items, isLoading }: { items: AlertItem[]; isLoading
   if (!items.length) {
     return (
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-6 text-center">
-        <p className="text-sm text-green-400 font-medium">✓ All clear — no active alerts</p>
+        <p className="text-sm text-green-400 font-medium">✓ {t('dash.all_clear_no_alerts')}</p>
       </div>
     )
   }

@@ -1,4 +1,5 @@
 import { fmt } from '@/lib/utils'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 const BILLS = [5, 10, 20, 50, 100, 200, 500]
 
@@ -8,7 +9,8 @@ interface QuickBillsProps {
 }
 
 export default function QuickBills({ total, onSelect }: QuickBillsProps) {
-  const exactOption = { label: 'Exact', value: total.toFixed(2), isExact: true }
+  const t = useLocaleStore(s => s.t)
+  const exactOption = { label: t('payment.exact'), value: total.toFixed(2), isExact: true }
   const billOptions = BILLS.filter(b => b >= total).map(b => ({
     label: fmt(b),
     value: b.toFixed(2),

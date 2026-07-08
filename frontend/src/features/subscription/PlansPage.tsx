@@ -10,6 +10,7 @@ import { BASE_URL } from '@/app/lib/axios'
 import type { ContactLinks, Plan, SubscriptionPaymentMethod } from '@/shared/types'
 import { ProofActionType } from '@/shared/types'
 import { CONTACT_PLATFORMS, contactHref } from '@/shared/constants/contactPlatforms'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 // The API can live on a different origin than this app (e.g. a Vercel-hosted
 // frontend + separate API domain), so a bare "/uploads/..." path from the
@@ -22,22 +23,21 @@ function iconSrc(url: string | null | undefined) {
   return `${API_ORIGIN}${url}`
 }
 
-const FEATURE_LABELS: Record<string, string> = {
-  users:         'Users / Staff',
-  branches:      'Branches',
-  products:      'Products',
-  customers:     'Customers',
-  devices:       'Devices',
-  analytics:     'Analytics',
-  procurement:   'Procurement',
-  sync:          'Offline Sync',
-  notifications: 'Notifications',
-  sales:         'Sales',
-  inventory:     'Inventory',
-  pos:           'POS / Checkout',
-}
-
-function featureLabel(code: string) {
+function featureLabel(code: string, t: (k: string) => string) {
+  const FEATURE_LABELS: Record<string, string> = {
+    users:         t('subscription.feature_users'),
+    branches:      t('subscription.feature_branches'),
+    products:      t('subscription.feature_products'),
+    customers:     t('subscription.feature_customers'),
+    devices:       t('subscription.feature_devices'),
+    analytics:     t('subscription.feature_analytics'),
+    procurement:   t('subscription.feature_procurement'),
+    sync:          t('subscription.feature_offline_sync'),
+    notifications: t('subscription.feature_notifications'),
+    sales:         t('subscription.feature_sales'),
+    inventory:     t('subscription.feature_inventory'),
+    pos:           t('subscription.feature_pos'),
+  }
   return FEATURE_LABELS[code] ?? code.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 
@@ -71,6 +71,7 @@ function PaymentMethodLogo({ method }: { method: SubscriptionPaymentMethod }) {
 }
 
 function HowToPaySection({ methods }: { methods: SubscriptionPaymentMethod[] | undefined }) {
+  const t = useLocaleStore(s => s.t)
   if (!methods || methods.length === 0) return null
   return (
     <div className="p-5 border-b border-zinc-800 space-y-3">
@@ -78,9 +79,9 @@ function HowToPaySection({ methods }: { methods: SubscriptionPaymentMethod[] | u
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-amber-400 flex-shrink-0">
           <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>
         </svg>
-        <p className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">How to Pay</p>
+        <p className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">{t('subscription.how_to_pay')}</p>
       </div>
-      <p className="text-[11px] text-zinc-500">Transfer the payment to one of the accounts below, then upload your receipt.</p>
+      <p className="text-[11px] text-zinc-500">{t('subscription.how_to_pay_desc')}</p>
       <div className="space-y-2">
         {methods.map((m, i) => (
           <div key={i} className={cn('rounded-xl border px-4 py-3 space-y-1', PAYMENT_METHOD_COLORS[m.type] ?? 'border-zinc-700 bg-zinc-800/50')}>
@@ -100,10 +101,11 @@ function HowToPaySection({ methods }: { methods: SubscriptionPaymentMethod[] | u
 }
 
 function ContactFooter({ links }: { links: ContactLinks | null }) {
+  const t = useLocaleStore(s => s.t)
   const active = CONTACT_PLATFORMS.filter(p => links?.[p.key])
   return (
     <div className="space-y-2.5">
-      <p className="text-xs text-zinc-500 text-center">Get in touch to discuss your requirements</p>
+      <p className="text-xs text-zinc-500 text-center">{t('subscription.get_in_touch_desc')}</p>
       {active.length > 0 ? (
         <div className="flex flex-wrap gap-2 justify-center">
           {active.map(p => (
@@ -120,7 +122,7 @@ function ContactFooter({ links }: { links: ContactLinks | null }) {
           ))}
         </div>
       ) : (
-        <p className="text-xs text-zinc-600 text-center">Contact your administrator for details.</p>
+        <p className="text-xs text-zinc-600 text-center">{t('subscription.contact_admin_for_details')}</p>
       )}
     </div>
   )
@@ -129,6 +131,7 @@ function ContactFooter({ links }: { links: ContactLinks | null }) {
 // Proof submission modal — plan is pre-selected, shows payment info then upload form
 function UpgradeProofModal({ plan, paymentMethods, onClose }: { plan: Plan; paymentMethods: SubscriptionPaymentMethod[]; onClose: () => void }) {
   const qc = useQueryClient()
+  const t = useLocaleStore(s => s.t)
   const [amount, setAmount] = useState('')
   const [currency, setCurrency] = useState('MMK')
   const [file, setFile] = useState<File | null>(null)
@@ -144,7 +147,7 @@ function UpgradeProofModal({ plan, paymentMethods, onClose }: { plan: Plan; paym
       qc.invalidateQueries({ queryKey: ['subscription', 'proofs'] })
       setDone(true)
     },
-    onError: err => toast.error(extractApiMsg(err) ?? 'Failed to submit'),
+    onError: err => toast.error(extractApiMsg(err) ?? t('subscription.failed_to_submit')),
   })
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -152,9 +155,9 @@ function UpgradeProofModal({ plan, paymentMethods, onClose }: { plan: Plan; paym
     setFileError(null); setUploadedUrl(null); setUploadProgress('idle')
     if (!f) { setFile(null); return }
     if (!['image/jpeg', 'image/png', 'application/pdf'].includes(f.type)) {
-      setFileError('Only JPG, PNG, or PDF files are accepted'); setFile(null); return
+      setFileError(t('subscription.file_type_error')); setFile(null); return
     }
-    if (f.size > 10 * 1024 * 1024) { setFileError('File must be under 10 MB'); setFile(null); return }
+    if (f.size > 10 * 1024 * 1024) { setFileError(t('subscription.file_size_error_10mb')); setFile(null); return }
     setFile(f)
   }
 
@@ -168,7 +171,7 @@ function UpgradeProofModal({ plan, paymentMethods, onClose }: { plan: Plan; paym
         setUploadedUrl(proofUrl); setUploadProgress('done')
       } catch (err: unknown) {
         setUploadProgress('idle')
-        toast.error(extractApiMsg(err) ?? 'File upload failed')
+        toast.error(extractApiMsg(err) ?? t('subscription.file_upload_failed'))
         return
       }
     }
@@ -191,16 +194,16 @@ function UpgradeProofModal({ plan, paymentMethods, onClose }: { plan: Plan; paym
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
           <div>
             <h3 className="text-base font-semibold text-zinc-100">
-              {done ? 'Request Submitted' : 'Submit Payment Proof'}
+              {done ? t('subscription.request_submitted') : t('subscription.submit_payment_proof')}
             </h3>
             {!done && (
               <p className="text-xs text-zinc-500 mt-0.5">
-                For: <span className="text-amber-400 font-medium">{plan.name}</span>
-                {' — '}{Number(plan.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {plan.currency === 'MMK' ? 'Kyats' : plan.currency} / {plan.billing_cycle.toLowerCase()}
+                {t('subscription.for_prefix')} <span className="text-amber-400 font-medium">{plan.name}</span>
+                {' — '}{Number(plan.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {plan.currency === 'MMK' ? t('currency.mmk') : plan.currency} / {plan.billing_cycle.toLowerCase()}
               </p>
             )}
           </div>
-          <button onClick={onClose} aria-label="Close" className="text-zinc-500 hover:text-zinc-200 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-800">
+          <button onClick={onClose} aria-label={t('common.close')} className="text-zinc-500 hover:text-zinc-200 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-800">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
           </button>
         </div>
@@ -214,17 +217,17 @@ function UpgradeProofModal({ plan, paymentMethods, onClose }: { plan: Plan; paym
                 </svg>
               </div>
               <div>
-                <p className="text-base font-semibold text-zinc-100">Request Submitted</p>
+                <p className="text-base font-semibold text-zinc-100">{t('subscription.request_submitted')}</p>
                 <p className="text-sm text-zinc-400 mt-1">
-                  Your request to activate <span className="text-amber-400 font-medium">{plan.name}</span> has been submitted.
+                  {t('subscription.request_to_activate_prefix')} <span className="text-amber-400 font-medium">{plan.name}</span> {t('subscription.upgrade_request_submitted_suffix')}
                 </p>
                 <p className="text-xs text-zinc-500 mt-2">
-                  Our team will review your payment proof and activate your plan. Track status under Billing History.
+                  {t('subscription.track_status_billing_history')}
                 </p>
               </div>
             </div>
             <div className="px-5 py-4 border-t border-zinc-800 flex justify-center">
-              <Btn size="sm" onClick={onClose}>Done</Btn>
+              <Btn size="sm" onClick={onClose}>{t('subscription.done')}</Btn>
             </div>
           </>
         ) : (
@@ -233,7 +236,7 @@ function UpgradeProofModal({ plan, paymentMethods, onClose }: { plan: Plan; paym
             <div className="p-5 space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Amount Paid *</label>
+                  <label className="block text-xs text-zinc-400 mb-1">{t('subscription.amount_paid_required')}</label>
                   <input
                     type="number" step="0.01" value={amount}
                     onChange={e => setAmount(e.target.value)}
@@ -241,16 +244,16 @@ function UpgradeProofModal({ plan, paymentMethods, onClose }: { plan: Plan; paym
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Currency</label>
+                  <label className="block text-xs text-zinc-400 mb-1">{t('settings.currency')}</label>
                   <input
                     type="text" value={currency}
                     onChange={e => setCurrency(e.target.value)}
-                    placeholder="Kyats" className={inp}
+                    placeholder={t('currency.mmk')} className={inp}
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-zinc-400 mb-1">Receipt File * (JPG, PNG, PDF — max 10 MB)</label>
+                <label className="block text-xs text-zinc-400 mb-1">{t('subscription.receipt_file_required')} (JPG, PNG, PDF — {t('subscription.max_size_prefix')} 10 MB)</label>
                 <label className="block w-full cursor-pointer">
                   <input type="file" accept="image/jpeg,image/png,application/pdf" onChange={handleFileChange} className="sr-only" />
                   <div className={cn(
@@ -263,12 +266,12 @@ function UpgradeProofModal({ plan, paymentMethods, onClose }: { plan: Plan; paym
                         <p className="text-xs text-zinc-500 mt-0.5">
                           {(file.size / 1024).toFixed(0)} KB ·{' '}
                           {uploadProgress === 'done'
-                            ? <span className="text-green-400">Uploaded</span>
-                            : <span className="text-zinc-400">Click to change</span>}
+                            ? <span className="text-green-400">{t('subscription.uploaded')}</span>
+                            : <span className="text-zinc-400">{t('subscription.click_to_change')}</span>}
                         </p>
                       </div>
                     ) : (
-                      <p className="text-sm text-zinc-500">Click to select a receipt file</p>
+                      <p className="text-sm text-zinc-500">{t('subscription.click_to_select_receipt')}</p>
                     )}
                   </div>
                 </label>
@@ -276,9 +279,9 @@ function UpgradeProofModal({ plan, paymentMethods, onClose }: { plan: Plan; paym
               </div>
             </div>
             <div className="px-5 py-4 border-t border-zinc-800 flex gap-2 justify-end">
-              <Btn variant="secondary" size="sm" onClick={onClose} disabled={busy}>Cancel</Btn>
+              <Btn variant="secondary" size="sm" onClick={onClose} disabled={busy}>{t('common.cancel')}</Btn>
               <Btn size="sm" disabled={!amount || !file || busy} onClick={handleSubmit}>
-                {uploadProgress === 'uploading' ? 'Uploading…' : submitMutation.isPending ? 'Submitting…' : 'Submit Request'}
+                {uploadProgress === 'uploading' ? t('subscription.uploading') : submitMutation.isPending ? t('subscription.submitting') : t('subscription.submit_request')}
               </Btn>
             </div>
           </>
@@ -295,24 +298,25 @@ function ConfirmDowngradeModal({
   plan: Plan
   onClose: () => void; onConfirm: () => void; isPending: boolean
 }) {
+  const t = useLocaleStore(s => s.t)
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-sm shadow-2xl p-6 space-y-4">
         <div>
-          <h3 className="text-base font-semibold text-zinc-100">Confirm Downgrade</h3>
+          <h3 className="text-base font-semibold text-zinc-100">{t('subscription.confirm_downgrade')}</h3>
           <p className="text-sm text-zinc-400 mt-2">
-            Your plan will switch to{' '}
+            {t('subscription.plan_will_switch_to')}{' '}
             <span className="text-zinc-200 font-medium">{plan.name}</span>
-            {' '}({Number(plan.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {plan.currency === 'MMK' ? 'Kyats' : plan.currency} / {plan.billing_cycle.toLowerCase()}) at the end of your current billing period.
+            {' '}({Number(plan.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {plan.currency === 'MMK' ? t('currency.mmk') : plan.currency} / {plan.billing_cycle.toLowerCase()}) {t('subscription.at_end_of_billing_period')}
           </p>
           <p className="text-xs text-amber-400 mt-2">
-            You will keep your current plan features until the billing period ends. Some features or limits may be reduced after the downgrade takes effect.
+            {t('subscription.downgrade_keep_features_desc')}
           </p>
         </div>
         <div className="flex gap-2 justify-end">
-          <Btn variant="secondary" size="sm" onClick={onClose} disabled={isPending}>Cancel</Btn>
+          <Btn variant="secondary" size="sm" onClick={onClose} disabled={isPending}>{t('common.cancel')}</Btn>
           <Btn size="sm" onClick={onConfirm} disabled={isPending}>
-            {isPending ? 'Scheduling…' : 'Confirm Downgrade'}
+            {isPending ? t('subscription.scheduling') : t('subscription.confirm_downgrade')}
           </Btn>
         </div>
       </div>
@@ -323,6 +327,7 @@ function ConfirmDowngradeModal({
 // Proof upload modal for upgrade — plan is pre-selected
 function UpgradeProofSubmitModal({ plan, paymentMethods, onClose }: { plan: Plan; paymentMethods: SubscriptionPaymentMethod[]; onClose: () => void }) {
   const qc = useQueryClient()
+  const t = useLocaleStore(s => s.t)
   const [amount, setAmount] = useState('')
   const [currency, setCurrency] = useState('MMK')
   const [file, setFile] = useState<File | null>(null)
@@ -338,7 +343,7 @@ function UpgradeProofSubmitModal({ plan, paymentMethods, onClose }: { plan: Plan
       qc.invalidateQueries({ queryKey: ['subscription', 'proofs'] })
       setDone(true)
     },
-    onError: err => toast.error(extractApiMsg(err) ?? 'Failed to submit'),
+    onError: err => toast.error(extractApiMsg(err) ?? t('subscription.failed_to_submit')),
   })
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -346,9 +351,9 @@ function UpgradeProofSubmitModal({ plan, paymentMethods, onClose }: { plan: Plan
     setFileError(null); setUploadedUrl(null); setUploadProgress('idle')
     if (!f) { setFile(null); return }
     if (!['image/jpeg', 'image/png', 'application/pdf'].includes(f.type)) {
-      setFileError('Only JPG, PNG, or PDF files are accepted'); setFile(null); return
+      setFileError(t('subscription.file_type_error')); setFile(null); return
     }
-    if (f.size > 10 * 1024 * 1024) { setFileError('File must be under 10 MB'); setFile(null); return }
+    if (f.size > 10 * 1024 * 1024) { setFileError(t('subscription.file_size_error_10mb')); setFile(null); return }
     setFile(f)
   }
 
@@ -362,7 +367,7 @@ function UpgradeProofSubmitModal({ plan, paymentMethods, onClose }: { plan: Plan
         setUploadedUrl(proofUrl); setUploadProgress('done')
       } catch (err: unknown) {
         setUploadProgress('idle')
-        toast.error(extractApiMsg(err) ?? 'File upload failed')
+        toast.error(extractApiMsg(err) ?? t('subscription.file_upload_failed'))
         return
       }
     }
@@ -384,15 +389,15 @@ function UpgradeProofSubmitModal({ plan, paymentMethods, onClose }: { plan: Plan
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl my-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
           <div>
-            <h3 className="text-base font-semibold text-zinc-100">{done ? 'Request Submitted' : 'Submit Upgrade Payment Proof'}</h3>
+            <h3 className="text-base font-semibold text-zinc-100">{done ? t('subscription.request_submitted') : t('subscription.submit_upgrade_payment_proof')}</h3>
             {!done && (
               <p className="text-xs text-zinc-500 mt-0.5">
-                Upgrading to <span className="text-amber-400 font-medium">{plan.name}</span>
-                {' — '}{Number(plan.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {plan.currency === 'MMK' ? 'Kyats' : plan.currency} / {plan.billing_cycle.toLowerCase()}
+                {t('subscription.upgrading_to')} <span className="text-amber-400 font-medium">{plan.name}</span>
+                {' — '}{Number(plan.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {plan.currency === 'MMK' ? t('currency.mmk') : plan.currency} / {plan.billing_cycle.toLowerCase()}
               </p>
             )}
           </div>
-          <button onClick={onClose} aria-label="Close" className="text-zinc-500 hover:text-zinc-200 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-800">
+          <button onClick={onClose} aria-label={t('common.close')} className="text-zinc-500 hover:text-zinc-200 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-800">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
           </button>
         </div>
@@ -403,17 +408,17 @@ function UpgradeProofSubmitModal({ plan, paymentMethods, onClose }: { plan: Plan
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-green-400"><polyline points="20 6 9 17 4 12" /></svg>
               </div>
               <div>
-                <p className="text-base font-semibold text-zinc-100">Request Submitted</p>
+                <p className="text-base font-semibold text-zinc-100">{t('subscription.request_submitted')}</p>
                 <p className="text-sm text-zinc-400 mt-1">
-                  Your upgrade request to <span className="text-amber-400 font-medium">{plan.name}</span> has been submitted.
+                  {t('subscription.upgrade_request_to_prefix')} <span className="text-amber-400 font-medium">{plan.name}</span> {t('subscription.upgrade_request_submitted_suffix')}
                 </p>
                 <p className="text-xs text-zinc-500 mt-2">
-                  Our team will review your payment proof and activate your new plan. Track status under Billing &gt; Payment Proofs.
+                  {t('subscription.track_status_billing_proofs')}
                 </p>
               </div>
             </div>
             <div className="px-5 py-4 border-t border-zinc-800 flex justify-center">
-              <Btn size="sm" onClick={onClose}>Done</Btn>
+              <Btn size="sm" onClick={onClose}>{t('subscription.done')}</Btn>
             </div>
           </>
         ) : (
@@ -422,16 +427,16 @@ function UpgradeProofSubmitModal({ plan, paymentMethods, onClose }: { plan: Plan
             <div className="p-5 space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Amount Paid *</label>
+                  <label className="block text-xs text-zinc-400 mb-1">{t('subscription.amount_paid_required')}</label>
                   <input type="number" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" className={inp} />
                 </div>
                 <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Currency</label>
+                  <label className="block text-xs text-zinc-400 mb-1">{t('settings.currency')}</label>
                   <input type="text" value={currency} onChange={e => setCurrency(e.target.value)} placeholder="MMK" className={inp} />
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-zinc-400 mb-1">Receipt File * (JPG, PNG, PDF — max 10 MB)</label>
+                <label className="block text-xs text-zinc-400 mb-1">{t('subscription.receipt_file_required')} (JPG, PNG, PDF — {t('subscription.max_size_prefix')} 10 MB)</label>
                 <label className="block w-full cursor-pointer">
                   <input type="file" accept="image/jpeg,image/png,application/pdf" onChange={handleFileChange} className="sr-only" />
                   <div className={cn('w-full border-2 border-dashed rounded-xl px-4 py-5 text-center transition-colors',
@@ -439,10 +444,10 @@ function UpgradeProofSubmitModal({ plan, paymentMethods, onClose }: { plan: Plan
                     {file ? (
                       <div>
                         <p className="text-sm text-zinc-200 font-medium truncate">{file.name}</p>
-                        <p className="text-xs text-zinc-500 mt-0.5">{(file.size / 1024).toFixed(0)} KB · {uploadProgress === 'done' ? <span className="text-green-400">Uploaded</span> : <span className="text-zinc-400">Click to change</span>}</p>
+                        <p className="text-xs text-zinc-500 mt-0.5">{(file.size / 1024).toFixed(0)} KB · {uploadProgress === 'done' ? <span className="text-green-400">{t('subscription.uploaded')}</span> : <span className="text-zinc-400">{t('subscription.click_to_change')}</span>}</p>
                       </div>
                     ) : (
-                      <p className="text-sm text-zinc-500">Click to select a receipt file</p>
+                      <p className="text-sm text-zinc-500">{t('subscription.click_to_select_receipt')}</p>
                     )}
                   </div>
                 </label>
@@ -450,9 +455,9 @@ function UpgradeProofSubmitModal({ plan, paymentMethods, onClose }: { plan: Plan
               </div>
             </div>
             <div className="px-5 py-4 border-t border-zinc-800 flex gap-2 justify-end">
-              <Btn variant="secondary" size="sm" onClick={onClose} disabled={busy}>Cancel</Btn>
+              <Btn variant="secondary" size="sm" onClick={onClose} disabled={busy}>{t('common.cancel')}</Btn>
               <Btn size="sm" disabled={!amount || !file || busy} onClick={handleSubmit}>
-                {uploadProgress === 'uploading' ? 'Uploading…' : submitMutation.isPending ? 'Submitting…' : 'Submit Proof'}
+                {uploadProgress === 'uploading' ? t('subscription.uploading') : submitMutation.isPending ? t('subscription.submitting') : t('subscription.submit_proof')}
               </Btn>
             </div>
           </>
@@ -464,6 +469,7 @@ function UpgradeProofSubmitModal({ plan, paymentMethods, onClose }: { plan: Plan
 
 export default function PlansPage() {
   const user = useAuthStore(s => s.user)
+  const t = useLocaleStore(s => s.t)
   const qc = useQueryClient()
   const isOwner = user?.role === 'BUSINESS_OWNER'
 
@@ -517,11 +523,11 @@ export default function PlansPage() {
       qc.invalidateQueries({ queryKey: ['subscription'] })
       qc.invalidateQueries({ queryKey: ['plans'] })
       const targetPlan = (plansData?.items ?? []).find(p => p.id === planId)
-      toast.success(data.message ?? `Downgrade to ${targetPlan?.name ?? 'lower plan'} scheduled for end of billing period.`)
+      toast.success(data.message ?? `${t('subscription.downgrade_to_prefix')} ${targetPlan?.name ?? t('subscription.lower_plan')} ${t('subscription.scheduled_for_end_of_billing_period')}`)
       setConfirmDowngrade(null)
     },
     onError: err => {
-      toast.error(extractApiMsg(err) ?? 'Failed to schedule downgrade')
+      toast.error(extractApiMsg(err) ?? t('subscription.failed_to_schedule_downgrade'))
       setConfirmDowngrade(null)
     },
   })
@@ -531,9 +537,9 @@ export default function PlansPage() {
     onSuccess: data => {
       qc.invalidateQueries({ queryKey: ['subscription'] })
       qc.invalidateQueries({ queryKey: ['plans'] })
-      toast.success(data.message ?? 'Pending downgrade cancelled')
+      toast.success(data.message ?? t('subscription.pending_downgrade_cancelled'))
     },
-    onError: err => toast.error(extractApiMsg(err) ?? 'Failed to cancel downgrade'),
+    onError: err => toast.error(extractApiMsg(err) ?? t('subscription.failed_to_cancel_downgrade')),
   })
 
   if (subLoading || plansLoading) {
@@ -563,7 +569,7 @@ export default function PlansPage() {
   // Everyone else needs the payment proof flow
   const needsProofFlow = !isActiveAndPaid
 
-  const ctaLabel = (subStatus === 'CANCELLED' || subStatus === 'EXPIRED') ? 'Resubscribe →' : 'Select Plan →'
+  const ctaLabel = (subStatus === 'CANCELLED' || subStatus === 'EXPIRED') ? t('subscription.resubscribe') : t('subscription.select_plan')
 
   return (
     <>
@@ -589,14 +595,14 @@ export default function PlansPage() {
             <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 mb-4 flex items-center gap-3 flex-wrap">
               <div className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0" />
               <p className="text-sm text-zinc-300 flex-1 min-w-0">
-                Currently on{' '}
+                {t('subscription.currently_on')}{' '}
                 <span className="font-semibold text-amber-400">{currentPlan.name}</span>
                 <span className="text-zinc-600 mx-1.5">·</span>
                 <span className="text-zinc-500 capitalize">{subStatus.toLowerCase()}</span>
               </p>
               {needsProofFlow && isOwner && Number(currentPrice) === 0 && (
                 <p className="text-xs text-zinc-500">
-                  Select a paid plan below to upgrade — submit a payment proof and our team will activate it.
+                  {t('subscription.select_paid_plan_below_desc')}
                 </p>
               )}
             </div>
@@ -611,12 +617,12 @@ export default function PlansPage() {
                   <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                 </svg>
                 <p className="text-sm text-amber-300 flex-1 min-w-[200px]">
-                  Downgrade to{' '}
-                  <span className="font-semibold">{pendingPlan?.name ?? 'a lower plan'}</span>{' '}
-                  is scheduled for end of your current billing period.
+                  {t('subscription.downgrade_to_prefix')}{' '}
+                  <span className="font-semibold">{pendingPlan?.name ?? t('subscription.a_lower_plan')}</span>{' '}
+                  {t('subscription.is_scheduled_for_end_of_billing_period')}
                   {downgradeProofApproved && (
                     <span className="block text-xs text-amber-400/70 mt-0.5">
-                      Already paid and approved — this can no longer be cancelled.
+                      {t('subscription.already_paid_approved_cannot_cancel')}
                     </span>
                   )}
                 </p>
@@ -626,7 +632,7 @@ export default function PlansPage() {
                     disabled={cancelDowngradeMutation.isPending}
                     onClick={() => cancelDowngradeMutation.mutate()}
                   >
-                    {cancelDowngradeMutation.isPending ? 'Cancelling…' : 'Cancel Downgrade'}
+                    {cancelDowngradeMutation.isPending ? t('subscription.cancelling') : t('subscription.cancel_downgrade')}
                   </Btn>
                 )}
               </div>
@@ -635,8 +641,8 @@ export default function PlansPage() {
 
           {plans.length === 0 ? (
             <div className="text-center py-16">
-              <p className="text-zinc-500 text-sm">No plans available at the moment.</p>
-              <p className="text-zinc-600 text-xs mt-1">Contact your administrator for more information.</p>
+              <p className="text-zinc-500 text-sm">{t('subscription.no_plans_available_at_moment')}</p>
+              <p className="text-zinc-600 text-xs mt-1">{t('subscription.contact_admin_for_more_info')}</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -691,12 +697,12 @@ export default function PlansPage() {
                       <div className="px-4 pt-3 flex gap-2 flex-wrap">
                         {isCurrent && (
                           <span className="inline-block text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-full px-2.5 py-0.5 uppercase tracking-wider">
-                            Current Plan
+                            {t('subscription.current_plan')}
                           </span>
                         )}
                         {isPendingDowngradeTo && (
                           <span className="inline-block text-[10px] font-bold text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-full px-2.5 py-0.5 uppercase tracking-wider">
-                            Pending Downgrade
+                            {t('subscription.pending_downgrade')}
                           </span>
                         )}
                       </div>
@@ -705,7 +711,7 @@ export default function PlansPage() {
                     <div className="p-5 flex-1">
                       <div className="flex items-start justify-between gap-2 mb-1">
                         <h3 className="text-base font-bold text-zinc-100 leading-tight">{plan.name}</h3>
-                        {isFree && <Badge variant="default" size="sm">Free</Badge>}
+                        {isFree && <Badge variant="default" size="sm">{t('subscription.free')}</Badge>}
                       </div>
 
                       {plan.description && (
@@ -714,12 +720,12 @@ export default function PlansPage() {
 
                       <div className="mb-5 mt-3">
                         {plan.is_custom ? (
-                          <p className="text-xl font-bold text-violet-400">Contact for Pricing</p>
+                          <p className="text-xl font-bold text-violet-400">{t('subscription.contact_for_pricing')}</p>
                         ) : isFree ? (
-                          <p className="text-2xl font-bold text-zinc-100">Free</p>
+                          <p className="text-2xl font-bold text-zinc-100">{t('subscription.free')}</p>
                         ) : (
                           <p className="text-2xl font-bold text-zinc-100">
-                            {Number(plan.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {plan.currency === 'MMK' ? 'Kyats' : plan.currency}
+                            {Number(plan.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {plan.currency === 'MMK' ? t('currency.mmk') : plan.currency}
                             <span className="text-sm font-normal text-zinc-500 ml-1.5">
                               / {plan.billing_cycle.toLowerCase()}
                             </span>
@@ -737,9 +743,9 @@ export default function PlansPage() {
                                   <polyline points="20 6 9 17 4 12" />
                                 </svg>
                               </span>
-                              <span>{featureLabel(ent.feature_code)}</span>
+                              <span>{featureLabel(ent.feature_code, t)}</span>
                               {ent.limit_value !== null && ent.limit_value > 0 ? (
-                                <span className="text-zinc-600 ml-auto tabular-nums">up to {ent.limit_value}</span>
+                                <span className="text-zinc-600 ml-auto tabular-nums">{t('subscription.up_to_prefix')} {ent.limit_value}</span>
                               ) : ent.limit_value === null || ent.limit_value === 0 ? (
                                 <span className="text-zinc-700 ml-auto">∞</span>
                               ) : null}
@@ -754,7 +760,7 @@ export default function PlansPage() {
                                   <path d="M18 6 6 18M6 6l12 12" />
                                 </svg>
                               </span>
-                              <span className="line-through">{featureLabel(ent.feature_code)}</span>
+                              <span className="line-through">{featureLabel(ent.feature_code, t)}</span>
                             </li>
                           ))}
 
@@ -772,7 +778,7 @@ export default function PlansPage() {
                                 >
                                   <polyline points="6 9 12 15 18 9" />
                                 </svg>
-                                {isExpanded ? 'Show less' : `Show more (${moreCount})`}
+                                {isExpanded ? t('subscription.show_less') : `${t('subscription.show_more_prefix')} (${moreCount})`}
                               </button>
                             </li>
                           )}
@@ -786,7 +792,7 @@ export default function PlansPage() {
                         <ContactFooter links={plan.contact_links} />
                       ) : isOwner && action === 'current' ? (
                         <div className="w-full text-center py-2 text-xs font-medium text-zinc-500 border border-zinc-800 rounded-xl">
-                          ✓ Active Plan
+                          {t('subscription.active_plan_check')}
                         </div>
                       ) : isOwner && action === 'proof' ? (
                         <Btn size="sm" fullWidth onClick={() => setProofPlan(plan)}>
@@ -794,12 +800,12 @@ export default function PlansPage() {
                         </Btn>
                       ) : isOwner && action === 'upgrade' ? (
                         <Btn size="sm" fullWidth onClick={() => setUpgradeProofPlan(plan)}>
-                          Upgrade →
+                          {t('subscription.upgrade_arrow')}
                         </Btn>
                       ) : isOwner && action === 'downgrade' ? (
                         isPendingDowngradeTo ? (
                           <div className="w-full text-center py-2 text-xs font-medium text-amber-400/70 border border-amber-500/20 rounded-xl">
-                            Downgrade Scheduled
+                            {t('subscription.downgrade_scheduled')}
                           </div>
                         ) : (
                           <Btn
@@ -807,12 +813,12 @@ export default function PlansPage() {
                             disabled={downgradeMutation.isPending || !!sub?.pending_downgrade_plan_id}
                             onClick={() => setConfirmDowngrade(plan)}
                           >
-                            Downgrade
+                            {t('subscription.downgrade')}
                           </Btn>
                         )
                       ) : isOwner && isFree && !isCurrent ? (
                         <p className="text-xs text-zinc-600 text-center py-2">
-                          Cancel your plan to revert to Free
+                          {t('subscription.cancel_plan_revert_to_free')}
                         </p>
                       ) : null}
                     </div>
@@ -825,7 +831,7 @@ export default function PlansPage() {
           {/* Help note for proof flow users with a paid plan target */}
           {isOwner && needsProofFlow && plans.some(p => Number(p.price) > 0) && (
             <p className="text-xs text-zinc-600 text-center mt-6">
-              Payments are manually reviewed. Submit a payment proof and our team will activate your plan within 1–2 business days.
+              {t('subscription.payments_manually_reviewed_desc')}
             </p>
           )}
         </div>

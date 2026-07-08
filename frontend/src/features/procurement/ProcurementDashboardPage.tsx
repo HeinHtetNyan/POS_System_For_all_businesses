@@ -4,9 +4,11 @@ import { fmt, fmtDate, timeAgo } from '@/lib/utils'
 import { StatCard, Table, Th, Td, Spinner } from '@/components/ui'
 import { procurementService } from '@/services/procurement/procurement.service'
 import { POStatusBadge, PayableStatusBadge } from './procurementHelpers'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 export default function ProcurementDashboardPage() {
   const navigate = useNavigate()
+  const t = useLocaleStore(s => s.t)
 
   const [orderedQ, partialReceiptQ, openPayQ, partialPayQ, recentPOsQ, recentReceiptsQ, recentPayablesQ] = useQueries({
     queries: [
@@ -41,7 +43,7 @@ export default function ProcurementDashboardPage() {
 
   return (
     <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
-      <h2 className="text-base font-semibold text-zinc-100">Procurement Overview</h2>
+      <h2 className="text-base font-semibold text-zinc-100">{t('procurement.overview_title')}</h2>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -52,22 +54,22 @@ export default function ProcurementDashboardPage() {
         ) : (
           <>
             <StatCard
-              label="Ordered"
+              label={t('procurement.po_status_ordered')}
               value={openPOs.toLocaleString()}
               accent={openPOs > 0}
             />
             <StatCard
-              label="Partial Receipt"
+              label={t('procurement.po_status_partial_receipt')}
               value={pendingReceipt.toLocaleString()}
               accent={pendingReceipt > 0}
             />
             <StatCard
-              label="Open Payables"
+              label={t('procurement.stat_open_payables')}
               value={openPayables.toLocaleString()}
               accent={openPayables > 0}
             />
             <StatCard
-              label="Awaiting Payment"
+              label={t('procurement.stat_awaiting_payment')}
               value={outstandingCount.toLocaleString()}
               accent={outstandingCount > 0}
             />
@@ -78,26 +80,26 @@ export default function ProcurementDashboardPage() {
       {/* Recent Purchase Orders */}
       <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
-          <h3 className="text-sm font-semibold text-zinc-100">Recent Purchase Orders</h3>
+          <h3 className="text-sm font-semibold text-zinc-100">{t('procurement.recent_purchase_orders')}</h3>
           <button
             onClick={() => navigate('/app/procurement/purchase-orders')}
             className="text-xs text-amber-400 hover:text-amber-300 transition-colors"
           >
-            View all
+            {t('dash.view_all')}
           </button>
         </div>
         {recentPOsQ.isLoading ? (
           <div className="flex items-center justify-center h-24"><Spinner size={24} /></div>
         ) : recentPOs.length === 0 ? (
-          <p className="text-zinc-600 text-sm text-center py-6">No purchase orders yet</p>
+          <p className="text-zinc-600 text-sm text-center py-6">{t('procurement.no_purchase_orders_yet')}</p>
         ) : (
           <Table>
             <thead>
               <tr>
-                <Th>PO Number</Th>
-                <Th>Status</Th>
-                <Th right>Total</Th>
-                <Th>Date</Th>
+                <Th>{t('procurement.col_po_number')}</Th>
+                <Th>{t('settings.status')}</Th>
+                <Th right>{t('procurement.col_total')}</Th>
+                <Th>{t('procurement.col_date')}</Th>
               </tr>
             </thead>
             <tbody>
@@ -121,26 +123,26 @@ export default function ProcurementDashboardPage() {
       {/* Recent Receipts */}
       <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
-          <h3 className="text-sm font-semibold text-zinc-100">Recent Goods Receipts</h3>
+          <h3 className="text-sm font-semibold text-zinc-100">{t('procurement.recent_goods_receipts')}</h3>
           <button
             onClick={() => navigate('/app/procurement/purchase-orders')}
             className="text-xs text-amber-400 hover:text-amber-300 transition-colors"
           >
-            View all
+            {t('dash.view_all')}
           </button>
         </div>
         {recentReceiptsQ.isLoading ? (
           <div className="flex items-center justify-center h-24"><Spinner size={24} /></div>
         ) : recentReceipts.length === 0 ? (
-          <p className="text-zinc-600 text-sm text-center py-6">No receipts yet</p>
+          <p className="text-zinc-600 text-sm text-center py-6">{t('procurement.no_receipts_yet')}</p>
         ) : (
           <Table>
             <thead>
               <tr>
-                <Th>Receipt #</Th>
-                <Th>Status</Th>
-                <Th>Date</Th>
-                <Th>Created</Th>
+                <Th>{t('procurement.col_receipt_number')}</Th>
+                <Th>{t('settings.status')}</Th>
+                <Th>{t('procurement.col_date')}</Th>
+                <Th>{t('procurement.col_created')}</Th>
               </tr>
             </thead>
             <tbody>
@@ -172,26 +174,26 @@ export default function ProcurementDashboardPage() {
       {/* Outstanding Payables */}
       <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
-          <h3 className="text-sm font-semibold text-zinc-100">Outstanding Payables</h3>
+          <h3 className="text-sm font-semibold text-zinc-100">{t('procurement.outstanding_payables')}</h3>
           <button
             onClick={() => navigate('/app/procurement/payments')}
             className="text-xs text-amber-400 hover:text-amber-300 transition-colors"
           >
-            View all
+            {t('dash.view_all')}
           </button>
         </div>
         {recentPayablesQ.isLoading ? (
           <div className="flex items-center justify-center h-24"><Spinner size={24} /></div>
         ) : recentPayables.length === 0 ? (
-          <p className="text-zinc-600 text-sm text-center py-6">No payables yet</p>
+          <p className="text-zinc-600 text-sm text-center py-6">{t('procurement.no_payables_yet')}</p>
         ) : (
           <Table>
             <thead>
               <tr>
-                <Th>Status</Th>
-                <Th right>Total</Th>
-                <Th right>Paid</Th>
-                <Th right>Remaining</Th>
+                <Th>{t('settings.status')}</Th>
+                <Th right>{t('procurement.col_total')}</Th>
+                <Th right>{t('status.paid')}</Th>
+                <Th right>{t('procurement.col_remaining')}</Th>
               </tr>
             </thead>
             <tbody>

@@ -4,8 +4,8 @@ from fastapi import APIRouter
 
 from app.api.deps import DbSession
 from app.core.exceptions import NotFoundError
-from app.subscriptions.schemas import PublicPlanResponse, PublicTrialPlanResponse
-from app.subscriptions.services import PlanService
+from app.subscriptions.schemas import AppDownloadLinksResponse, PublicPlanResponse, PublicTrialPlanResponse
+from app.subscriptions.services import PlanService, PlatformSettingsService
 
 router = APIRouter()
 
@@ -40,3 +40,14 @@ async def get_public_trial_plan(db: DbSession) -> PublicTrialPlanResponse:
         users=limits.get("users"),
         customers=limits.get("customers"),
     )
+
+
+@router.get(
+    "/app-download-links",
+    response_model=AppDownloadLinksResponse,
+    summary="Get the mobile/desktop app download links shown on the login screen (no auth required)",
+)
+async def get_public_app_download_links(db: DbSession) -> AppDownloadLinksResponse:
+    svc = PlatformSettingsService(db)
+    links = await svc.get_app_download_links()
+    return AppDownloadLinksResponse(**links)

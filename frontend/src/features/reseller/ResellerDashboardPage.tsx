@@ -4,6 +4,7 @@ import { useAuthStore } from '@/store/auth.store'
 import { resellerFinanceService } from '@/services/reseller_finance/reseller_finance.service'
 import { notificationsService } from '@/services/notifications/notifications.service'
 import { Spinner } from '@/components/ui'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 function StatCard({ label, value, sub, accent = false }: {
   label: string
@@ -23,6 +24,7 @@ function StatCard({ label, value, sub, accent = false }: {
 export default function ResellerDashboardPage() {
   const navigate = useNavigate()
   const user = useAuthStore(s => s.user)
+  const t = useLocaleStore(s => s.t)
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['reseller', 'referral-stats'],
@@ -50,9 +52,9 @@ export default function ResellerDashboardPage() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-zinc-100">
-          Welcome back{user ? `, ${user.first_name}` : ''}!
+          {t('reseller.welcome_back')}{user ? `, ${user.first_name}` : ''}!
         </h1>
-        <p className="text-zinc-500 text-sm mt-1">Here's your reseller overview.</p>
+        <p className="text-zinc-500 text-sm mt-1">{t('reseller.dashboard_subtitle')}</p>
       </div>
 
       {/* Unread notifications alert */}
@@ -63,15 +65,15 @@ export default function ResellerDashboardPage() {
         >
           <span className="text-2xl">🔔</span>
           <div>
-            <p className="text-blue-400 font-semibold text-sm">{unreadCount} unread notification{unreadCount !== 1 ? 's' : ''}</p>
-            <p className="text-blue-700 text-xs">Tap to view</p>
+            <p className="text-blue-400 font-semibold text-sm">{unreadCount} {t('reseller.unread_notification')}{unreadCount !== 1 ? 's' : ''}</p>
+            <p className="text-blue-700 text-xs">{t('reseller.tap_to_view')}</p>
           </div>
         </button>
       )}
 
       {/* Referral Stats */}
       <div>
-        <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">Referral Performance</h2>
+        <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">{t('reseller.referral_performance')}</h2>
         {isLoading ? (
           <div className="flex items-center justify-center py-8">
             <Spinner size={24} />
@@ -79,24 +81,24 @@ export default function ResellerDashboardPage() {
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <StatCard
-              label="Total Referrals"
+              label={t('reseller.total_referrals')}
               value={stats?.total_referrals ?? 0}
               accent
             />
             <StatCard
-              label="Converted"
+              label={t('reseller.converted')}
               value={stats?.converted_referrals ?? 0}
-              sub="Paying customers"
+              sub={t('reseller.paying_customers')}
             />
             <StatCard
-              label="In Trial"
+              label={t('reseller.in_trial')}
               value={stats?.trial_referrals ?? 0}
-              sub="Active trials"
+              sub={t('reseller.active_trials')}
             />
             <StatCard
-              label="Conversion Rate"
+              label={t('reseller.conversion_rate')}
               value={`${stats?.conversion_rate ?? 0}%`}
-              sub="Trial → paid"
+              sub={t('reseller.trial_to_paid')}
             />
           </div>
         )}
@@ -104,51 +106,51 @@ export default function ResellerDashboardPage() {
 
       {/* Wallet */}
       <div>
-        <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">Wallet</h2>
+        <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">{t('reseller.wallet')}</h2>
         {walletLoading ? (
           <div className="flex items-center justify-center py-6"><Spinner size={20} /></div>
         ) : wallet ? (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <StatCard
-              label="Available Balance"
+              label={t('reseller.available_balance')}
               value={`${wallet.currency_code} ${Number(wallet.available_balance).toLocaleString()}`}
               accent
             />
             <StatCard
-              label="Locked Balance"
+              label={t('reseller.locked_balance')}
               value={`${wallet.currency_code} ${Number(wallet.locked_balance).toLocaleString()}`}
-              sub="Pending clearance"
+              sub={t('reseller.pending_clearance')}
             />
             <StatCard
-              label="Total Paid Out"
+              label={t('reseller.total_paid_out')}
               value={`${wallet.currency_code} ${Number(wallet.total_paid_out).toLocaleString()}`}
-              sub="All time"
+              sub={t('reseller.all_time')}
             />
           </div>
         ) : (
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 text-center text-zinc-600 text-sm">
-            Wallet not set up yet. Contact your administrator.
+            {t('reseller.wallet_not_setup')}
           </div>
         )}
       </div>
 
       {/* Quick nav */}
       <div>
-        <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">Quick Access</h2>
+        <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">{t('reseller.quick_access')}</h2>
         <div className="grid grid-cols-2 gap-3">
           <button
             onClick={() => navigate('/reseller/referrals')}
             className="bg-zinc-900 border border-zinc-800 hover:border-orange-500/30 rounded-2xl p-5 flex flex-col items-center gap-2 transition-all group"
           >
             <span className="text-2xl">🔗</span>
-            <span className="text-xs text-zinc-400 group-hover:text-zinc-200 font-medium">Referrals</span>
+            <span className="text-xs text-zinc-400 group-hover:text-zinc-200 font-medium">{t('reseller.referrals')}</span>
           </button>
           <button
             onClick={() => navigate('/reseller/wallet')}
             className="bg-zinc-900 border border-zinc-800 hover:border-orange-500/30 rounded-2xl p-5 flex flex-col items-center gap-2 transition-all group"
           >
             <span className="text-2xl">💰</span>
-            <span className="text-xs text-zinc-400 group-hover:text-zinc-200 font-medium">Wallet</span>
+            <span className="text-xs text-zinc-400 group-hover:text-zinc-200 font-medium">{t('reseller.wallet')}</span>
           </button>
         </div>
       </div>

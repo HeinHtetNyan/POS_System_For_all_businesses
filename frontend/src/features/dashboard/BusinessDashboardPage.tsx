@@ -77,7 +77,7 @@ export default function BusinessDashboardPage() {
     : dashBranchId === OVERALL ? undefined : (dashBranchId ?? selectedBranch?.id)
 
   const currentBranchName = dashBranchId === OVERALL
-    ? 'All Branches'
+    ? t('analytics.all_branches')
     : availableBranches.find(b => b.id === dashBranchId)?.name ?? selectedBranch?.name
 
   const [kpiQuery, notifsQuery, ordersQuery, lowStockQuery, procApprovedQuery, procPartialQuery] = useQueries({
@@ -123,7 +123,7 @@ export default function BusinessDashboardPage() {
 
   const recentOrders: ActivityItem[] = (ordersQuery.data?.items ?? []).map(o => ({
     id: o.id,
-    label: `Order #${o.order_number ?? o.id.slice(-6).toUpperCase()}`,
+    label: `${t('customers.order_created_prefix')}${o.order_number ?? o.id.slice(-6).toUpperCase()}`,
     sub: `${fmt(o.total_amount)} · ${o.order_status}`,
     time: timeAgo(o.created_at),
     icon: '🧾',
@@ -141,7 +141,7 @@ export default function BusinessDashboardPage() {
 
   const pendingPOs: ActivityItem[] = pendingPOsItems.map(po => ({
     id: po.id,
-    label: `PO ${po.po_number}`,
+    label: `${t('shared.search.po_prefix')} ${po.po_number}`,
     sub: `${po.supplier_id.slice(-8)} · ${fmt(po.total_amount)}`,
     time: fmtDate(po.created_at),
     icon: '📋',
@@ -157,10 +157,10 @@ export default function BusinessDashboardPage() {
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h2 className="text-base font-semibold text-zinc-100">
-              Good {getGreeting()}, {user?.first_name ?? 'there'}
+              {t(`dash.greeting_${getGreeting()}`)}, {user?.first_name ?? t('dash.there_fallback')}
             </h2>
             <p className="text-xs text-zinc-500 mt-0.5">
-              {isOwner ? 'Business overview' : 'Manager dashboard'}
+              {isOwner ? t('dash.business_overview') : t('dash.manager_dashboard')}
               {currentBranchName ? ` · ${currentBranchName}` : ''}
             </p>
           </div>
@@ -177,7 +177,7 @@ export default function BusinessDashboardPage() {
                       : 'border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-600 bg-zinc-900'
                   }`}
                 >
-                  All Branches
+                  {t('analytics.all_branches')}
                 </button>
               )}
               {availableBranches.map(b => (
@@ -204,34 +204,34 @@ export default function BusinessDashboardPage() {
       <div className="p-4 sm:p-6 space-y-6 max-w-7xl w-full mx-auto">
 
         {/* KPI Grid */}
-        <DashboardSection title="Today's Performance">
+        <DashboardSection title={t('dash.todays_performance')}>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <KpiCard
-              label="Revenue Today"
+              label={t('analytics.revenue_today')}
               value={fmt(kpi?.revenue_today)}
-              sub={`${kpi?.orders_today ?? '—'} orders`}
+              sub={`${kpi?.orders_today ?? '—'} ${t('sales.orders_word')}`}
               icon="💰"
               accent
               isLoading={kpiLoading}
             />
             <KpiCard
-              label="Month Revenue"
+              label={t('dash.month_revenue')}
               value={fmt(kpi?.revenue_month)}
-              sub={`${kpi?.orders_this_month ?? '—'} orders`}
+              sub={`${kpi?.orders_this_month ?? '—'} ${t('sales.orders_word')}`}
               icon="📈"
               isLoading={kpiLoading}
             />
             <KpiCard
-              label="Inventory Value"
+              label={t('analytics.inventory_value')}
               value={fmt(kpi?.inventory_value)}
-              sub="total valuation"
+              sub={t('dash.total_valuation')}
               icon="🏭"
               isLoading={kpiLoading}
             />
             <KpiCard
-              label="Low Stock"
+              label={t('status.low_stock')}
               value={kpi?.low_stock_products ?? '—'}
-              sub={kpi?.low_stock_products ? 'products need restock' : 'no alerts'}
+              sub={kpi?.low_stock_products ? t('dash.products_need_restock') : t('dash.no_alerts')}
               icon="⚠️"
               isLoading={kpiLoading}
             />
@@ -241,14 +241,14 @@ export default function BusinessDashboardPage() {
         {/* Secondary KPIs */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <KpiCard
-            label="Total Customers"
+            label={t('analytics.total_customers')}
             value={kpi?.total_customers ?? '—'}
-            sub={`+${kpi?.new_customers_month ?? 0} this month`}
+            sub={`+${kpi?.new_customers_month ?? 0} ${t('dash.this_month_suffix')}`}
             icon="👥"
             isLoading={kpiLoading}
           />
           <KpiCard
-            label="Refunds (Month)"
+            label={t('dash.refunds_month')}
             value={kpi?.refund_count_month ?? '—'}
             sub={fmt(kpi?.refund_amount_month)}
             icon="↩️"
@@ -256,13 +256,13 @@ export default function BusinessDashboardPage() {
           />
           {canProcure && (
             <KpiCard
-              label="Pending POs"
+              label={t('dash.pending_pos')}
               value={pendingPOsTotal}
               sub={
                 <span className="flex gap-3 mt-0.5">
-                  <span>Ordered <strong className="text-zinc-300">{procApprovedQuery.data?.total ?? 0}</strong></span>
+                  <span>{t('dash.ordered_word')} <strong className="text-zinc-300">{procApprovedQuery.data?.total ?? 0}</strong></span>
                   <span>·</span>
-                  <span>Partial <strong className="text-zinc-300">{procPartialQuery.data?.total ?? 0}</strong></span>
+                  <span>{t('dash.partial_word')} <strong className="text-zinc-300">{procPartialQuery.data?.total ?? 0}</strong></span>
                 </span>
               }
               icon="🛒"
@@ -270,9 +270,9 @@ export default function BusinessDashboardPage() {
             />
           )}
           <KpiCard
-            label="Customer Debts"
+            label={t('analytics.customer_debts')}
             value={fmt(kpi?.total_customer_outstanding)}
-            sub="total outstanding balance"
+            sub={t('dash.total_outstanding_balance')}
             icon="💳"
             isLoading={kpiLoading}
           />
@@ -301,19 +301,19 @@ export default function BusinessDashboardPage() {
             <ActivityFeed
               items={recentOrders}
               isLoading={ordersQuery.isLoading}
-              emptyText="No orders yet today"
+              emptyText={t('dash.no_orders_today')}
             />
           </DashboardSection>
 
           {/* Recent Notifications */}
           <DashboardSection
-            title="Recent Notifications"
-            action={{ label: 'View all', onClick: () => navigate('/app/notifications') }}
+            title={t('dash.recent_notifications')}
+            action={{ label: t('dash.view_all'), onClick: () => navigate('/app/notifications') }}
           >
             <ActivityFeed
               items={recentNotifs}
               isLoading={notifsQuery.isLoading}
-              emptyText="No notifications"
+              emptyText={t('notif.empty_title')}
             />
           </DashboardSection>
 
@@ -322,8 +322,8 @@ export default function BusinessDashboardPage() {
         {/* Low Stock Alerts */}
         {(lowStock.length > 0 || lowStockQuery.isLoading) && (
           <DashboardSection
-            title={`Low Stock Alerts${lowStock.length ? ` (${lowStock.length})` : ''}`}
-            action={{ label: 'Manage Inventory', onClick: () => navigate('/app/inventory') }}
+            title={`${t('dash.low_stock_alerts_prefix')}${lowStock.length ? ` (${lowStock.length})` : ''}`}
+            action={{ label: t('dash.manage_inventory'), onClick: () => navigate('/app/inventory') }}
           >
             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl divide-y divide-zinc-800">
               {lowStockQuery.isLoading
@@ -340,7 +340,7 @@ export default function BusinessDashboardPage() {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-zinc-200 truncate">{item.product_name}</p>
                         <p className="text-xs text-zinc-500 mt-0.5">
-                          {item.sku ? `SKU: ${item.sku} · ` : ''}{item.branch_name}
+                          {item.sku ? `${t('dash.sku_prefix')} ${item.sku} · ` : ''}{item.branch_name}
                         </p>
                       </div>
                       <div className="flex items-center gap-3 flex-shrink-0 text-right">
@@ -348,13 +348,13 @@ export default function BusinessDashboardPage() {
                           <p className="text-sm font-semibold text-red-400 tabular-nums">
                             {item.quantity_on_hand}
                           </p>
-                          <p className="text-[10px] text-zinc-600">in stock</p>
+                          <p className="text-[10px] text-zinc-600">{t('dash.in_stock')}</p>
                         </div>
                         <div>
                           <p className="text-sm font-medium text-zinc-400 tabular-nums">
                             {item.reorder_point}
                           </p>
-                          <p className="text-[10px] text-zinc-600">reorder at</p>
+                          <p className="text-[10px] text-zinc-600">{t('dash.reorder_at')}</p>
                         </div>
                       </div>
                     </div>
@@ -367,13 +367,13 @@ export default function BusinessDashboardPage() {
         {/* Pending Procurement Activity */}
         {canProcure && (pendingPOs.length > 0 || pendingPOsLoading) && (
           <DashboardSection
-            title="Pending Purchase Orders"
-            action={{ label: 'View all', onClick: () => navigate('/app/procurement/purchase-orders') }}
+            title={t('dash.pending_purchase_orders')}
+            action={{ label: t('dash.view_all'), onClick: () => navigate('/app/procurement/purchase-orders') }}
           >
             <ActivityFeed
               items={pendingPOs}
               isLoading={pendingPOsLoading}
-              emptyText="No pending purchase orders"
+              emptyText={t('dash.no_pending_pos')}
             />
           </DashboardSection>
         )}

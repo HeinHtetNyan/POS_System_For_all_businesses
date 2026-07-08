@@ -9,6 +9,7 @@ import { ROLE_HOME } from '@/shared/constants/rbac'
 import { Btn, Input, PasswordInput, Spinner, Divider } from '@/components/ui/index'
 import { IconAlert } from '@/components/icons'
 import { PASSWORD_REQUIREMENTS, isPasswordValid, PASSWORDS_DO_NOT_MATCH_MESSAGE } from '@/lib/validation/password'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 interface FormState {
   business_name: string
@@ -36,6 +37,7 @@ export default function RegisterPage() {
   const navigate = useNavigate()
   const { setUser } = useAuthStore()
   const [searchParams] = useSearchParams()
+  const t = useLocaleStore(s => s.t)
 
   // Reseller promo links deep-link here as /register?ref=CODE — prefill the
   // promo code field so following the link actually applies it, matching the
@@ -108,7 +110,7 @@ export default function RegisterPage() {
         (apiError?.message !== 'Request validation failed' ? apiError?.message : undefined) ??
         e2.response?.data?.detail ??
         e2.message ??
-        'Registration failed. Please try again.'
+        t('auth.registration_failed')
       )
     } finally {
       setIsLoading(false)
@@ -119,35 +121,35 @@ export default function RegisterPage() {
     <div className="relative w-full max-w-lg">
       <div className="text-center mb-8">
         <img src="/logo-icon.png" alt="SawYunPos" className="inline-block w-16 h-16 rounded-2xl shadow-2xl shadow-blue-900/50 mb-4" />
-        <h1 className="text-2xl font-bold text-zinc-100">Start your free trial</h1>
+        <h1 className="text-2xl font-bold text-zinc-100">{t('auth.start_trial_heading')}</h1>
         <p className="text-zinc-500 text-sm mt-1">
-          {trialPlan ? `${trialPlan.trial_days} days free` : 'Free trial'} · No credit card required
+          {trialPlan ? `${trialPlan.trial_days} ${t('auth.days_free')}` : t('auth.free_trial')} · {t('auth.no_credit_card')}
         </p>
       </div>
 
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl">
         <form onSubmit={handleSubmit} noValidate>
-          <Divider label="create your account" />
+          <Divider label={t('auth.create_account_divider')} />
 
           <div className="space-y-3 mt-4">
             <Input
-              label="Business Name"
+              label={t('auth.business_name')}
               value={form.business_name}
               onChange={set('business_name')}
-              placeholder="My Business Co."
+              placeholder={t('auth.business_name_placeholder')}
               required
             />
 
             <div className="grid grid-cols-1 xs:grid-cols-2 gap-3">
               <Input
-                label="First Name"
+                label={t('auth.first_name')}
                 value={form.first_name}
                 onChange={set('first_name')}
                 placeholder="John"
                 required
               />
               <Input
-                label="Last Name"
+                label={t('auth.last_name')}
                 value={form.last_name}
                 onChange={set('last_name')}
                 placeholder="Smith"
@@ -156,7 +158,7 @@ export default function RegisterPage() {
             </div>
 
             <Input
-              label="Email"
+              label={t('settings.email')}
               type="email"
               value={form.email}
               onChange={set('email')}
@@ -166,7 +168,7 @@ export default function RegisterPage() {
             />
 
             <Input
-              label="Phone (optional)"
+              label={t('auth.phone_optional')}
               type="tel"
               inputMode="tel"
               autoComplete="tel"
@@ -177,25 +179,25 @@ export default function RegisterPage() {
 
             <div>
               <Input
-                label="Promo Code (optional)"
+                label={t('auth.promo_code_optional')}
                 type="text"
                 value={form.referral_code}
                 onChange={e => {
                   setForm(prev => ({ ...prev, referral_code: e.target.value.toUpperCase() }))
                   setError(null)
                 }}
-                placeholder="e.g. REF1A2B3C"
+                placeholder={t('auth.promo_code_placeholder')}
                 autoComplete="off"
               />
-              <p className="text-[11px] text-zinc-500 mt-1">Have a reseller promo code? Enter it to unlock a special trial plan.</p>
+              <p className="text-[11px] text-zinc-500 mt-1">{t('auth.promo_code_hint')}</p>
             </div>
 
             <div>
               <PasswordInput
-                label="Password"
+                label={t('auth.password')}
                 value={form.password}
                 onChange={set('password')}
-                placeholder="Min 8 chars, uppercase, number"
+                placeholder={t('auth.password_requirements_placeholder')}
                 autoComplete="new-password"
                 required
               />
@@ -211,10 +213,10 @@ export default function RegisterPage() {
             </div>
 
             <PasswordInput
-              label="Confirm Password"
+              label={t('auth.confirm_password')}
               value={form.confirm_password}
               onChange={set('confirm_password')}
-              placeholder="Repeat password"
+              placeholder={t('auth.repeat_password_placeholder')}
               autoComplete="new-password"
               required
             />
@@ -234,25 +236,25 @@ export default function RegisterPage() {
               {isLoading ? (
                 <>
                   <Spinner size={18} />
-                  Creating account…
+                  {t('auth.creating_account')}
                 </>
               ) : (
-                'Start Free Trial'
+                t('auth.start_free_trial')
               )}
             </Btn>
           </div>
         </form>
 
         <p className="text-center text-zinc-600 text-xs mt-4">
-          Already have an account?{' '}
+          {t('auth.already_have_account')}{' '}
           <Link to="/login" className="text-amber-500 hover:text-amber-400">
-            Sign in
+            {t('auth.sign_in')}
           </Link>
         </p>
       </div>
 
       <p className="text-center text-zinc-600 text-[11px] mt-4">
-        By registering, you agree to our Terms of Service and Privacy Policy.
+        {t('auth.terms_agreement')}
       </p>
     </div>
   )

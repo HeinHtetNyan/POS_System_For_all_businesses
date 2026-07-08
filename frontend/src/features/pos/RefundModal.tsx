@@ -6,6 +6,7 @@ import { fmt, fmtDateTime } from '@/lib/utils'
 import { invalidateSalesMutationQueries } from '@/lib/salesQueryInvalidation'
 import { Btn, Spinner } from '@/components/ui'
 import { IconX, IconSearch, IconRefund } from '@/components/icons'
+import { useLocaleStore } from '@/i18n/localeStore'
 import type { Order, OrderItem } from '@/shared/types'
 
 type RefundMethod = 'CASH' | 'REPLACEMENT'
@@ -23,6 +24,7 @@ interface Props {
 
 export default function RefundModal({ onClose, onSuccess }: Props) {
   const qc = useQueryClient()
+  const t = useLocaleStore(s => s.t)
   const [step, setStep]               = useState<'search' | 'items'>('search')
   const [orderNumber, setOrderNumber] = useState('')
   const [order, setOrder]             = useState<Order | null>(null)
@@ -44,11 +46,11 @@ export default function RefundModal({ onClose, onSuccess }: Props) {
     try {
       const found = await checkoutService.getOrderByNumber(num)
       if (found.order_status === 'VOIDED') {
-        setSearchError('This order has been voided and cannot be refunded.')
+        setSearchError(t('refund.voided_error'))
         return
       }
       if (!['COMPLETED', 'PARTIALLY_REFUNDED'].includes(found.order_status)) {
-        setSearchError(`Order status is "${found.order_status}" — only Completed orders can be refunded.`)
+        setSearchError(`${t('refund.order_status_is')} "${found.order_status}" — ${t('refund.only_completed_refundable')}`)
         return
       }
       setOrder(found)
@@ -56,7 +58,7 @@ export default function RefundModal({ onClose, onSuccess }: Props) {
       setStep('items')
     } catch (err: any) {
       const msg = err?.response?.data?.error?.message ?? err?.response?.data?.detail
-      setSearchError(msg ?? 'Order not found. Check the order number and try again.')
+      setSearchError(msg ?? t('refund.order_not_found'))
     } finally {
       setSearching(false)
     }
@@ -120,8 +122,8 @@ export default function RefundModal({ onClose, onSuccess }: Props) {
         })),
       }),
     onSuccess: (refund) => {
-      const label = refundMethod === 'REPLACEMENT' ? 'Replacement' : 'Refund'
-      toast.success(`${label} ${refund.refund_number} processed`)
+      const label = refundMethod === 'REPLACEMENT' ? t('refund.replacement') : t('pos.refund')
+      toast.success(`${label} ${refund.refund_number} ${t('refund.processed')}`)
       invalidateSalesMutationQueries(qc)
       // A refund on an on-account order can create store credit, changing the
       // customer's balance — refresh every view that shows it.
@@ -135,7 +137,7 @@ export default function RefundModal({ onClose, onSuccess }: Props) {
       onClose()
     },
     onError: (err: any) => {
-      const msg = err?.response?.data?.error?.message ?? err?.response?.data?.detail ?? 'Refund failed.'
+      const msg = err?.response?.data?.error?.message ?? err?.response?.data?.detail ?? t('refund.failed')
       toast.error(msg)
     },
   })
@@ -152,9 +154,9 @@ export default function RefundModal({ onClose, onSuccess }: Props) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 flex-shrink-0">
           <div className="flex items-center gap-2">
             <IconRefund width="16" height="16" className="text-amber-400" />
-            <h2 className="text-sm font-semibold text-zinc-100">Process Refund</h2>
+            <h2 className="text-sm font-semibold text-zinc-100">{t('refund.title')}</h2>
           </div>
-          <button onClick={onClose} aria-label="Close" className="w-7 h-7 flex items-center justify-center rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800">
+          <button onClick={onClose} aria-label={t('common.close')} className="w-7 h-7 flex items-center justify-center rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800">
             <IconX width="14" height="14" />
           </button>
         </div>
@@ -162,7 +164,7 @@ export default function RefundModal({ onClose, onSuccess }: Props) {
         {/* Step 1: Search */}
         {step === 'search' && (
           <div className="flex flex-col gap-4 p-5">
-            <p className="text-xs text-zinc-500">Enter the order number to look up the sale.</p>
+            <p className="text-xs text-zinc-500">{t('refund.enter_order_number')}</p>
             <div className="flex gap-2">
               <input
                 ref={inputRef}
@@ -170,12 +172,12 @@ export default function RefundModal({ onClose, onSuccess }: Props) {
                 value={orderNumber}
                 onChange={e => { setOrderNumber(e.target.value.toUpperCase()); setSearchError(null) }}
                 onKeyDown={e => e.key === 'Enter' && handleSearch()}
-                placeholder="e.g. ORD-HQ-0001"
+                placeholder={t('refund.order_number_placeholder')}
                 className="flex-1 bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 placeholder-zinc-600 text-sm px-3 py-2.5 focus:outline-none focus:border-amber-500 font-mono uppercase"
               />
               <Btn variant="primary" onClick={handleSearch} disabled={searching || !orderNumber.trim()}>
                 {searching ? <Spinner size={16} /> : <IconSearch width="16" height="16" />}
-                Find
+                {t('refund.find')}
               </Btn>
             </div>
             {searchError && (
@@ -195,7 +197,7 @@ export default function RefundModal({ onClose, onSuccess }: Props) {
                 onClick={() => { setStep('search'); setOrder(null); setSelected({}) }}
                 className="text-zinc-500 hover:text-zinc-300 text-xs flex items-center gap-1"
               >
-                ← Back
+                ← {t('refund.back')}
               </button>
               <div className="flex-1 min-w-0">
                 <span className="font-mono text-xs font-bold text-amber-400">{order.order_number}</span>
@@ -206,7 +208,7 @@ export default function RefundModal({ onClose, onSuccess }: Props) {
 
             {/* Refund method toggle */}
             <div className="px-5 pt-4 pb-2 flex-shrink-0">
-              <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mb-2">Refund Type</p>
+              <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mb-2">{t('refund.refund_type')}</p>
               <div className="flex rounded-xl overflow-hidden border border-zinc-700">
                 <button
                   onClick={() => setRefundMethod('CASH')}
@@ -216,7 +218,7 @@ export default function RefundModal({ onClose, onSuccess }: Props) {
                       : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200'
                   }`}
                 >
-                  💵 Cash Refund
+                  💵 {t('refund.cash_refund')}
                 </button>
                 <button
                   onClick={() => setRefundMethod('REPLACEMENT')}
@@ -226,23 +228,23 @@ export default function RefundModal({ onClose, onSuccess }: Props) {
                       : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200'
                   }`}
                 >
-                  🔄 Replacement
+                  🔄 {t('refund.replacement')}
                 </button>
               </div>
               <p className="text-[10px] text-zinc-600 mt-1.5">
                 {refundMethod === 'CASH'
-                  ? 'Money returned to customer · inventory restored'
-                  : 'New product given to customer · inventory reduced'}
+                  ? t('refund.cash_desc')
+                  : t('refund.replacement_desc')}
               </p>
             </div>
 
             {/* Items list */}
             <div className="overflow-y-auto flex-1 min-h-0 px-5 py-2 flex flex-col gap-2">
               <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mb-1">
-                Select items
+                {t('refund.select_items')}
               </p>
               {items.length === 0 ? (
-                <p className="text-xs text-zinc-600">No items found on this order.</p>
+                <p className="text-xs text-zinc-600">{t('refund.no_items')}</p>
               ) : items.map(item => {
                 const sel = selected[item.id]
                 const maxQty = parseFloat(item.quantity)
@@ -306,14 +308,14 @@ export default function RefundModal({ onClose, onSuccess }: Props) {
               <textarea
                 value={reason}
                 onChange={e => setReason(e.target.value)}
-                placeholder="Reason (required, min 3 chars)…"
+                placeholder={t('refund.reason_placeholder')}
                 rows={2}
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 placeholder-zinc-600 text-sm px-3 py-2.5 focus:outline-none focus:border-amber-500 resize-none"
               />
               <textarea
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
-                placeholder="Additional notes (optional)…"
+                placeholder={t('refund.notes_placeholder')}
                 rows={1}
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 placeholder-zinc-600 text-sm px-3 py-2.5 focus:outline-none focus:border-amber-500 resize-none"
               />
@@ -322,13 +324,13 @@ export default function RefundModal({ onClose, onSuccess }: Props) {
                 <div>
                   {selectedList.length > 0 && (
                     <p className="text-xs text-zinc-400">
-                      {selectedList.length} item{selectedList.length > 1 ? 's' : ''} ·{' '}
+                      {selectedList.length} {selectedList.length > 1 ? t('pos.items') : t('pos.item')} ·{' '}
                       <span className="font-mono font-bold text-amber-400">{fmt(totalRefund)}</span>
                     </p>
                   )}
                 </div>
                 <div className="flex gap-2">
-                  <Btn variant="secondary" size="sm" onClick={onClose} disabled={mutation.isPending}>Cancel</Btn>
+                  <Btn variant="secondary" size="sm" onClick={onClose} disabled={mutation.isPending}>{t('common.cancel')}</Btn>
                   <Btn
                     variant="primary"
                     size="sm"
@@ -336,8 +338,8 @@ export default function RefundModal({ onClose, onSuccess }: Props) {
                     disabled={!canSubmit || mutation.isPending}
                   >
                     {mutation.isPending
-                      ? <><Spinner size={14} /> Processing…</>
-                      : <><IconRefund width="14" height="14" /> Refund</>
+                      ? <><Spinner size={14} /> {t('refund.processing')}</>
+                      : <><IconRefund width="14" height="14" /> {t('pos.refund')}</>
                     }
                   </Btn>
                 </div>

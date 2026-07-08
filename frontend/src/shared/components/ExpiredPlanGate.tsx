@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/store/auth.store'
 import { useSubscriptionStore } from '@/store/subscription.store'
+import { useLocaleStore } from '@/i18n/localeStore'
 import { subscriptionsService } from '@/services/subscriptions/subscriptions.service'
 
 function UpgradeModal({ onClose, isTrial }: { onClose: () => void; isTrial: boolean }) {
   const navigate = useNavigate()
+  const t = useLocaleStore(s => s.t)
 
   function goToSubscription() {
     onClose()
@@ -29,12 +31,12 @@ function UpgradeModal({ onClose, isTrial }: { onClose: () => void; isTrial: bool
         </div>
 
         <h2 className="text-lg font-bold text-zinc-100 text-center mb-2">
-          {isTrial ? 'Your trial has ended' : 'Your subscription has expired'}
+          {isTrial ? t('subscription.trial_period_ended') : t('shared.expired_plan_gate.subscription_expired_title')}
         </h2>
         <p className="text-zinc-400 text-sm text-center mb-6">
           {isTrial
-            ? 'Your free trial has ended. Upgrade to a paid plan to continue using SawYunPos and keep all your data.'
-            : 'Your subscription has expired. Submit your payment proof to reactivate your plan, or switch to a different plan.'}
+            ? t('subscription.trial_expired_desc')
+            : `${t('subscription.your_prefix')} ${t('subscription.subscription_expired_desc')}`}
         </p>
 
         <div className="flex flex-col gap-3">
@@ -42,13 +44,13 @@ function UpgradeModal({ onClose, isTrial }: { onClose: () => void; isTrial: bool
             onClick={goToSubscription}
             className="w-full py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-semibold text-sm transition-colors"
           >
-            {isTrial ? 'Upgrade Plan' : 'Manage Subscription'}
+            {isTrial ? t('subscription.upgrade_plan') : t('reseller.manage_subscription')}
           </button>
           <button
             onClick={onClose}
             className="w-full py-2.5 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium text-sm transition-colors border border-zinc-700"
           >
-            Dismiss
+            {t('shared.expired_plan_gate.dismiss')}
           </button>
         </div>
       </div>
@@ -59,6 +61,7 @@ function UpgradeModal({ onClose, isTrial }: { onClose: () => void; isTrial: bool
 export default function ExpiredPlanGate() {
   const [modalOpen, setModalOpen] = useState(false)
   const user = useAuthStore(s => s.user)
+  const t = useLocaleStore(s => s.t)
   const storeExpired = useSubscriptionStore(s => s.isExpiredOrSuspended)
 
   const { data: sub } = useQuery({
@@ -86,7 +89,7 @@ export default function ExpiredPlanGate() {
         className="absolute inset-0 z-50 cursor-not-allowed"
         onClick={() => setModalOpen(true)}
         onTouchStart={(e) => { e.preventDefault(); setModalOpen(true) }}
-        title="Your plan has expired — click to manage subscription"
+        title={t('shared.expired_plan_gate.overlay_title')}
       />
       {modalOpen && <UpgradeModal isTrial={isTrial} onClose={() => setModalOpen(false)} />}
     </>

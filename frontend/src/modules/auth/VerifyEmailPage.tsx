@@ -4,15 +4,17 @@ import { Btn, Spinner } from '@/components/ui/index'
 import { IconAlert } from '@/components/icons'
 import { authService } from '@/services/auth/auth.service'
 import { useAuthStore } from '@/store/auth.store'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 export default function VerifyEmailPage() {
+  const t = useLocaleStore(s => s.t)
   const [searchParams] = useSearchParams()
   const navigate        = useNavigate()
   const token            = searchParams.get('token') ?? ''
 
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>(token ? 'loading' : 'error')
   const [message, setMessage] = useState<string | null>(
-    token ? null : 'This verification link is missing or invalid. Please request a new one.',
+    token ? null : t('auth.invalid_verification_link'),
   )
 
   useEffect(() => {
@@ -35,7 +37,7 @@ export default function VerifyEmailPage() {
           (err as { response?: { data?: { error?: { message?: string } } } })
             ?.response?.data?.error?.message ??
           (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
-          'This verification link is invalid or has expired. Please request a new one.'
+          t('auth.verification_link_expired')
         setMessage(msg)
         setStatus('error')
       })
@@ -48,14 +50,14 @@ export default function VerifyEmailPage() {
       <div className="text-center mb-8">
         <img src="/logo-icon.png" alt="SawYunPos" className="inline-block w-16 h-16 rounded-2xl shadow-2xl shadow-blue-900/50 mb-4" />
         <h1 className="text-2xl font-bold text-zinc-100">SawYunPos</h1>
-        <p className="text-zinc-500 text-sm mt-1">Enterprise Point of Sale</p>
+        <p className="text-zinc-500 text-sm mt-1">{t('auth.tagline')}</p>
       </div>
 
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl text-center space-y-4">
         {status === 'loading' && (
           <>
             <Spinner size={28} />
-            <h2 className="text-lg font-semibold text-zinc-100">Verifying your email…</h2>
+            <h2 className="text-lg font-semibold text-zinc-100">{t('auth.verifying_email')}</h2>
           </>
         )}
 
@@ -66,10 +68,10 @@ export default function VerifyEmailPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h2 className="text-lg font-semibold text-zinc-100">Email verified!</h2>
-            <p className="text-zinc-400 text-sm">Your email address has been confirmed.</p>
+            <h2 className="text-lg font-semibold text-zinc-100">{t('auth.email_verified')}</h2>
+            <p className="text-zinc-400 text-sm">{t('auth.email_verified_desc')}</p>
             <Btn variant="primary" size="md" fullWidth onClick={() => navigate('/login')}>
-              Continue to sign in
+              {t('auth.continue_to_sign_in')}
             </Btn>
           </>
         )}
@@ -79,10 +81,10 @@ export default function VerifyEmailPage() {
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-950 border border-red-800 mb-2">
               <IconAlert width="24" height="24" className="text-red-400" />
             </div>
-            <h2 className="text-lg font-semibold text-zinc-100">Verification failed</h2>
+            <h2 className="text-lg font-semibold text-zinc-100">{t('auth.verification_failed')}</h2>
             <p className="text-zinc-400 text-sm">{message}</p>
             <Btn variant="primary" size="md" fullWidth onClick={() => navigate('/login')}>
-              Back to sign in
+              {t('auth.back_to_sign_in')}
             </Btn>
           </>
         )}
@@ -90,9 +92,9 @@ export default function VerifyEmailPage() {
 
       {status === 'error' && (
         <p className="text-center text-zinc-600 text-xs mt-4">
-          You can request a new link from the verification reminder after signing in.{' '}
+          {t('auth.request_new_link_after_login')}{' '}
           <Link to="/login" className="text-amber-500 hover:text-amber-400">
-            Sign in
+            {t('auth.sign_in')}
           </Link>
         </p>
       )}

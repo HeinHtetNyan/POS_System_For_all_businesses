@@ -9,8 +9,10 @@ import { getPaymentMethodLabel } from '@/lib/paymentMethod'
 import { IconCheck, IconPrint, IconAlert } from '@/components/icons'
 import { Spinner } from '@/components/ui'
 import { ReceiptPrintPreviewModal } from '@/components/hardware/PrintPreviewModal'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 export default function ReceiptScreen() {
+  const t = useLocaleStore(s => s.t)
   const [showPrintPreview, setShowPrintPreview] = useState(false)
   const completedOrderId = useCartStore(s => s.completedOrderId)
   const newSale          = useCartStore(s => s.newSale)
@@ -33,7 +35,7 @@ export default function ReceiptScreen() {
   const taxEnabled        = !!taxSettings && (taxSettings.tax_rate ?? 0) > 0
   const taxInclusive      = taxSettings?.tax_inclusive ?? false
   const ex                = taxSettings?.extra_settings as Record<string, unknown> | undefined
-  const taxName           = (ex?.tax_name as string) || 'Tax'
+  const taxName           = (ex?.tax_name as string) || t('receipt.tax')
   const autoPrint         = (ex?.auto_print_receipt as boolean) ?? false
   const showTaxOnReceipt  = (ex?.show_tax_on_receipt as boolean) ?? true
 
@@ -52,7 +54,7 @@ export default function ReceiptScreen() {
     return (
       <div className="fixed inset-0 z-50 bg-zinc-950/95 flex flex-col items-center justify-center gap-4">
         <Spinner size={40} />
-        <p className="text-sm text-zinc-400">Generating receipt…</p>
+        <p className="text-sm text-zinc-400">{t('payment.generating_receipt')}</p>
       </div>
     )
   }
@@ -66,7 +68,7 @@ export default function ReceiptScreen() {
           <div className="w-16 h-16 rounded-full bg-green-500/20 border border-green-500/40 flex items-center justify-center">
             <IconCheck width="28" height="28" className="text-green-400" />
           </div>
-          <p className="text-lg font-bold text-zinc-100">Payment Complete</p>
+          <p className="text-lg font-bold text-zinc-100">{t('payment.payment_complete')}</p>
           {receipt && (
             <p className="text-xs text-zinc-500 font-mono">{receipt.receipt_number}</p>
           )}
@@ -75,7 +77,7 @@ export default function ReceiptScreen() {
         {isError && (
           <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-amber-950 border border-amber-800 text-amber-400 text-xs w-full">
             <IconAlert width="14" height="14" className="flex-shrink-0" />
-            <span>Receipt unavailable — order was saved successfully.</span>
+            <span>{t('payment.receipt_unavailable')}</span>
           </div>
         )}
 
@@ -107,7 +109,7 @@ export default function ReceiptScreen() {
             {/* Totals */}
             <div className="px-5 py-3 flex flex-col gap-1 border-b border-zinc-800">
               <div className="flex justify-between text-xs text-zinc-500">
-                <span>Subtotal</span>
+                <span>{t('receipt.subtotal')}</span>
                 {/* For inclusive tax, subtotal = total_amount (gross) so item lines match */}
                 <span className="font-mono">
                   {fmt(parseFloat(taxEnabled && taxInclusive ? receipt.total_amount : receipt.subtotal), receipt.currency)}
@@ -115,18 +117,18 @@ export default function ReceiptScreen() {
               </div>
               {parseFloat(receipt.discount_amount) > 0 && (
                 <div className="flex justify-between text-xs text-amber-500">
-                  <span>Discount</span>
+                  <span>{t('receipt.discount')}</span>
                   <span className="font-mono">-{fmt(parseFloat(receipt.discount_amount), receipt.currency)}</span>
                 </div>
               )}
               {taxEnabled && showTaxOnReceipt && parseFloat(receipt.tax_amount) > 0 && (
                 <div className="flex justify-between text-xs text-zinc-500">
-                  <span>{taxName}{taxInclusive ? ' (incl.)' : ''}</span>
+                  <span>{taxName}{taxInclusive ? ` ${t('receipt.incl_suffix')}` : ''}</span>
                   <span className="font-mono">{fmt(parseFloat(receipt.tax_amount), receipt.currency)}</span>
                 </div>
               )}
               <div className="flex justify-between text-sm font-bold text-zinc-100 mt-1 pt-1 border-t border-zinc-800">
-                <span>Total</span>
+                <span>{t('receipt.total')}</span>
                 <span className="font-mono text-amber-400">{fmt(parseFloat(receipt.total_amount), receipt.currency)}</span>
               </div>
             </div>
@@ -145,19 +147,19 @@ export default function ReceiptScreen() {
               {parseFloat(receipt.change_amount) > 0 && (
                 <>
                   <div className="flex justify-between">
-                    <span>Tendered</span>
+                    <span>{t('receipt.tendered')}</span>
                     <span className="font-mono text-zinc-300">
                       {fmt(parseFloat(receipt.total_amount) + parseFloat(receipt.change_amount), receipt.currency)}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Change</span>
+                    <span>{t('receipt.change')}</span>
                     <span className="font-mono text-green-400 font-semibold">{fmt(parseFloat(receipt.change_amount), receipt.currency)}</span>
                   </div>
                 </>
               )}
               <div className="flex justify-between mt-1 pt-1 border-t border-zinc-800">
-                <span>Cashier</span>
+                <span>{t('receipt.cashier')}</span>
                 <span className="text-zinc-400">{receipt.cashier_name}</span>
               </div>
             </div>
@@ -172,13 +174,13 @@ export default function ReceiptScreen() {
             className="flex-1 h-11 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-sm font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-40"
           >
             <IconPrint width="15" height="15" />
-            Print
+            {t('common.print')}
           </button>
           <button
             onClick={newSale}
             className="flex-1 h-11 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-black font-bold text-sm transition-all shadow-lg shadow-amber-900/30"
           >
-            New Sale
+            {t('qa.new_sale')}
           </button>
         </div>
       </div>

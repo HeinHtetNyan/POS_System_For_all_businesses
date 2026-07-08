@@ -10,6 +10,7 @@ import { useTenantStore } from '@/store/tenant.store'
 import { Btn, Spinner, Input } from '@/components/ui'
 import { RawScannerModal, ScannerInputCapture, lookupProductByBarcode } from '@/scanner'
 import type { Product as BackendProduct } from '@/shared/types'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 // <input type="datetime-local"> reads/writes timezone-naive wall-clock strings, but
 // the backend stores/returns real UTC instants — without this conversion, a merchant's
@@ -59,6 +60,7 @@ export interface ProductFormModalProps {
 }
 
 export function ProductFormModal({ product, initialBarcode, onClose, onSaved }: ProductFormModalProps) {
+  const t = useLocaleStore(s => s.t)
   const isEdit = !!product
   const selectedBranch = useTenantStore(s => s.selectedBranch)
   const queryClient = useQueryClient()
@@ -157,14 +159,14 @@ export function ProductFormModal({ product, initialBarcode, onClose, onSaved }: 
         category_id: prev.category_id || catalog.category_id || prev.category_id,
         brand_id:    prev.brand_id    || catalog.brand_id     || prev.brand_id,
       }))
-      toast.success('Auto-filled from catalog')
+      toast.success(t('products.form.autofilled_from_catalog'))
     } catch { /* non-fatal — leave the form as scanned */ }
   }, [queryClient])
 
   const handleScan = useCallback(async (code: string) => {
     if (isEdit) {
       setForm(prev => ({ ...prev, sku: prev.sku || code, barcode: code }))
-      toast.success(`Scanned: ${code}`)
+      toast.success(t('products.form.scanned_prefix') + code)
       return
     }
     setBarcodeChecking(true)
@@ -177,7 +179,7 @@ export function ProductFormModal({ product, initialBarcode, onClose, onSaved }: 
     setBarcodeChecking(false)
     if (conflict) { setBarcodeConflict(conflict); return }
     setForm(prev => ({ ...prev, sku: prev.sku || code, barcode: code }))
-    toast.success(`Scanned: ${code}`)
+    toast.success(t('products.form.scanned_prefix') + code)
     void applyCatalogAutofill(code)
   }, [isEdit, applyCatalogAutofill])
 
@@ -232,7 +234,7 @@ export function ProductFormModal({ product, initialBarcode, onClose, onSaved }: 
             await inventoryService.setReorderLevels(selectedBranch.id, product.id, { reorder_point: reorderPt, reorder_quantity: 0 })
           } catch { /* non-fatal */ }
         }
-        toast.success('Product updated')
+        toast.success(t('products.form.product_updated'))
       } else {
         const created = await productsService.create(payload)
         savedProduct = created
@@ -241,7 +243,7 @@ export function ProductFormModal({ product, initialBarcode, onClose, onSaved }: 
           if (qty > 0) {
             try {
               await inventoryService.setOpeningStock({ branch_id: selectedBranch.id, items: [{ product_id: created.id, quantity: String(qty), cost_price: form.cost_price }] })
-            } catch { toast.warning('Product created but initial stock could not be set — add it via Inventory.') }
+            } catch { toast.warning(t('products.form.stock_set_failed')) }
           }
           if (reorderPt > 0) {
             try {
@@ -249,12 +251,12 @@ export function ProductFormModal({ product, initialBarcode, onClose, onSaved }: 
             } catch { /* non-fatal */ }
           }
         }
-        toast.success('Product created')
+        toast.success(t('products.form.product_created'))
       }
       onSaved(savedProduct)
       onClose()
     } catch (err: any) {
-      setError(err?.response?.data?.error?.message ?? err?.response?.data?.detail ?? 'Failed to save product. Please try again.')
+      setError(err?.response?.data?.error?.message ?? err?.response?.data?.detail ?? t('products.form.save_failed'))
     } finally {
       setSaving(false)
     }
@@ -265,8 +267,8 @@ export function ProductFormModal({ product, initialBarcode, onClose, onSaved }: 
       <ScannerInputCapture onScan={handleScan} enabled={!showScanner && !isMobileWidth} />
       {showScanner && (
         <RawScannerModal
-          title="Scan Product Barcode"
-          hint="Scan once — fills both SKU and Barcode automatically"
+          title={t('products.form.scan_barcode_title')}
+          hint={t('products.form.scan_barcode_hint')}
           onScan={code => { handleScan(code); setShowScanner(false) }}
           onClose={() => setShowScanner(false)}
         />
@@ -275,7 +277,7 @@ export function ProductFormModal({ product, initialBarcode, onClose, onSaved }: 
       <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh]">
           <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 flex-shrink-0">
-            <h2 className="text-base font-semibold text-zinc-100">{isEdit ? 'Edit Product' : 'New Product'}</h2>
+            <h2 className="text-base font-semibold text-zinc-100">{isEdit ? t('products.form.edit_product_title') : t('products.new')}</h2>
             <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200 text-xl leading-none">×</button>
           </div>
 
@@ -298,16 +300,16 @@ export function ProductFormModal({ product, initialBarcode, onClose, onSaved }: 
                 <path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/>
                 <rect x="7" y="7" width="3" height="10" rx="1"/><rect x="14" y="7" width="3" height="10" rx="1"/>
               </svg>
-              {barcodeChecking ? 'Checking barcode…' : form.barcode ? `Scanned: ${form.barcode} — tap to re-scan` : 'Tap to scan barcode'}
+              {barcodeChecking ? t('products.form.checking_barcode') : form.barcode ? `${t('products.form.scanned_prefix')}${form.barcode}${t('products.form.tap_to_rescan_suffix')}` : t('products.form.tap_to_scan_barcode')}
             </button>
 
             {!isEdit && barcodeConflict && (
               <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-amber-950 border border-amber-800">
                 <span className="shrink-0 text-base leading-none mt-0.5">⚠️</span>
                 <div>
-                  <p className="text-xs font-semibold text-amber-400">Barcode already in use</p>
+                  <p className="text-xs font-semibold text-amber-400">{t('products.form.barcode_in_use')}</p>
                   <p className="text-xs text-amber-500 mt-0.5">
-                    "{barcodeConflict.name}" ({barcodeConflict.sku}) already has this barcode. Use a different barcode or scan another item.
+                    "{barcodeConflict.name}" ({barcodeConflict.sku}) {t('products.form.barcode_conflict_suffix')}
                   </p>
                 </div>
               </div>
@@ -315,11 +317,11 @@ export function ProductFormModal({ product, initialBarcode, onClose, onSaved }: 
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider block mb-1.5">SKU</label>
+                <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider block mb-1.5">{t('products.col.sku')}</label>
                 <div className="flex items-center gap-2 bg-zinc-800/50 border border-zinc-700 rounded-xl px-3 py-2.5">
                   <span className="font-mono text-sm text-amber-400 flex-1">{form.sku}</span>
                   {!isEdit && (
-                    <button type="button" onClick={() => setForm(prev => ({ ...prev, sku: generateSKU() }))} className="text-zinc-500 hover:text-zinc-300 transition-colors" title="Regenerate SKU">
+                    <button type="button" onClick={() => setForm(prev => ({ ...prev, sku: generateSKU() }))} className="text-zinc-500 hover:text-zinc-300 transition-colors" title={t('products.form.regenerate_sku')}>
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
                       </svg>
@@ -328,7 +330,7 @@ export function ProductFormModal({ product, initialBarcode, onClose, onSaved }: 
                 </div>
               </div>
               <div>
-                <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider block mb-1.5">Barcode</label>
+                <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider block mb-1.5">{t('products.detail.barcode')}</label>
                 <input
                   ref={barcodeInputRef}
                   type="text"
@@ -356,53 +358,53 @@ export function ProductFormModal({ product, initialBarcode, onClose, onSaved }: 
                       }
                     }
                   }}
-                  placeholder="Scan or type barcode, then Enter"
+                  placeholder={t('products.form.barcode_placeholder')}
                   className="w-full bg-zinc-900 border border-zinc-700 rounded-xl text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 transition-all duration-150 py-2.5 text-sm px-3"
                 />
               </div>
             </div>
 
-            <Input label="Name *" value={form.name} onChange={set('name')} placeholder="Product name" required />
+            <Input label={t('products.name_required')} value={form.name} onChange={set('name')} placeholder={t('products.form.name_placeholder')} required />
 
             <div>
-              <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider block mb-1.5">Description</label>
-              <textarea value={form.description} onChange={set('description')} placeholder="Optional description…" rows={2}
+              <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider block mb-1.5">{t('products.detail.desc')}</label>
+              <textarea value={form.description} onChange={set('description')} placeholder={t('products.description_optional_placeholder')} rows={2}
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 placeholder-zinc-600 text-sm px-3 py-2.5 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 resize-none" />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Category <span className="text-red-400 normal-case">*</span></label>
-                  {categories.length === 0 && <Link to="/app/categories" onClick={onClose} className="text-[10px] text-amber-400 hover:text-amber-300">+ Create one</Link>}
+                  <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">{t('products.detail.category')} <span className="text-red-400 normal-case">*</span></label>
+                  {categories.length === 0 && <Link to="/app/categories" onClick={onClose} className="text-[10px] text-amber-400 hover:text-amber-300">{t('products.form.create_one')}</Link>}
                 </div>
                 <select value={form.category_id} onChange={set('category_id')} required
                   className={`w-full bg-zinc-800 border rounded-xl text-sm px-3 py-2.5 focus:outline-none focus:border-amber-500 ${!isEdit && !form.category_id ? 'border-zinc-600 text-zinc-500' : 'border-zinc-700 text-zinc-100'}`}>
-                  <option value="">— Select Category —</option>
+                  <option value="">{t('products.form.select_category_option')}</option>
                   {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Brand</label>
-                  {brands.length === 0 && <Link to="/app/brands" onClick={onClose} className="text-[10px] text-amber-400 hover:text-amber-300">+ Create one</Link>}
+                  <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">{t('products.form.brand_label')}</label>
+                  {brands.length === 0 && <Link to="/app/brands" onClick={onClose} className="text-[10px] text-amber-400 hover:text-amber-300">{t('products.form.create_one')}</Link>}
                 </div>
                 <select value={form.brand_id} onChange={set('brand_id')}
                   className="w-full bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 text-sm px-3 py-2.5 focus:outline-none focus:border-amber-500">
-                  <option value="">— None —</option>
+                  <option value="">{t('products.form.none_option')}</option>
                   {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <Input label="Cost Price *" type="number" min="0" step="0.01" value={form.cost_price} onChange={set('cost_price')} placeholder="0.00" required />
-              <Input label="Selling Price *" type="number" min="0" step="0.01" value={form.selling_price} onChange={set('selling_price')} placeholder="0.00" required />
+              <Input label={t('products.detail.cost') + ' *'} type="number" min="0" step="0.01" value={form.cost_price} onChange={set('cost_price')} placeholder="0.00" required />
+              <Input label={t('products.detail.selling') + ' *'} type="number" min="0" step="0.01" value={form.selling_price} onChange={set('selling_price')} placeholder="0.00" required />
             </div>
 
             <div>
               <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider block mb-1.5">
-                Reorder Point <span className="ml-1 text-zinc-600 normal-case font-normal">— alert when stock ≤ this</span>
+                {t('products.form.reorder_point_label')} <span className="ml-1 text-zinc-600 normal-case font-normal">{t('products.form.reorder_point_hint')}</span>
               </label>
               <Input type="number" min="0" step="1" value={form.reorder_point} onChange={set('reorder_point')} placeholder="0" />
             </div>
@@ -410,7 +412,7 @@ export function ProductFormModal({ product, initialBarcode, onClose, onSaved }: 
             {!isEdit && (
               <div>
                 <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider block mb-1.5">
-                  Opening Stock <span className="ml-1 text-zinc-600 normal-case font-normal">— how many units you have right now</span>
+                  {t('products.form.opening_stock_label')} <span className="ml-1 text-zinc-600 normal-case font-normal">{t('products.form.opening_stock_hint')}</span>
                 </label>
                 <Input type="number" min="0" step="1" value={form.initial_stock} onChange={set('initial_stock')} placeholder="0" />
               </div>
@@ -425,25 +427,25 @@ export function ProductFormModal({ product, initialBarcode, onClose, onSaved }: 
                   onChange={e => setForm(prev => ({ ...prev, has_discount: e.target.checked }))}
                   className="w-4 h-4 rounded accent-amber-500"
                 />
-                <span className="text-sm font-medium text-zinc-200">Enable Promotion / Discount</span>
+                <span className="text-sm font-medium text-zinc-200">{t('products.form.enable_promotion')}</span>
               </label>
 
               {form.has_discount && (
                 <div className="space-y-3 pt-1">
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider block mb-1.5">Type</label>
+                      <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider block mb-1.5">{t('products.detail.type')}</label>
                       <select
                         value={form.discount_type}
                         onChange={e => setForm(prev => ({ ...prev, discount_type: e.target.value as 'PERCENTAGE' | 'AMOUNT' }))}
                         className="w-full bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 text-sm px-3 py-2 focus:outline-none focus:border-amber-500"
                       >
-                        <option value="PERCENTAGE">Percentage (%)</option>
-                        <option value="AMOUNT">Fixed Amount (Kyats)</option>
+                        <option value="PERCENTAGE">{t('products.detail.percentage') + ' (%)'}</option>
+                        <option value="AMOUNT">{t('products.detail.fixed') + ' (' + t('currency.mmk') + ')'}</option>
                       </select>
                     </div>
                     <Input
-                      label={form.discount_type === 'PERCENTAGE' ? 'Discount (%) (required)' : 'Discount (Kyats) (required)'}
+                      label={form.discount_type === 'PERCENTAGE' ? t('products.form.discount_percent_required') : t('products.form.discount_amount_required')}
                       type="number"
                       min="0"
                       step={form.discount_type === 'PERCENTAGE' ? '1' : '0.01'}
@@ -455,7 +457,7 @@ export function ProductFormModal({ product, initialBarcode, onClose, onSaved }: 
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider block mb-1.5">Start Date <span className="text-zinc-600 normal-case font-normal">(optional)</span></label>
+                      <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider block mb-1.5">{t('products.form.start_date_label')} <span className="text-zinc-600 normal-case font-normal">{`(${t('products.optional')})`}</span></label>
                       <div className="grid grid-cols-2 gap-1.5">
                         <input
                           type="date"
@@ -473,7 +475,7 @@ export function ProductFormModal({ product, initialBarcode, onClose, onSaved }: 
                       </div>
                     </div>
                     <div>
-                      <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider block mb-1.5">End Date <span className="text-zinc-600 normal-case font-normal">(optional)</span></label>
+                      <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider block mb-1.5">{t('products.form.end_date_label')} <span className="text-zinc-600 normal-case font-normal">{`(${t('products.optional')})`}</span></label>
                       <div className="grid grid-cols-2 gap-1.5">
                         <input
                           type="date"
@@ -493,15 +495,15 @@ export function ProductFormModal({ product, initialBarcode, onClose, onSaved }: 
                   </div>
                   {(form.discount_start_date || form.discount_end_date) && (
                     <p className="text-[10px] text-zinc-600">
-                      Leave time blank to default to start-of-day / end-of-day.
+                      {t('products.form.time_blank_hint')}
                     </p>
                   )}
                   {form.discount_value && (
                     <p className="text-[11px] text-amber-400">
                       {form.discount_type === 'PERCENTAGE'
-                        ? `${form.discount_value}% off will be auto-applied at checkout`
-                        : `${Number(form.discount_value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kyats off will be auto-applied at checkout`}
-                      {(form.discount_start_date || form.discount_end_date) && ` within the set period`}
+                        ? `${form.discount_value}${t('products.form.percent_off_suffix')}`
+                        : `${Number(form.discount_value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${t('products.form.amount_off_suffix')}`}
+                      {(form.discount_start_date || form.discount_end_date) && t('products.form.within_set_period')}
                     </p>
                   )}
                 </div>
@@ -511,7 +513,7 @@ export function ProductFormModal({ product, initialBarcode, onClose, onSaved }: 
             {isEdit && (
               <label className="flex items-center gap-3 cursor-pointer">
                 <input type="checkbox" checked={form.is_active} onChange={e => setForm(prev => ({ ...prev, is_active: e.target.checked }))} className="w-4 h-4 rounded accent-amber-500" />
-                <span className="text-sm text-zinc-300">Active</span>
+                <span className="text-sm text-zinc-300">{t('status.active')}</span>
               </label>
             )}
 
@@ -521,9 +523,9 @@ export function ProductFormModal({ product, initialBarcode, onClose, onSaved }: 
           </form>
 
           <div className="flex gap-3 px-6 py-4 border-t border-zinc-800 flex-shrink-0">
-            <Btn type="button" variant="secondary" size="lg" fullWidth onClick={onClose} disabled={saving}>Cancel</Btn>
+            <Btn type="button" variant="secondary" size="lg" fullWidth onClick={onClose} disabled={saving}>{t('common.cancel')}</Btn>
             <Btn type="button" variant="primary" size="lg" fullWidth onClick={handleSubmit as any} disabled={!canSubmit}>
-              {saving ? <><Spinner size={16} /> Saving…</> : isEdit ? 'Save Changes' : 'Create Product'}
+              {saving ? <><Spinner size={16} /> {t('common.saving')}</> : isEdit ? t('common.save_changes') : t('products.form.create_product')}
             </Btn>
           </div>
         </div>

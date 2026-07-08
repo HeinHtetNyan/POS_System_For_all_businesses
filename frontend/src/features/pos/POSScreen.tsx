@@ -12,6 +12,7 @@ import { IconSearch, IconBarcode, IconCash, IconExpand, IconCompress } from '@/c
 import { Kbd, Spinner } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { ScannerInputCapture, lookupProductBySku, lookupProductByBarcode } from '@/scanner'
+import { useLocaleStore } from '@/i18n/localeStore'
 import type { Product } from '@/types'
 import type { Product as SharedProduct } from '@/shared/types'
 import CategoryFilter from '@/features/pos/CategoryFilter'
@@ -30,13 +31,14 @@ function getActivePromo(p: import('@/shared/types').Product): { pct: number; lab
   if (p.discount_start_at && now < new Date(p.discount_start_at).getTime()) return { pct: 0, label: '' }
   if (p.discount_end_at   && now > new Date(p.discount_end_at).getTime())   return { pct: 0, label: '' }
   const val = parseFloat(p.discount_value)
+  const t = useLocaleStore.getState().t
   if (p.discount_type === 'PERCENTAGE') {
-    return { pct: Math.min(100, val), label: `${val}% off` }
+    return { pct: Math.min(100, val), label: `${val}% ${t('products.promo.off')}` }
   }
   const price = parseFloat(p.selling_price)
   if (!price) return { pct: 0, label: '' }
   const pct = Math.min(100, (val / price) * 100)
-  return { pct, label: `${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kyats off` }
+  return { pct, label: `${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${t('currency.mmk')} ${t('products.promo.off')}` }
 }
 
 // Map backend product + inventory qty to legacy Product shape
@@ -65,6 +67,7 @@ function mapProduct(
 
 export default function POSScreen() {
   const navigate    = useNavigate()
+  const t           = useLocaleStore(s => s.t)
   const searchRef   = useRef<HTMLInputElement>(null)
   const [rawSearch, setRawSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -191,12 +194,12 @@ export default function POSScreen() {
   // Build dynamic category list from loaded products
   const dynamicCategories = useMemo(() => {
     const seen = new Map<string, string>()
-    seen.set('all', 'All Items')
+    seen.set('all', t('products.all'))
     for (const p of allProducts) {
       if (!seen.has(p.category)) seen.set(p.category, p.category)
     }
     return Array.from(seen.entries()).map(([id, name]) => ({ id, name }))
-  }, [allProducts])
+  }, [allProducts, t])
 
   // Filter products by category
   const filtered = useMemo(() =>
@@ -222,11 +225,11 @@ export default function POSScreen() {
     if (result.status === 'found') {
       handleScanResult(result.product)
     } else if (result.status === 'not_found') {
-      toast.error(`Product not found: ${code}`)
+      toast.error(`${t('pos.product_not_found')}: ${code}`)
     } else {
       toast.error(result.message)
     }
-  }, [handleScanResult])
+  }, [handleScanResult, t])
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -262,10 +265,9 @@ export default function POSScreen() {
           <path d="M9 18h6" strokeLinecap="round" />
         </svg>
         <div>
-          <h2 className="text-xl font-bold text-zinc-100 mb-2">Tablet or Desktop Required</h2>
+          <h2 className="text-xl font-bold text-zinc-100 mb-2">{t('pos.tablet_required')}</h2>
           <p className="text-zinc-400 text-sm leading-relaxed max-w-xs mx-auto">
-            The POS checkout is not available on mobile-sized screens.
-            Please use a tablet or desktop browser.
+            {t('pos.mobile_not_supported')}
           </p>
         </div>
       </div>
@@ -288,7 +290,7 @@ export default function POSScreen() {
           </div>
         }>
           <HardwareScannerModal
-            title="Scan Product Barcode"
+            title={t('pos.scan_product_barcode')}
             onResult={handleScanResult}
             onClose={() => setScannerOpen(false)}
           />
@@ -305,7 +307,7 @@ export default function POSScreen() {
               : 'text-zinc-500 border-transparent hover:text-zinc-300',
           )}
         >
-          Products
+          {t('nav.products')}
         </button>
         <button
           onClick={() => setMobileTab('cart')}
@@ -316,7 +318,7 @@ export default function POSScreen() {
               : 'text-zinc-500 border-transparent hover:text-zinc-300',
           )}
         >
-          Cart
+          {t('pos.cart')}
           {totals.itemCount > 0 && (
             <span className="absolute top-2 right-[calc(50%-24px)] w-4 h-4 rounded-full bg-amber-500 text-black text-[10px] font-bold flex items-center justify-center">
               {totals.itemCount > 9 ? '9+' : totals.itemCount}
@@ -326,8 +328,8 @@ export default function POSScreen() {
         <button
           onClick={togglePosFocusMode}
           className="w-12 flex items-center justify-center text-zinc-500 hover:text-zinc-200 transition-colors border-b-2 border-transparent"
-          aria-label={posFocusMode ? 'Exit fullscreen' : 'Enter fullscreen'}
-          title={posFocusMode ? 'Exit fullscreen' : 'Fullscreen'}
+          aria-label={posFocusMode ? t('pos.exit_fullscreen') : t('pos.enter_fullscreen')}
+          title={posFocusMode ? t('pos.exit_fullscreen') : t('pos.fullscreen')}
         >
           {posFocusMode ? <IconCompress width="16" height="16" /> : <IconExpand width="16" height="16" />}
         </button>
@@ -362,15 +364,15 @@ export default function POSScreen() {
                     if (result.status === 'not_found') result = await lookupProductBySku(code)
                     if (result.status === 'found') {
                       handleScanResult(result.product)
-                      toast.success(`Added: ${result.product.name}`)
+                      toast.success(`${t('pos.added')}: ${result.product.name}`)
                     } else if (result.status === 'not_found') {
-                      toast.error(`Product not found: ${code}`)
+                      toast.error(`${t('pos.product_not_found')}: ${code}`)
                     } else {
                       toast.error(result.message)
                     }
                   }
                 }}
-                placeholder="Search or scan barcode + Enter…"
+                placeholder={t('pos.search_placeholder')}
                 className={cn(
                   'w-full bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-600 text-sm',
                   'focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 transition-all duration-150',
@@ -386,8 +388,8 @@ export default function POSScreen() {
               <button
                 onClick={() => setScannerOpen(true)}
                 className="flex w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 items-center justify-center text-zinc-500 hover:text-zinc-200 transition-colors"
-                aria-label="Scan barcode"
-                title="Scan barcode (camera)"
+                aria-label={t('pos.scan_barcode')}
+                title={t('pos.scan_barcode_camera')}
               >
                 <IconBarcode width="17" height="17" />
               </button>
@@ -395,8 +397,8 @@ export default function POSScreen() {
             <button
               onClick={toggleDesktopFocusMode}
               className="hidden lg:flex w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 items-center justify-center text-zinc-500 hover:text-zinc-200 transition-colors"
-              aria-label={posFocusMode ? 'Exit fullscreen' : 'Enter fullscreen'}
-              title={posFocusMode ? 'Exit fullscreen' : 'Fullscreen'}
+              aria-label={posFocusMode ? t('pos.exit_fullscreen') : t('pos.enter_fullscreen')}
+              title={posFocusMode ? t('pos.exit_fullscreen') : t('pos.fullscreen')}
             >
               {posFocusMode ? <IconCompress width="16" height="16" /> : <IconExpand width="16" height="16" />}
             </button>
@@ -429,16 +431,16 @@ export default function POSScreen() {
           {/* Shortcuts bar — desktop only */}
           <div className="hidden lg:flex items-center justify-between px-4 py-2 border-t border-zinc-900 bg-zinc-950 text-[10px] text-zinc-700 flex-shrink-0">
             <div className="flex items-center gap-4">
-              <span className="flex items-center gap-1"><Kbd keys="/" /> search</span>
-              <span className="flex items-center gap-1"><Kbd keys="F9" /> checkout</span>
-              <span className="flex items-center gap-1"><Kbd keys="Esc" /> clear cart</span>
+              <span className="flex items-center gap-1"><Kbd keys="/" /> {t('pos.hint_search')}</span>
+              <span className="flex items-center gap-1"><Kbd keys="F9" /> {t('pos.hint_checkout')}</span>
+              <span className="flex items-center gap-1"><Kbd keys="Esc" /> {t('pos.hint_clear_cart')}</span>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-zinc-600 font-mono">{totals.itemCount} item{totals.itemCount !== 1 ? 's' : ''} in cart</span>
+              <span className="text-zinc-600 font-mono">{totals.itemCount} {totals.itemCount !== 1 ? t('pos.items') : t('pos.item')} {t('pos.in_cart')}</span>
               {activeSession && (
                 <span className="flex items-center gap-1 text-green-600">
                   <IconCash width="10" height="10" />
-                  Session open
+                  {t('pos.session_open')}
                 </span>
               )}
             </div>

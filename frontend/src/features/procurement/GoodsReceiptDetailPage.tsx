@@ -3,10 +3,12 @@ import { useQuery } from '@tanstack/react-query'
 import { fmt, fmtDate, fmtDateTime } from '@/lib/utils'
 import { Badge, Table, Th, Td, Spinner, SectionHeader, Btn } from '@/components/ui'
 import { procurementService } from '@/services/procurement/procurement.service'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 export default function GoodsReceiptDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const t = useLocaleStore(s => s.t)
 
   const { data: receipt, isLoading } = useQuery({
     queryKey: ['goods-receipt', id],
@@ -19,9 +21,9 @@ export default function GoodsReceiptDetailPage() {
   if (!receipt) {
     return (
       <div className="p-6 text-center text-zinc-500">
-        Receipt not found.{' '}
+        {t('procurement.receipt_not_found')}{' '}
         <button onClick={() => navigate('/app/procurement/receipts')} className="text-amber-400 hover:underline">
-          Back to receipts
+          {t('procurement.back_to_receipts')}
         </button>
       </div>
     )
@@ -33,14 +35,14 @@ export default function GoodsReceiptDetailPage() {
     <div className="flex flex-col h-full overflow-hidden">
       <SectionHeader
         title={receipt.receipt_number}
-        subtitle={`Goods Receipt · ${fmtDate(receipt.receipt_date)}`}
+        subtitle={`${t('procurement.goods_receipt')} · ${fmtDate(receipt.receipt_date)}`}
         action={
           <Btn
             variant="secondary"
             size="sm"
             onClick={() => navigate(`/app/procurement/purchase-orders/${receipt.purchase_order_id}`)}
           >
-            View PO
+            {t('procurement.view_po')}
           </Btn>
         }
       />
@@ -49,10 +51,10 @@ export default function GoodsReceiptDetailPage() {
         {/* Summary */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-4 space-y-3">
-            <h3 className="text-sm font-semibold text-zinc-100">Receipt Info</h3>
+            <h3 className="text-sm font-semibold text-zinc-100">{t('procurement.receipt_info')}</h3>
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <dt className="text-zinc-500">Status</dt>
+                <dt className="text-zinc-500">{t('settings.status')}</dt>
                 <dd>
                   <Badge variant={receipt.status === 'RECEIVED' ? 'success' : 'danger'} size="xs" dot>
                     {receipt.status}
@@ -60,19 +62,19 @@ export default function GoodsReceiptDetailPage() {
                 </dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-zinc-500">Receipt Date</dt>
+                <dt className="text-zinc-500">{t('procurement.receipt_date')}</dt>
                 <dd className="text-zinc-200">{fmtDate(receipt.receipt_date)}</dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-zinc-500">Received By</dt>
+                <dt className="text-zinc-500">{t('procurement.received_by')}</dt>
                 <dd className="text-zinc-200">{receipt.received_by_name ?? '—'}</dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-zinc-500">Created</dt>
+                <dt className="text-zinc-500">{t('procurement.col_created')}</dt>
                 <dd className="text-zinc-400">{fmtDateTime(receipt.created_at)}</dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-zinc-500">Purchase Order</dt>
+                <dt className="text-zinc-500">{t('procurement.purchase_order')}</dt>
                 <dd>
                   <button
                     onClick={() => navigate(`/app/procurement/purchase-orders/${receipt.purchase_order_id}`)}
@@ -84,7 +86,7 @@ export default function GoodsReceiptDetailPage() {
               </div>
               {receipt.notes && (
                 <div className="pt-2 border-t border-zinc-800">
-                  <dt className="text-zinc-500 mb-1">Notes</dt>
+                  <dt className="text-zinc-500 mb-1">{t('procurement.notes')}</dt>
                   <dd className="text-zinc-400 text-xs">{receipt.notes}</dd>
                 </div>
               )}
@@ -92,23 +94,23 @@ export default function GoodsReceiptDetailPage() {
           </div>
 
           <div className="bg-zinc-900 rounded-2xl border border-zinc-800 p-4 space-y-3">
-            <h3 className="text-sm font-semibold text-zinc-100">Inventory Impact</h3>
+            <h3 className="text-sm font-semibold text-zinc-100">{t('procurement.inventory_impact')}</h3>
             <p className="text-xs text-zinc-500">
-              Receiving this goods receipt added the quantities below to branch inventory.
+              {t('procurement.inventory_impact_desc')}
             </p>
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <dt className="text-zinc-500">Items received</dt>
+                <dt className="text-zinc-500">{t('procurement.items_received')}</dt>
                 <dd className="text-zinc-200">{receipt.items.length}</dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-zinc-500">Total quantity</dt>
+                <dt className="text-zinc-500">{t('procurement.total_quantity')}</dt>
                 <dd className="font-mono text-zinc-200">
                   {receipt.items.reduce((s, i) => s + parseFloat(i.received_quantity), 0).toFixed(2)}
                 </dd>
               </div>
               <div className="flex justify-between border-t border-zinc-700 pt-2">
-                <dt className="text-zinc-400 font-medium">Total Value</dt>
+                <dt className="text-zinc-400 font-medium">{t('procurement.total_value')}</dt>
                 <dd className="font-mono font-bold text-amber-400">{fmt(totalValue)}</dd>
               </div>
             </dl>
@@ -118,15 +120,15 @@ export default function GoodsReceiptDetailPage() {
         {/* Items */}
         <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden">
           <div className="px-4 py-3 border-b border-zinc-800">
-            <h3 className="text-sm font-semibold text-zinc-100">Received Items ({receipt.items.length})</h3>
+            <h3 className="text-sm font-semibold text-zinc-100">{t('procurement.received_items')} ({receipt.items.length})</h3>
           </div>
           <Table>
             <thead>
               <tr>
-                <Th>Product</Th>
-                <Th right>Quantity</Th>
-                <Th right>Unit Cost</Th>
-                <Th right>Line Total</Th>
+                <Th>{t('procurement.product')}</Th>
+                <Th right>{t('procurement.quantity')}</Th>
+                <Th right>{t('procurement.unit_cost')}</Th>
+                <Th right>{t('procurement.line_total')}</Th>
               </tr>
             </thead>
             <tbody>

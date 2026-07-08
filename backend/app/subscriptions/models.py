@@ -56,6 +56,7 @@ class PlatformSettings(Base):
 
     settings_key: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, default="default")
     payment_methods: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    app_download_links: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     def __repr__(self) -> str:
         return f"<PlatformSettings key={self.settings_key}>"

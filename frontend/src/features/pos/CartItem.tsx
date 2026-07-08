@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { fmt } from '@/lib/utils'
 import { IconPlus, IconMinus, IconX } from '@/components/icons'
 import { useCartStore } from '@/store/cartStore'
+import { useLocaleStore } from '@/i18n/localeStore'
 import type { CartItem as CartItemType } from '@/types'
 
 interface CartItemProps {
@@ -11,6 +12,7 @@ interface CartItemProps {
 export default function CartItem({ item }: CartItemProps) {
   const updateQty  = useCartStore(s => s.updateQty)
   const removeItem = useCartStore(s => s.removeItem)
+  const t          = useLocaleStore(s => s.t)
 
   const [localQty, setLocalQty] = useState(String(item.qty))
 
@@ -26,7 +28,7 @@ export default function CartItem({ item }: CartItemProps) {
       <button
         onClick={() => removeItem(item.id)}
         className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity w-5 h-5 rounded flex items-center justify-center text-zinc-600 hover:text-red-400 hover:bg-red-950/50"
-        aria-label="Remove item"
+        aria-label={t('pos.remove_item')}
       >
         <IconX width="12" height="12" />
       </button>
@@ -56,7 +58,7 @@ export default function CartItem({ item }: CartItemProps) {
         <div className="flex items-center gap-1">
           <button
             onClick={() => updateQty(item.id, item.qty - 1)}
-            aria-label="Decrease quantity"
+            aria-label={t('pos.decrease_qty')}
             className="w-6 h-6 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 flex items-center justify-center text-zinc-400 hover:text-zinc-100 transition-colors active:scale-90"
           >
             <IconMinus width="10" height="10" />
@@ -81,7 +83,7 @@ export default function CartItem({ item }: CartItemProps) {
           />
           <button
             onClick={() => updateQty(item.id, item.qty + 1)}
-            aria-label="Increase quantity"
+            aria-label={t('pos.increase_qty')}
             className="w-6 h-6 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 flex items-center justify-center text-zinc-400 hover:text-zinc-100 transition-colors active:scale-90"
           >
             <IconPlus width="10" height="10" />

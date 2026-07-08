@@ -7,6 +7,7 @@ import { Btn, StatCard, Spinner, Empty } from '@/components/ui'
 import { IconEdit, IconPlus, IconTrash, IconUser } from '@/components/icons'
 import { customersService } from '@/services/customers/customers.service'
 import { useAuthStore } from '@/store/auth.store'
+import { useLocaleStore } from '@/i18n/localeStore'
 import type { LedgerEntry } from '@/shared/types'
 
 export default function CustomerDetailPage() {
@@ -14,6 +15,7 @@ export default function CustomerDetailPage() {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const user = useAuthStore(s => s.user)
+  const t = useLocaleStore(s => s.t)
   // Cashiers get read-only lookup — see CustomersScreen.tsx for the same rule.
   const canManageCustomers = user?.role !== 'CASHIER'
   const [note, setNote]         = useState('')
@@ -40,12 +42,12 @@ export default function CustomerDetailPage() {
   const updateNoteMutation = useMutation({
     mutationFn: (text: string | null) => customersService.update(id!, { notes: text }),
     onSuccess: (_data, text) => {
-      toast.success(text ? 'Note saved' : 'Note deleted')
+      toast.success(text ? t('customers.note_saved') : t('customers.note_deleted'))
       setNote('')
       setIsEditing(false)
       qc.invalidateQueries({ queryKey: ['customer', id] })
     },
-    onError: () => toast.error('Failed to save note'),
+    onError: () => toast.error(t('customers.note_save_failed')),
   })
 
   if (isLoading || !customer) {
@@ -84,35 +86,35 @@ export default function CustomerDetailPage() {
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <StatCard
-          label="Remaining Debt"
+          label={t('customers.remaining_debt')}
           value={fmt(remainingDebt)}
           accent={remainingDebt > 0}
         />
-        <StatCard label="Member Since"  value={new Date(customer.created_at).getFullYear().toString()} />
-        <StatCard label="Last Updated"  value={timeAgo(customer.updated_at)} />
+        <StatCard label={t('customers.member_since')}  value={new Date(customer.created_at).getFullYear().toString()} />
+        <StatCard label={t('customers.last_updated')}  value={timeAgo(customer.updated_at)} />
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <StatCard label="Orders This Month" value={fmt(monthlyOrderAmt)} accent={monthlyOrderAmt > 0} />
-        <StatCard label="Orders This Year"  value={fmt(yearlyOrderAmt)}  accent={yearlyOrderAmt > 0} />
+        <StatCard label={t('customers.orders_this_month')} value={fmt(monthlyOrderAmt)} accent={monthlyOrderAmt > 0} />
+        <StatCard label={t('customers.orders_this_year')}  value={fmt(yearlyOrderAmt)}  accent={yearlyOrderAmt > 0} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Customer info */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-zinc-200">Customer Info</h3>
+            <h3 className="text-sm font-semibold text-zinc-200">{t('customers.customer_info')}</h3>
             {canManageCustomers && (
               <Btn variant="ghost" size="xs" onClick={() => navigate(`/app/customers/${id}/edit`)}>
-                <IconEdit width="12" height="12" /> Edit
+                <IconEdit width="12" height="12" /> {t('common.edit')}
               </Btn>
             )}
           </div>
           <div className="space-y-2.5">
-            <InfoRow label="Name"    value={customer.name}            />
-            <InfoRow label="Phone"   value={customer.phone}           />
-            <InfoRow label="Email"   value={customer.email ?? '—'}    />
-            <InfoRow label="Address" value={customer.address ?? '—'}  />
-            {customer.notes && <InfoRow label="Notes" value={customer.notes} />}
+            <InfoRow label={t('customers.name')}    value={customer.name}            />
+            <InfoRow label={t('settings.phone')}   value={customer.phone}           />
+            <InfoRow label={t('settings.email')}   value={customer.email ?? '—'}    />
+            <InfoRow label={t('settings.address')} value={customer.address ?? '—'}  />
+            {customer.notes && <InfoRow label={t('customers.notes')} value={customer.notes} />}
           </div>
         </div>
 
@@ -121,27 +123,27 @@ export default function CustomerDetailPage() {
           {!canManageCustomers ? (
             /*  Read-only lookup: show the note if one exists, no edit UI  */
             <>
-              <h3 className="text-sm font-semibold text-zinc-200 mb-3">Note</h3>
+              <h3 className="text-sm font-semibold text-zinc-200 mb-3">{t('customers.note')}</h3>
               {customer.notes ? (
                 <p className="text-sm text-zinc-300 whitespace-pre-wrap break-words leading-relaxed">
                   {customer.notes}
                 </p>
               ) : (
-                <p className="text-sm text-zinc-600">No note for this customer.</p>
+                <p className="text-sm text-zinc-600">{t('customers.no_note')}</p>
               )}
             </>
           ) : customer.notes && !isEditing ? (
             /*  Has a note, view mode  */
             <>
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-zinc-200">Note</h3>
+                <h3 className="text-sm font-semibold text-zinc-200">{t('customers.note')}</h3>
                 <div className="flex items-center gap-1.5">
                   <Btn
                     variant="ghost"
                     size="xs"
                     onClick={() => { setNote(customer.notes ?? ''); setIsEditing(true) }}
                   >
-                    <IconEdit width="12" height="12" /> Edit
+                    <IconEdit width="12" height="12" /> {t('common.edit')}
                   </Btn>
                   <Btn
                     variant="ghost"
@@ -150,7 +152,7 @@ export default function CustomerDetailPage() {
                     onClick={() => updateNoteMutation.mutate(null)}
                     className="text-red-400 hover:text-red-300"
                   >
-                    <IconTrash width="12" height="12" /> Delete
+                    <IconTrash width="12" height="12" /> {t('common.delete')}
                   </Btn>
                 </div>
               </div>
@@ -162,14 +164,14 @@ export default function CustomerDetailPage() {
             /*  No note, or editing  */
             <>
               <h3 className="text-sm font-semibold text-zinc-200 mb-3">
-                {isEditing ? 'Edit Note' : 'Add Note'}
+                {isEditing ? t('customers.edit_note') : t('customers.add_note')}
               </h3>
               <div className="space-y-2">
                 <textarea
                   value={note}
                   onChange={e => setNote(e.target.value)}
                   rows={3}
-                  placeholder="Add a note about this customer…"
+                  placeholder={t('customers.note_placeholder')}
                   className="w-full bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 placeholder-zinc-600 text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 transition-all py-2.5 px-3 resize-none"
                 />
                 <div className="flex gap-2">
@@ -179,7 +181,7 @@ export default function CustomerDetailPage() {
                     onClick={() => updateNoteMutation.mutate(note.trim())}
                   >
                     <IconPlus width="12" height="12" />
-                    {updateNoteMutation.isPending ? 'Saving…' : isEditing ? 'Save Note' : 'Add Note'}
+                    {updateNoteMutation.isPending ? t('common.saving') : isEditing ? t('customers.save_note') : t('customers.add_note')}
                   </Btn>
                   {isEditing && (
                     <Btn
@@ -187,7 +189,7 @@ export default function CustomerDetailPage() {
                       variant="ghost"
                       onClick={() => { setNote(''); setIsEditing(false) }}
                     >
-                      Cancel
+                      {t('common.cancel')}
                     </Btn>
                   )}
                 </div>
@@ -202,16 +204,16 @@ export default function CustomerDetailPage() {
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
           <Empty
             icon={<IconUser width="32" height="32" />}
-            title="No activity yet"
-            subtitle="Transactions and notes will appear here"
+            title={t('customers.no_activity')}
+            subtitle={t('customers.no_activity_sub')}
           />
         </div>
       ) : (
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-zinc-200">Recent Activity</h3>
+            <h3 className="text-sm font-semibold text-zinc-200">{t('customers.recent_activity')}</h3>
             <Btn variant="ghost" size="xs" onClick={() => navigate(`/app/customers/${id}/ledger`)}>
-              View all
+              {t('dash.view_all')}
             </Btn>
           </div>
           <div className="divide-y divide-zinc-800">

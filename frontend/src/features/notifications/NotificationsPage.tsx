@@ -6,28 +6,30 @@ import { cn, timeAgo, extractApiMsg } from '@/lib/utils'
 import { Btn, Empty, Spinner, SectionHeader } from '@/components/ui'
 import { IconChevLeft, IconChevRight } from '@/components/icons'
 import { notificationsService } from '@/services/notifications/notifications.service'
+import { useLocaleStore } from '@/i18n/localeStore'
 import { NotificationTypeBadge, NotificationPriorityBadge, NotificationBranchBadge } from './notificationHelpers'
 import type { Notification } from '@/shared/types'
 
 const PAGE_SIZE = 20
 
 const READ_FILTERS = [
-  { label: 'All',    value: undefined as boolean | undefined },
-  { label: 'Unread', value: false                            },
-  { label: 'Read',   value: true                             },
+  { labelKey: 'notif.filter_all',    value: undefined as boolean | undefined },
+  { labelKey: 'notif.filter_unread', value: false                            },
+  { labelKey: 'notif.read_badge',    value: true                             },
 ]
 
 const TYPE_FILTERS = [
-  { label: 'All',          value: undefined as string | undefined },
-  { label: 'System',       value: 'SYSTEM'                        },
-  { label: 'Inventory',    value: 'INVENTORY'                     },
-  { label: 'Procurement',  value: 'PROCUREMENT'                   },
-  { label: 'Customer',     value: 'CUSTOMER'                      },
-  { label: 'Subscription', value: 'SUBSCRIPTION'                  },
-  { label: 'Security',     value: 'SECURITY'                      },
+  { labelKey: 'notif.filter_all',        value: undefined as string | undefined },
+  { labelKey: 'notif.type.system',       value: 'SYSTEM'                        },
+  { labelKey: 'notif.type.inventory',    value: 'INVENTORY'                     },
+  { labelKey: 'notif.type.procurement',  value: 'PROCUREMENT'                   },
+  { labelKey: 'notif.type.customer',     value: 'CUSTOMER'                      },
+  { labelKey: 'notif.type.subscription', value: 'SUBSCRIPTION'                  },
+  { labelKey: 'notif.type.security',     value: 'SECURITY'                      },
 ]
 
 export default function NotificationsPage() {
+  const t = useLocaleStore(s => s.t)
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [readFilter, setReadFilter] = useState<boolean | undefined>(undefined)
@@ -46,9 +48,9 @@ export default function NotificationsPage() {
     mutationFn: () => notificationsService.markAllRead(),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['notifications'] })
-      toast.success('All notifications marked as read')
+      toast.success(t('notif.marked_all_read'))
     },
-    onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to mark all read'),
+    onError: (err) => toast.error(extractApiMsg(err) ?? t('notif.failed_mark_all_read')),
   })
 
   const notifications = data?.items ?? []
@@ -72,8 +74,8 @@ export default function NotificationsPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <SectionHeader
-        title="Notifications"
-        subtitle={total > 0 ? `${total} notification${total !== 1 ? 's' : ''}` : 'No notifications'}
+        title={t('nav.notifications')}
+        subtitle={total > 0 ? `${total} ${t(total !== 1 ? 'notif.count_plural' : 'notif.count_singular')}` : t('notif.empty_title')}
         action={
           <div className="flex gap-2">
             <Btn
@@ -81,7 +83,7 @@ export default function NotificationsPage() {
               size="sm"
               onClick={() => navigate('/app/notifications/preferences')}
             >
-              Preferences
+              {t('settings.tab.preferences')}
             </Btn>
             <Btn
               variant="secondary"
@@ -89,7 +91,7 @@ export default function NotificationsPage() {
               disabled={markAllMutation.isPending}
               onClick={() => markAllMutation.mutate()}
             >
-              {markAllMutation.isPending ? <Spinner size={14} /> : 'Mark All Read'}
+              {markAllMutation.isPending ? <Spinner size={14} /> : t('notif.mark_all_read')}
             </Btn>
           </div>
         }
@@ -109,7 +111,7 @@ export default function NotificationsPage() {
                   : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-zinc-200',
               )}
             >
-              {f.label}
+              {t(f.labelKey)}
             </button>
           ))}
         </div>
@@ -127,7 +129,7 @@ export default function NotificationsPage() {
                   : 'bg-zinc-900 border-zinc-700 text-zinc-500 hover:text-zinc-300',
               )}
             >
-              {f.label}
+              {t(f.labelKey)}
             </button>
           ))}
         </div>
@@ -139,8 +141,8 @@ export default function NotificationsPage() {
           ) : notifications.length === 0 ? (
             <Empty
               icon={<span className="text-5xl">🔔</span>}
-              title="No notifications"
-              subtitle={readFilter === false ? 'You\'re all caught up' : 'Nothing to show for the selected filters'}
+              title={t('notif.empty_title')}
+              subtitle={readFilter === false ? t('notif.empty_caught_up') : t('notif.empty_no_results')}
             />
           ) : (
             <div className="divide-y divide-zinc-800/60">
@@ -187,12 +189,12 @@ export default function NotificationsPage() {
         {/* Pagination */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between text-xs text-zinc-500">
-            <span>Page {page} of {totalPages} · {total} total</span>
+            <span>{t('notif.page_label')} {page} {t('notif.of_label')} {totalPages} · {total} {t('notif.total_label')}</span>
             <div className="flex gap-1">
-              <Btn variant="secondary" size="xs" disabled={page === 1} onClick={() => setPage(p => p - 1)} aria-label="Previous page">
+              <Btn variant="secondary" size="xs" disabled={page === 1} onClick={() => setPage(p => p - 1)} aria-label={t('notif.prev_page')}>
                 <IconChevLeft width="12" height="12" />
               </Btn>
-              <Btn variant="secondary" size="xs" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} aria-label="Next page">
+              <Btn variant="secondary" size="xs" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} aria-label={t('notif.next_page')}>
                 <IconChevRight width="12" height="12" />
               </Btn>
             </div>

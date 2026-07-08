@@ -5,15 +5,10 @@ import { z } from 'zod'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/store/auth.store'
+import { useLocaleStore } from '@/i18n/localeStore'
 import { tenantService } from '@/services/tenant/tenant.service'
 import { Btn, Spinner } from '@/components/ui'
 import { extractApiMsg } from '@/lib/utils'
-
-// Only CASH and CARD are valid checkout tab defaults (card tab covers all digital sub-methods)
-const PAYMENT_METHODS: { value: string; label: string }[] = [
-  { value: 'CASH', label: 'Cash' },
-  { value: 'CARD', label: 'Digital / Card' },
-]
 
 const schema = z.object({
   auto_print_receipt:      z.boolean(),
@@ -45,8 +40,14 @@ function Toggle({ checked, onChange, label, description }: { checked: boolean; o
 
 export default function PreferencesSettingsPage() {
   const user = useAuthStore(s => s.user)
+  const t = useLocaleStore(s => s.t)
   const qc = useQueryClient()
   const tenantId = user?.tenant_id
+
+  const PAYMENT_METHODS: { value: string; label: string }[] = [
+    { value: 'CASH', label: t('settings.preferences.payment_cash') },
+    { value: 'CARD', label: t('settings.preferences.payment_card') },
+  ]
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['tenant-settings', tenantId],
@@ -81,10 +82,10 @@ export default function PreferencesSettingsPage() {
         },
       }),
     onSuccess: () => {
-      toast.success('Preferences saved')
+      toast.success(t('settings.preferences.save_success'))
       qc.invalidateQueries({ queryKey: ['tenant-settings', tenantId] })
     },
-    onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to save'),
+    onError: (err) => toast.error(extractApiMsg(err) ?? t('settings.preferences.save_error')),
   })
 
   if (!tenantId) return null
@@ -95,33 +96,33 @@ export default function PreferencesSettingsPage() {
       <form onSubmit={handleSubmit(d => mutation.mutate(d))} className="max-w-lg space-y-5">
 
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 space-y-4 divide-y divide-zinc-800">
-          <h3 className="text-sm font-semibold text-zinc-100 pb-2">POS Behaviour</h3>
+          <h3 className="text-sm font-semibold text-zinc-100 pb-2">{t('settings.preferences.pos_behaviour')}</h3>
           <div className="pt-3">
             <Toggle
               checked={watch('auto_print_receipt')}
               onChange={v => setValue('auto_print_receipt', v, { shouldDirty: true })}
-              label="Auto-Print Receipt"
-              description="Automatically print a receipt after every completed sale"
+              label={t('settings.preferences.auto_print_label')}
+              description={t('settings.preferences.auto_print_desc')}
             />
           </div>
         </div>
 
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 space-y-4">
-          <h3 className="text-sm font-semibold text-zinc-100">Defaults</h3>
+          <h3 className="text-sm font-semibold text-zinc-100">{t('settings.preferences.defaults')}</h3>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Default Payment Method</label>
+            <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">{t('settings.preferences.default_payment_method')}</label>
             <select {...register('default_payment_method')} className={inputCls()}>
               {PAYMENT_METHODS.map(m => (
                 <option key={m.value} value={m.value}>{m.label}</option>
               ))}
             </select>
-            <p className="text-xs text-zinc-600">Pre-selected payment method on the checkout screen.</p>
+            <p className="text-xs text-zinc-600">{t('settings.preferences.default_payment_desc')}</p>
           </div>
         </div>
 
         <Btn type="submit" disabled={!isDirty || isSubmitting || mutation.isPending}>
-          {mutation.isPending ? <Spinner size={16} /> : 'Save Preferences'}
+          {mutation.isPending ? <Spinner size={16} /> : t('settings.preferences.save_btn')}
         </Btn>
       </form>
     </div>

@@ -7,6 +7,7 @@ import {
   resellerFinanceService,
   type PayoutRequestResponse,
 } from '@/services/reseller_finance/reseller_finance.service'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 const PAYOUT_STATUS_VARIANT: Record<string, 'default' | 'warning' | 'success' | 'danger' | 'info'> = {
   PENDING: 'warning',
@@ -17,15 +18,15 @@ const PAYOUT_STATUS_VARIANT: Record<string, 'default' | 'warning' | 'success' | 
   CANCELLED: 'default',
 }
 
-const TX_TYPE_LABEL: Record<string, string> = {
-  COMMISSION_EARNED: 'Commission',
-  COMMISSION_REVERSAL: 'Commission Reversal',
-  PAYOUT_LOCKED: 'Payout Reserved',
-  PAYOUT_REJECTED: 'Payout Released',
-  PAYOUT_COMPLETED: 'Payout Paid',
-  MANUAL_ADJUSTMENT: 'Adjustment',
-  BONUS: 'Bonus',
-  PENALTY: 'Penalty',
+const TX_TYPE_LABEL_KEY: Record<string, string> = {
+  COMMISSION_EARNED: 'reseller.tx_commission',
+  COMMISSION_REVERSAL: 'reseller.tx_commission_reversal',
+  PAYOUT_LOCKED: 'reseller.tx_payout_reserved',
+  PAYOUT_REJECTED: 'reseller.tx_payout_released',
+  PAYOUT_COMPLETED: 'reseller.tx_payout_paid',
+  MANUAL_ADJUSTMENT: 'reseller.tx_adjustment',
+  BONUS: 'reseller.tx_bonus',
+  PENALTY: 'reseller.tx_penalty',
 }
 
 function fmt(amount: string): string {
@@ -33,6 +34,7 @@ function fmt(amount: string): string {
 }
 
 function RequestPayoutModal({ wallet, onClose }: { wallet: { available_balance: string; min_payout_amount: string; currency_code: string }; onClose: () => void }) {
+  const t = useLocaleStore(s => s.t)
   const qc = useQueryClient()
   const [amount, setAmount] = useState('')
   const [reason, setReason] = useState('')
@@ -42,10 +44,10 @@ function RequestPayoutModal({ wallet, onClose }: { wallet: { available_balance: 
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['reseller', 'wallet'] })
       qc.invalidateQueries({ queryKey: ['reseller', 'payouts'] })
-      toast.success('Payout requested successfully')
+      toast.success(t('reseller.payout_requested'))
       onClose()
     },
-    onError: err => toast.error(extractApiMsg(err) ?? 'Failed to request payout'),
+    onError: err => toast.error(extractApiMsg(err) ?? t('reseller.failed_request_payout')),
   })
 
   const available = Number(wallet.available_balance)
@@ -56,29 +58,29 @@ function RequestPayoutModal({ wallet, onClose }: { wallet: { available_balance: 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-md p-6 space-y-4">
-        <h2 className="text-lg font-bold text-zinc-100">Request Payout</h2>
+        <h2 className="text-lg font-bold text-zinc-100">{t('reseller.request_payout_title')}</h2>
         <div className="bg-zinc-900 rounded-xl p-3 text-sm space-y-1">
           <div className="flex justify-between">
-            <span className="text-zinc-500">Available</span>
+            <span className="text-zinc-500">{t('reseller.available_label')}</span>
             <span className="text-zinc-200 font-mono">{fmt(wallet.available_balance)} {wallet.currency_code}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-zinc-500">Minimum</span>
+            <span className="text-zinc-500">{t('reseller.minimum_label')}</span>
             <span className="text-zinc-400 font-mono">{fmt(wallet.min_payout_amount)} {wallet.currency_code}</span>
           </div>
         </div>
         <div>
-          <label className="text-xs text-zinc-400 mb-1 block">Amount</label>
+          <label className="text-xs text-zinc-400 mb-1 block">{t('reseller.amount_label')}</label>
           <input
             type="number"
             value={amount}
             onChange={e => setAmount(e.target.value)}
-            placeholder={`Min ${fmt(wallet.min_payout_amount)}`}
+            placeholder={`${t('reseller.min_prefix')} ${fmt(wallet.min_payout_amount)}`}
             className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-orange-500"
           />
         </div>
         <div>
-          <label className="text-xs text-zinc-400 mb-1 block">Reason (optional)</label>
+          <label className="text-xs text-zinc-400 mb-1 block">{t('reseller.reason_optional_label')}</label>
           <textarea
             value={reason}
             onChange={e => setReason(e.target.value)}
@@ -87,9 +89,9 @@ function RequestPayoutModal({ wallet, onClose }: { wallet: { available_balance: 
           />
         </div>
         <div className="flex gap-3 justify-end">
-          <Btn variant="ghost" size="sm" onClick={onClose}>Cancel</Btn>
+          <Btn variant="ghost" size="sm" onClick={onClose}>{t('common.cancel')}</Btn>
           <Btn size="sm" onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!isValid}>
-            Request
+            {t('reseller.request_btn')}
           </Btn>
         </div>
       </div>
@@ -98,6 +100,7 @@ function RequestPayoutModal({ wallet, onClose }: { wallet: { available_balance: 
 }
 
 export default function ResellerWalletPage() {
+  const t = useLocaleStore(s => s.t)
   const [showRequest, setShowRequest] = useState(false)
   const [txPage, setTxPage] = useState(1)
   const [payoutPage, setPayoutPage] = useState(1)
@@ -127,9 +130,9 @@ export default function ResellerWalletPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['reseller', 'payouts'] })
       qc.invalidateQueries({ queryKey: ['reseller', 'wallet'] })
-      toast.success('Payout cancelled')
+      toast.success(t('reseller.payout_cancelled'))
     },
-    onError: err => toast.error(extractApiMsg(err) ?? 'Failed to cancel'),
+    onError: err => toast.error(extractApiMsg(err) ?? t('reseller.failed_cancel')),
   })
 
   const available = wallet ? Number(wallet.available_balance) : 0
@@ -139,11 +142,11 @@ export default function ResellerWalletPage() {
     <div className="h-full overflow-y-auto p-6 space-y-8">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-100">Wallet & Payouts</h1>
-          <p className="text-zinc-500 text-sm mt-1">Commission earnings and payout management.</p>
+          <h1 className="text-2xl font-bold text-zinc-100">{t('reseller.wallet_payouts_title')}</h1>
+          <p className="text-zinc-500 text-sm mt-1">{t('reseller.wallet_payouts_subtitle')}</p>
         </div>
         <Btn size="sm" disabled={!canRequest} onClick={() => setShowRequest(true)}>
-          Request Payout
+          {t('reseller.request_payout_title')}
         </Btn>
       </div>
 
@@ -157,50 +160,50 @@ export default function ResellerWalletPage() {
       ) : wallet ? (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
-            <p className="text-xs text-zinc-500 mb-1">Available</p>
+            <p className="text-xs text-zinc-500 mb-1">{t('reseller.available_label')}</p>
             <p className="text-2xl font-bold text-green-400 tabular-nums">{fmt(wallet.available_balance)}</p>
             <p className="text-xs text-zinc-600 mt-1">{wallet.currency_code}</p>
           </div>
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
-            <p className="text-xs text-zinc-500 mb-1">Locked</p>
+            <p className="text-xs text-zinc-500 mb-1">{t('reseller.locked_label')}</p>
             <p className="text-2xl font-bold text-amber-400 tabular-nums">{fmt(wallet.locked_balance)}</p>
-            <p className="text-xs text-zinc-600 mt-1">Pending payout</p>
+            <p className="text-xs text-zinc-600 mt-1">{t('reseller.pending_payout_label')}</p>
           </div>
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
-            <p className="text-xs text-zinc-500 mb-1">Total Paid Out</p>
+            <p className="text-xs text-zinc-500 mb-1">{t('reseller.total_paid_out')}</p>
             <p className="text-2xl font-bold text-zinc-100 tabular-nums">{fmt(wallet.total_paid_out)}</p>
-            <p className="text-xs text-zinc-600 mt-1">All time</p>
+            <p className="text-xs text-zinc-600 mt-1">{t('reseller.all_time')}</p>
           </div>
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
-            <p className="text-xs text-zinc-500 mb-1">Commission Rate</p>
+            <p className="text-xs text-zinc-500 mb-1">{t('reseller.commission_rate_label')}</p>
             <p className="text-2xl font-bold text-orange-400 tabular-nums">{Number(wallet.commission_rate_pct).toFixed(2)}%</p>
-            <p className="text-xs text-zinc-600 mt-1">Per paid subscription</p>
+            <p className="text-xs text-zinc-600 mt-1">{t('reseller.per_paid_subscription')}</p>
           </div>
         </div>
       ) : (
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 text-center">
-          <p className="text-zinc-500 text-sm">No wallet yet. Wallet is created once you refer a paying tenant.</p>
+          <p className="text-zinc-500 text-sm">{t('reseller.no_wallet_yet')}</p>
         </div>
       )}
 
       {/* Payout requests */}
       <div>
-        <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">Payout Requests</h2>
+        <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">{t('reseller.payout_requests_heading')}</h2>
         {payoutsLoading ? (
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 animate-pulse h-24" />
         ) : !payouts || payouts.items.length === 0 ? (
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 text-center">
-            <p className="text-zinc-600 text-sm">No payout requests yet.</p>
+            <p className="text-zinc-600 text-sm">{t('reseller.no_payout_requests')}</p>
           </div>
         ) : (
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-zinc-800">
-                  <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium">Amount</th>
-                  <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium">Status</th>
-                  <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium">Reason</th>
-                  <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium">Date</th>
+                  <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium">{t('reseller.amount_label')}</th>
+                  <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium">{t('settings.status')}</th>
+                  <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium">{t('reseller.reason_column')}</th>
+                  <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium">{t('reseller.date_column')}</th>
                   <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium"></th>
                 </tr>
               </thead>
@@ -220,7 +223,7 @@ export default function ResellerWalletPage() {
                           disabled={cancelPayout.isPending}
                           className="text-xs text-red-400 hover:text-red-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                         >
-                          {cancelPayout.isPending ? 'Cancelling…' : 'Cancel'}
+                          {cancelPayout.isPending ? t('reseller.cancelling') : t('common.cancel')}
                         </button>
                       )}
                     </td>
@@ -230,9 +233,9 @@ export default function ResellerWalletPage() {
             </table>
             {(payouts.total ?? 0) > 10 && (
               <div className="flex items-center justify-between px-4 py-3 border-t border-zinc-800">
-                <Btn variant="ghost" size="xs" disabled={payoutPage === 1} onClick={() => setPayoutPage(p => p - 1)}>← Prev</Btn>
+                <Btn variant="ghost" size="xs" disabled={payoutPage === 1} onClick={() => setPayoutPage(p => p - 1)}>{t('reseller.prev_arrow')}</Btn>
                 <span className="text-xs text-zinc-600">{payoutPage}</span>
-                <Btn variant="ghost" size="xs" disabled={payoutPage * 10 >= (payouts.total ?? 0)} onClick={() => setPayoutPage(p => p + 1)}>Next →</Btn>
+                <Btn variant="ghost" size="xs" disabled={payoutPage * 10 >= (payouts.total ?? 0)} onClick={() => setPayoutPage(p => p + 1)}>{t('reseller.next_arrow')}</Btn>
               </div>
             )}
           </div>
@@ -241,22 +244,22 @@ export default function ResellerWalletPage() {
 
       {/* Transaction ledger */}
       <div>
-        <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">Transaction Ledger</h2>
+        <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">{t('reseller.transaction_ledger_heading')}</h2>
         {txLoading ? (
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 animate-pulse h-32" />
         ) : !transactions || transactions.items.length === 0 ? (
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 text-center">
-            <p className="text-zinc-600 text-sm">No transactions yet.</p>
+            <p className="text-zinc-600 text-sm">{t('reseller.no_transactions')}</p>
           </div>
         ) : (
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-zinc-800">
-                  <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium">Type</th>
-                  <th className="text-right px-4 py-3 text-xs text-zinc-500 font-medium">Amount</th>
-                  <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium">Note</th>
-                  <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium">Date</th>
+                  <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium">{t('reseller.type_column')}</th>
+                  <th className="text-right px-4 py-3 text-xs text-zinc-500 font-medium">{t('reseller.amount_label')}</th>
+                  <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium">{t('reseller.note_column')}</th>
+                  <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium">{t('reseller.date_column')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -267,7 +270,7 @@ export default function ResellerWalletPage() {
                   const isCredit = Number(tx.balance_after) >= Number(tx.balance_before)
                   return (
                     <tr key={tx.id} className="border-b border-zinc-800/50 last:border-0">
-                      <td className="px-4 py-3 text-zinc-300 text-xs">{TX_TYPE_LABEL[tx.transaction_type] ?? tx.transaction_type}</td>
+                      <td className="px-4 py-3 text-zinc-300 text-xs">{TX_TYPE_LABEL_KEY[tx.transaction_type] ? t(TX_TYPE_LABEL_KEY[tx.transaction_type]) : tx.transaction_type}</td>
                       <td className={`px-4 py-3 font-mono text-right font-bold ${isCredit ? 'text-green-400' : 'text-red-400'}`}>
                         {isCredit ? '+' : '-'}{fmt(tx.amount)}
                       </td>
@@ -280,9 +283,9 @@ export default function ResellerWalletPage() {
             </table>
             {(transactions.total ?? 0) > 20 && (
               <div className="flex items-center justify-between px-4 py-3 border-t border-zinc-800">
-                <Btn variant="ghost" size="xs" disabled={txPage === 1} onClick={() => setTxPage(p => p - 1)}>← Prev</Btn>
+                <Btn variant="ghost" size="xs" disabled={txPage === 1} onClick={() => setTxPage(p => p - 1)}>{t('reseller.prev_arrow')}</Btn>
                 <span className="text-xs text-zinc-600">{txPage}</span>
-                <Btn variant="ghost" size="xs" disabled={txPage * 20 >= (transactions.total ?? 0)} onClick={() => setTxPage(p => p + 1)}>Next →</Btn>
+                <Btn variant="ghost" size="xs" disabled={txPage * 20 >= (transactions.total ?? 0)} onClick={() => setTxPage(p => p + 1)}>{t('reseller.next_arrow')}</Btn>
               </div>
             )}
           </div>

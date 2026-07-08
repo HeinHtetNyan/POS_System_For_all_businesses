@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 export interface ActivityItem {
   id: string
@@ -28,7 +29,9 @@ interface ActivityFeedProps {
   emptyText?: string
 }
 
-export function ActivityFeed({ items, isLoading, emptyText = 'No recent activity' }: ActivityFeedProps) {
+export function ActivityFeed({ items, isLoading, emptyText }: ActivityFeedProps) {
+  const t = useLocaleStore(s => s.t)
+
   if (isLoading) {
     return (
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 divide-y divide-zinc-800">
@@ -40,7 +43,7 @@ export function ActivityFeed({ items, isLoading, emptyText = 'No recent activity
   if (!items.length) {
     return (
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-8 text-center">
-        <p className="text-sm text-zinc-600">{emptyText}</p>
+        <p className="text-sm text-zinc-600">{emptyText ?? t('dash.no_recent_activity')}</p>
       </div>
     )
   }

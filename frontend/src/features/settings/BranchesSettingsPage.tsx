@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { extractApiMsg } from '@/lib/utils'
 import { Badge, Spinner, Empty, Btn } from '@/components/ui'
 import { useAuthStore } from '@/store/auth.store'
+import { useLocaleStore } from '@/i18n/localeStore'
 import { tenantService } from '@/services/tenant/tenant.service'
 import type { BranchCreatePayload } from '@/services/tenant/tenant.service'
 import { subscriptionsService } from '@/services/subscriptions/subscriptions.service'
@@ -23,7 +24,6 @@ const INPUT = 'w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 te
 const LABEL = 'block text-xs text-zinc-400 mb-1'
 
 const TIMEZONE_OPTIONS = TIMEZONES.map(tz => ({ value: tz, label: tz }))
-const CURRENCY_OPTIONS = CURRENCIES.map(c => ({ value: c, label: c === 'MMK' ? 'Kyats (MMK)' : c }))
 
 function Field({
   label, value, onChange, required, readOnly, placeholder, type, inputMode, autoComplete,
@@ -70,11 +70,14 @@ function SelectField({
 // Add Branch Modal
 
 function AddBranchModal({ tenantId, onClose }: { tenantId: string; onClose: () => void }) {
+  const t = useLocaleStore(s => s.t)
   const qc = useQueryClient()
   const [form, setForm] = useState<BranchCreatePayload>({
     name: '', code: '', address: '', city: '', phone: '',
     timezone: 'UTC', currency: 'MMK', is_main_branch: false,
   })
+
+  const currencyOptions = CURRENCIES.map(c => ({ value: c, label: c === 'MMK' ? `${t('currency.mmk')} (MMK)` : c }))
 
   function setName(name: string) {
     setForm(p => ({ ...p, name, code: autoCode(name) }))
@@ -88,29 +91,29 @@ function AddBranchModal({ tenantId, onClose }: { tenantId: string; onClose: () =
       phone:   form.phone   || null,
     }),
     onSuccess: () => {
-      toast.success('Branch created')
+      toast.success(t('settings.branches.create_success'))
       qc.invalidateQueries({ queryKey: ['tenant', tenantId, 'branches'] })
       onClose()
     },
-    onError: err => toast.error(extractApiMsg(err) ?? 'Failed to create branch'),
+    onError: err => toast.error(extractApiMsg(err) ?? t('settings.branches.create_error')),
   })
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
-          <h3 className="text-base font-semibold text-zinc-100">Add New Branch</h3>
-          <button onClick={onClose} aria-label="Close" className="text-zinc-500 hover:text-zinc-200 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-800">
+          <h3 className="text-base font-semibold text-zinc-100">{t('settings.branches.add_title')}</h3>
+          <button onClick={onClose} aria-label={t('common.close')} className="text-zinc-500 hover:text-zinc-200 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-800">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
           </button>
         </div>
 
         <div className="p-5 space-y-3">
-          <Field label="Branch Name" value={form.name} onChange={setName} required />
+          <Field label={t('settings.branches.name')} value={form.name} onChange={setName} required />
 
           {/* Auto-generated code — read-only display */}
           <div>
-            <label className={LABEL}>Branch Code <span className="text-zinc-600">(auto-generated)</span></label>
+            <label className={LABEL}>{t('settings.branches.code')} <span className="text-zinc-600">{t('settings.branches.auto_generated')}</span></label>
             <div className="flex items-center gap-2">
               <input
                 value={form.code}
@@ -120,24 +123,24 @@ function AddBranchModal({ tenantId, onClose }: { tenantId: string; onClose: () =
             </div>
           </div>
 
-          <Field label="Address"  value={form.address ?? ''} onChange={v => setForm(p => ({ ...p, address: v }))} />
-          <Field label="City"     value={form.city    ?? ''} onChange={v => setForm(p => ({ ...p, city: v }))} />
-          <Field label="Phone"    value={form.phone   ?? ''} onChange={v => setForm(p => ({ ...p, phone: v }))} placeholder="+1 555 000 0000" type="tel" inputMode="tel" autoComplete="tel" />
+          <Field label={t('settings.address')}  value={form.address ?? ''} onChange={v => setForm(p => ({ ...p, address: v }))} />
+          <Field label={t('settings.city')}     value={form.city    ?? ''} onChange={v => setForm(p => ({ ...p, city: v }))} />
+          <Field label={t('settings.phone')}    value={form.phone   ?? ''} onChange={v => setForm(p => ({ ...p, phone: v }))} placeholder={t('settings.branches.phone_placeholder')} type="tel" inputMode="tel" autoComplete="tel" />
 
           <div className="grid grid-cols-2 gap-3">
-            <SelectField label="Timezone" value={form.timezone ?? 'UTC'} onChange={v => setForm(p => ({ ...p, timezone: v }))} options={TIMEZONE_OPTIONS} />
-            <SelectField label="Currency" value={form.currency ?? 'MMK'} onChange={v => setForm(p => ({ ...p, currency: v }))} options={CURRENCY_OPTIONS} />
+            <SelectField label={t('settings.timezone')} value={form.timezone ?? 'UTC'} onChange={v => setForm(p => ({ ...p, timezone: v }))} options={TIMEZONE_OPTIONS} />
+            <SelectField label={t('settings.currency')} value={form.currency ?? 'MMK'} onChange={v => setForm(p => ({ ...p, currency: v }))} options={currencyOptions} />
           </div>
         </div>
 
         <div className="px-5 py-4 border-t border-zinc-800 flex gap-2 justify-end">
-          <Btn variant="secondary" size="sm" onClick={onClose}>Cancel</Btn>
+          <Btn variant="secondary" size="sm" onClick={onClose}>{t('common.cancel')}</Btn>
           <Btn
             size="sm"
             disabled={!form.name.trim() || mutation.isPending}
             onClick={() => mutation.mutate()}
           >
-            {mutation.isPending ? 'Creating…' : 'Create Branch'}
+            {mutation.isPending ? t('settings.branches.creating') : t('settings.branches.create_btn')}
           </Btn>
         </div>
       </div>
@@ -155,6 +158,7 @@ function EditBranchModal({
 }: {
   tenantId: string; branch: Branch; onClose: () => void
 }) {
+  const t = useLocaleStore(s => s.t)
   const qc = useQueryClient()
   const [form, setForm] = useState<EditForm>({
     name:     branch.name,
@@ -164,6 +168,8 @@ function EditBranchModal({
     timezone: branch.timezone ?? 'UTC',
     currency: branch.currency ?? 'MMK',
   })
+
+  const currencyOptions = CURRENCIES.map(c => ({ value: c, label: c === 'MMK' ? `${t('currency.mmk')} (MMK)` : c }))
 
   const set = (key: keyof EditForm) => (v: string) => setForm(p => ({ ...p, [key]: v }))
 
@@ -177,11 +183,11 @@ function EditBranchModal({
       currency: form.currency || undefined,
     }),
     onSuccess: () => {
-      toast.success('Branch updated')
+      toast.success(t('settings.branches.update_success'))
       qc.invalidateQueries({ queryKey: ['tenant', tenantId, 'branches'] })
       onClose()
     },
-    onError: err => toast.error(extractApiMsg(err) ?? 'Failed to update branch'),
+    onError: err => toast.error(extractApiMsg(err) ?? t('settings.branches.update_error')),
   })
 
   return (
@@ -189,33 +195,33 @@ function EditBranchModal({
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
           <div>
-            <h3 className="text-base font-semibold text-zinc-100">Edit Branch</h3>
+            <h3 className="text-base font-semibold text-zinc-100">{t('settings.branches.edit_title')}</h3>
             <p className="text-xs text-zinc-500 mt-0.5 font-mono tracking-widest">{branch.code}</p>
           </div>
-          <button onClick={onClose} aria-label="Close" className="text-zinc-500 hover:text-zinc-200 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-800">
+          <button onClick={onClose} aria-label={t('common.close')} className="text-zinc-500 hover:text-zinc-200 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-800">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
           </button>
         </div>
 
         <div className="p-5 space-y-3">
-          <Field label="Branch Name" value={form.name}     onChange={set('name')}     required />
-          <Field label="Address"     value={form.address}  onChange={set('address')}  />
-          <Field label="City"        value={form.city}     onChange={set('city')}     />
-          <Field label="Phone"       value={form.phone}    onChange={set('phone')}    placeholder="+1 555 000 0000" type="tel" inputMode="tel" autoComplete="tel" />
+          <Field label={t('settings.branches.name')} value={form.name}     onChange={set('name')}     required />
+          <Field label={t('settings.address')}        value={form.address}  onChange={set('address')}  />
+          <Field label={t('settings.city')}            value={form.city}     onChange={set('city')}     />
+          <Field label={t('settings.phone')}           value={form.phone}    onChange={set('phone')}    placeholder={t('settings.branches.phone_placeholder')} type="tel" inputMode="tel" autoComplete="tel" />
           <div className="grid grid-cols-2 gap-3">
-            <SelectField label="Timezone" value={form.timezone} onChange={set('timezone')} options={TIMEZONE_OPTIONS} />
-            <SelectField label="Currency" value={form.currency} onChange={set('currency')} options={CURRENCY_OPTIONS} />
+            <SelectField label={t('settings.timezone')} value={form.timezone} onChange={set('timezone')} options={TIMEZONE_OPTIONS} />
+            <SelectField label={t('settings.currency')} value={form.currency} onChange={set('currency')} options={currencyOptions} />
           </div>
         </div>
 
         <div className="px-5 py-4 border-t border-zinc-800 flex gap-2 justify-end">
-          <Btn variant="secondary" size="sm" onClick={onClose}>Cancel</Btn>
+          <Btn variant="secondary" size="sm" onClick={onClose}>{t('common.cancel')}</Btn>
           <Btn
             size="sm"
             disabled={!form.name.trim() || mutation.isPending}
             onClick={() => mutation.mutate()}
           >
-            {mutation.isPending ? 'Saving…' : 'Save Changes'}
+            {mutation.isPending ? t('settings.saving') : t('settings.save_changes')}
           </Btn>
         </div>
       </div>
@@ -227,6 +233,7 @@ function EditBranchModal({
 
 export default function BranchesSettingsPage() {
   const user = useAuthStore(s => s.user)
+  const t = useLocaleStore(s => s.t)
   const qc = useQueryClient()
   const tenantId = user?.tenant_id
   const canEdit = user?.role === 'BUSINESS_OWNER' || user?.role === 'SUPER_ADMIN'
@@ -249,15 +256,15 @@ export default function BranchesSettingsPage() {
     mutationFn: ({ branchId, status }: { branchId: string; status: string }) =>
       tenantService.updateBranchStatus(tenantId!, branchId, status),
     onSuccess: (_, vars) => {
-      toast.success(`Branch ${vars.status === 'ACTIVE' ? 'activated' : 'deactivated'}`)
+      toast.success(vars.status === 'ACTIVE' ? t('settings.branches.activated_msg') : t('settings.branches.deactivated_msg'))
       qc.invalidateQueries({ queryKey: ['tenant', tenantId, 'branches'] })
     },
-    onError: err => toast.error(extractApiMsg(err) ?? 'Failed to update branch'),
+    onError: err => toast.error(extractApiMsg(err) ?? t('settings.branches.update_error')),
   })
 
   if (!tenantId) return (
     <div className="flex items-center justify-center h-full">
-      <p className="text-zinc-500 text-sm">No tenant associated with your account.</p>
+      <p className="text-zinc-500 text-sm">{t('settings.no_tenant')}</p>
     </div>
   )
 
@@ -290,18 +297,18 @@ export default function BranchesSettingsPage() {
         <div className="max-w-2xl space-y-4">
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-zinc-500">
-              Activate or deactivate branches. Deactivated branches cannot process sales.
-              {canEdit && !canAddBranch && ' Contact your administrator to register additional branches.'}
+              {t('settings.branches.desc')}
+              {canEdit && !canAddBranch && t('settings.branches.limit_hint')}
             </p>
             {canEdit && canAddBranch && (
               <Btn size="sm" onClick={() => setShowAdd(true)} className="flex-shrink-0">
-                + Add Branch
+                {t('settings.branches.add_btn')}
               </Btn>
             )}
           </div>
 
           {branches.length === 0 ? (
-            <Empty title="No branches found" />
+            <Empty title={t('settings.branches.empty')} />
           ) : (
             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden divide-y divide-zinc-800">
               {branches.map((branch: Branch) => {
@@ -331,7 +338,7 @@ export default function BranchesSettingsPage() {
                       variant={isActive ? 'success' : isClosed ? 'danger' : 'default'}
                       size="xs"
                     >
-                      {isActive ? 'Active' : isClosed ? 'Closed' : 'Inactive'}
+                      {isActive ? t('status.active') : isClosed ? t('settings.branches.status_closed') : t('status.inactive')}
                     </Badge>
 
                     {/* Edit button */}
@@ -340,7 +347,7 @@ export default function BranchesSettingsPage() {
                         onClick={() => canEdit && setEditBranch(branch)}
                         disabled={!canEdit}
                         className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${canEdit ? 'text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800' : 'text-zinc-700 cursor-not-allowed opacity-50'}`}
-                        title={canEdit ? 'Edit branch' : 'Owner access required'}
+                        title={canEdit ? t('settings.branches.edit_branch_tooltip') : t('settings.branches.owner_required')}
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -360,7 +367,7 @@ export default function BranchesSettingsPage() {
                           status:   isActive ? 'INACTIVE' : 'ACTIVE',
                         })}
                       >
-                        {isActive ? 'Deactivate' : 'Activate'}
+                        {isActive ? t('settings.branches.deactivate') : t('settings.branches.activate')}
                       </Btn>
                     )}
                   </div>
@@ -372,7 +379,7 @@ export default function BranchesSettingsPage() {
 
         {!canEdit && (
           <p className="text-xs text-zinc-600 text-center">
-            You have read-only access to branch settings.
+            {t('settings.branches.read_only')}
           </p>
         )}
       </div>

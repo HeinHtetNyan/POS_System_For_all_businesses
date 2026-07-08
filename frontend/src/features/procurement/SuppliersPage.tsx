@@ -6,11 +6,13 @@ import { Btn, Table, Th, Td, Empty, Spinner, SectionHeader } from '@/components/
 import { IconSearch, IconPlus, IconChevRight, IconChevLeft } from '@/components/icons'
 import { procurementService } from '@/services/procurement/procurement.service'
 import { SupplierStatusBadge } from './procurementHelpers'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 const PAGE_SIZE = 20
 
 export default function SuppliersPage() {
   const navigate = useNavigate()
+  const t = useLocaleStore(s => s.t)
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined)
   const [page, setPage] = useState(1)
 
@@ -27,11 +29,11 @@ export default function SuppliersPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <SectionHeader
-        title="Suppliers"
-        subtitle={`${total} supplier${total !== 1 ? 's' : ''}`}
+        title={t('procurement.suppliers_title')}
+        subtitle={`${total} ${t('procurement.supplier')}${total !== 1 ? 's' : ''}`}
         action={
           <Btn size="sm" onClick={() => navigate('/app/procurement/suppliers/new')}>
-            <IconPlus width="14" height="14" /> New Supplier
+            <IconPlus width="14" height="14" /> {t('procurement.new_supplier')}
           </Btn>
         }
       />
@@ -40,9 +42,9 @@ export default function SuppliersPage() {
         {/* Filters */}
         <div className="flex gap-1">
           {([
-            { label: 'All',      value: undefined  },
-            { label: 'Active',   value: 'ACTIVE'   },
-            { label: 'Inactive', value: 'INACTIVE' },
+            { label: t('procurement.filter_all'), value: undefined  },
+            { label: t('status.active'),           value: 'ACTIVE'   },
+            { label: t('status.inactive'),         value: 'INACTIVE' },
           ] as const).map(f => (
             <button
               key={f.label}
@@ -66,11 +68,11 @@ export default function SuppliersPage() {
           ) : suppliers.length === 0 ? (
             <Empty
               icon={<span className="text-4xl">🏭</span>}
-              title="No suppliers found"
-              subtitle="Add your first supplier to get started"
+              title={t('procurement.no_suppliers_found')}
+              subtitle={t('procurement.add_first_supplier')}
               action={
                 <Btn size="sm" onClick={() => navigate('/app/procurement/suppliers/new')}>
-                  <IconPlus width="14" height="14" /> New Supplier
+                  <IconPlus width="14" height="14" /> {t('procurement.new_supplier')}
                 </Btn>
               }
             />
@@ -78,9 +80,9 @@ export default function SuppliersPage() {
             <Table>
               <thead>
                 <tr>
-                  <Th>Supplier</Th>
-                  <Th>Code</Th>
-                  <Th>Status</Th>
+                  <Th>{t('procurement.supplier')}</Th>
+                  <Th>{t('procurement.code')}</Th>
+                  <Th>{t('settings.status')}</Th>
                   <Th />
                 </tr>
               </thead>
@@ -115,12 +117,12 @@ export default function SuppliersPage() {
 
         {totalPages > 1 && (
           <div className="flex items-center justify-between text-xs text-zinc-500">
-            <span>Page {page} of {totalPages} · {total} total</span>
+            <span>{t('procurement.page_word')} {page} {t('procurement.of_word')} {totalPages} · {total} {t('procurement.total_word')}</span>
             <div className="flex gap-1">
-              <Btn variant="secondary" size="xs" disabled={page === 1} onClick={() => setPage(p => p - 1)} aria-label="Previous page">
+              <Btn variant="secondary" size="xs" disabled={page === 1} onClick={() => setPage(p => p - 1)} aria-label={t('procurement.previous_page')}>
                 <IconChevLeft width="12" height="12" />
               </Btn>
-              <Btn variant="secondary" size="xs" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} aria-label="Next page">
+              <Btn variant="secondary" size="xs" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} aria-label={t('procurement.next_page')}>
                 <IconChevRight width="12" height="12" />
               </Btn>
             </div>

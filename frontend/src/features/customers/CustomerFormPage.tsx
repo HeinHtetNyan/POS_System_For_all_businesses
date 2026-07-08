@@ -8,24 +8,26 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Btn, Spinner, SectionHeader } from '@/components/ui'
 import { customersService } from '@/services/customers/customers.service'
+import { useLocaleStore } from '@/i18n/localeStore'
 import type { ReactNode } from 'react'
-
-const schema = z.object({
-  name:      z.string().min(1, 'Name is required'),
-  phone:     z.string().min(6, 'Phone must be at least 6 characters'),
-  email:     z.string().email('Invalid email address').or(z.literal('')).optional(),
-  address:   z.string(),
-  notes:     z.string(),
-  is_active: z.boolean(),
-})
-
-type FormValues = z.infer<typeof schema>
 
 export default function CustomerFormPage() {
   const { id } = useParams<{ id?: string }>()
   const navigate = useNavigate()
   const qc = useQueryClient()
   const isEdit = !!id
+  const t = useLocaleStore(s => s.t)
+
+  const schema = z.object({
+    name:      z.string().min(1, t('customers.name_required')),
+    phone:     z.string().min(6, t('customers.phone_min_length')),
+    email:     z.string().email(t('customers.invalid_email')).or(z.literal('')).optional(),
+    address:   z.string(),
+    notes:     z.string(),
+    is_active: z.boolean(),
+  })
+
+  type FormValues = z.infer<typeof schema>
 
   const { data: existing, isLoading: loadingExisting } = useQuery({
     queryKey: ['customer', id],
@@ -62,11 +64,11 @@ export default function CustomerFormPage() {
       notes:   data.notes || undefined,
     }),
     onSuccess: (customer) => {
-      toast.success('Customer created')
+      toast.success(t('customers.created'))
       qc.invalidateQueries({ queryKey: ['customers'] })
       navigate(`/app/customers/${customer.id}`)
     },
-    onError: () => toast.error('Failed to create customer'),
+    onError: () => toast.error(t('customers.create_failed')),
   })
 
   const updateMutation = useMutation({
@@ -79,12 +81,12 @@ export default function CustomerFormPage() {
       is_active: data.is_active,
     }),
     onSuccess: () => {
-      toast.success('Customer updated')
+      toast.success(t('customers.updated'))
       qc.invalidateQueries({ queryKey: ['customer', id] })
       qc.invalidateQueries({ queryKey: ['customers'] })
       navigate(`/app/customers/${id}`)
     },
-    onError: () => toast.error('Failed to update customer'),
+    onError: () => toast.error(t('customers.update_failed')),
   })
 
   function onSubmit(data: FormValues) {
@@ -105,53 +107,53 @@ export default function CustomerFormPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <SectionHeader
-        title={isEdit ? 'Edit Customer' : 'New Customer'}
-        subtitle={isEdit ? existing?.name : 'Add a new customer to your records'}
+        title={isEdit ? t('customers.edit_customer') : t('customers.new_customer')}
+        subtitle={isEdit ? existing?.name : t('customers.new_customer_subtitle')}
       />
 
       <div className="flex-1 overflow-y-auto">
         <form onSubmit={handleSubmit(onSubmit)} className="max-w-lg mx-auto p-4 sm:p-6 space-y-4">
-          <FormField label="Full Name" error={errors.name?.message} required>
+          <FormField label={t('customers.full_name')} error={errors.name?.message} required>
             <input
               {...register('name')}
-              placeholder="Customer full name"
+              placeholder={t('customers.full_name_placeholder')}
               className={inputCls(!!errors.name)}
             />
           </FormField>
 
-          <FormField label="Phone" error={errors.phone?.message} required>
+          <FormField label={t('settings.phone')} error={errors.phone?.message} required>
             <input
               {...register('phone')}
               type="tel"
               inputMode="tel"
               autoComplete="tel"
-              placeholder="+1 555 000 0000"
+              placeholder={t('customers.phone_placeholder')}
               className={inputCls(!!errors.phone)}
             />
           </FormField>
 
-          <FormField label="Email" error={errors.email?.message}>
+          <FormField label={t('settings.email')} error={errors.email?.message}>
             <input
               {...register('email')}
               type="email"
-              placeholder="customer@example.com"
+              placeholder={t('customers.email_placeholder')}
               className={inputCls(!!errors.email)}
             />
           </FormField>
 
-          <FormField label="Address">
+          <FormField label={t('settings.address')}>
             <textarea
               {...register('address')}
-              placeholder="Street address, city…"
+              placeholder={t('customers.address_placeholder')}
               rows={2}
               className={cn(inputCls(false), 'resize-none')}
             />
           </FormField>
 
-          <FormField label="Internal Notes">
+          <FormField label={t('customers.internal_notes')}>
             <textarea
               {...register('notes')}
-              placeholder="Notes about this customer…"
+              placeholder={t('customers.notes_placeholder')}
               rows={3}
               className={cn(inputCls(false), 'resize-none')}
             />
@@ -166,7 +168,7 @@ export default function CustomerFormPage() {
                 className="w-4 h-4 rounded accent-amber-500"
               />
               <label htmlFor="is_active" className="text-sm text-zinc-300 cursor-pointer">
-                Active customer
+                {t('customers.active_customer')}
               </label>
             </div>
           )}
@@ -177,10 +179,10 @@ export default function CustomerFormPage() {
               variant="secondary"
               onClick={() => navigate(isEdit ? `/app/customers/${id}` : '/app/customers')}
             >
-              Cancel
+              {t('common.cancel')}
             </Btn>
             <Btn type="submit" disabled={pending} fullWidth>
-              {pending ? <Spinner size={16} /> : isEdit ? 'Save Changes' : 'Create Customer'}
+              {pending ? <Spinner size={16} /> : isEdit ? t('common.save_changes') : t('customers.create_customer')}
             </Btn>
           </div>
         </form>

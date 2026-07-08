@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 interface KpiCardProps {
   label: string
@@ -16,6 +17,8 @@ function SkeletonBlock({ className }: { className?: string }) {
 }
 
 export function KpiCard({ label, value, sub, icon, accent, isLoading, isError }: KpiCardProps) {
+  const t = useLocaleStore(s => s.t)
+
   if (isLoading) {
     return (
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
@@ -36,7 +39,7 @@ export function KpiCard({ label, value, sub, icon, accent, isLoading, isError }:
         )}
         <p className="text-xs text-zinc-500 mb-1">{label}</p>
         <p className="text-2xl font-bold text-zinc-600 tabular-nums">—</p>
-        <p className="text-xs text-red-400/80 mt-1">Couldn't load</p>
+        <p className="text-xs text-red-400/80 mt-1">{t('dash.couldnt_load')}</p>
       </div>
     )
   }

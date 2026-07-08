@@ -6,21 +6,22 @@ import { Btn, Table, Th, Td, Empty, Spinner, SectionHeader } from '@/components/
 import { IconPlus, IconChevRight } from '@/components/icons'
 import { procurementService } from '@/services/procurement/procurement.service'
 import { POStatusBadge } from './procurementHelpers'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 const PAGE_SIZE = 30
 
-const STATUS_FILTERS = [
-  { label: 'All',             value: undefined            },
-  { label: 'Draft',           value: 'DRAFT'              },
-  { label: 'Pending Approval', value: 'SUBMITTED'         },
-  { label: 'Ordered',         value: 'APPROVED'           },
-  { label: 'Partial Receipt', value: 'PARTIALLY_RECEIVED' },
-  { label: 'Received',        value: 'RECEIVED'           },
-  { label: 'Cancelled',       value: 'CANCELLED'          },
-]
-
 export default function PurchaseOrdersPage() {
   const navigate = useNavigate()
+  const t = useLocaleStore(s => s.t)
+  const STATUS_FILTERS = [
+    { label: t('procurement.filter_all'),                        value: undefined            },
+    { label: t('procurement.po_status_draft'),                   value: 'DRAFT'              },
+    { label: t('procurement.po_status_pending_approval'),        value: 'SUBMITTED'          },
+    { label: t('procurement.po_status_ordered'),                 value: 'APPROVED'           },
+    { label: t('procurement.po_status_partial_receipt'),         value: 'PARTIALLY_RECEIVED' },
+    { label: t('procurement.po_status_received'),                value: 'RECEIVED'           },
+    { label: t('status.cancelled'),                               value: 'CANCELLED'          },
+  ]
   const [status, setStatus] = useState<string | undefined>(undefined)
   const [selMonth, setSelMonth] = useState(() => new Date().getMonth() + 1)
   const [selYear,  setSelYear]  = useState(() => new Date().getFullYear())
@@ -66,11 +67,11 @@ export default function PurchaseOrdersPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <SectionHeader
-        title="Purchase Orders"
-        subtitle={`${allRows.length} order${allRows.length !== 1 ? 's' : ''}`}
+        title={t('procurement.purchase_orders_title')}
+        subtitle={`${allRows.length} ${t('procurement.order')}${allRows.length !== 1 ? 's' : ''}`}
         action={
           <Btn size="sm" onClick={() => navigate('/app/procurement/purchase-orders/new')}>
-            <IconPlus width="14" height="14" /> New PO
+            <IconPlus width="14" height="14" /> {t('procurement.new_po')}
           </Btn>
         }
       />
@@ -83,7 +84,12 @@ export default function PurchaseOrdersPage() {
             onChange={e => { setSelMonth(Number(e.target.value)); setPage(1) }}
             className="bg-zinc-900 border border-zinc-700 rounded-xl text-zinc-200 text-sm px-3 py-1.5 focus:outline-none focus:border-amber-500"
           >
-            {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m, i) => (
+            {[
+              t('procurement.month_january'), t('procurement.month_february'), t('procurement.month_march'),
+              t('procurement.month_april'), t('procurement.month_may'), t('procurement.month_june'),
+              t('procurement.month_july'), t('procurement.month_august'), t('procurement.month_september'),
+              t('procurement.month_october'), t('procurement.month_november'), t('procurement.month_december'),
+            ].map((m, i) => (
               <option key={i + 1} value={i + 1}>{m}</option>
             ))}
           </select>
@@ -120,11 +126,11 @@ export default function PurchaseOrdersPage() {
           ) : rows.length === 0 ? (
             <Empty
               icon={<span className="text-4xl">📋</span>}
-              title="No purchase orders found"
-              subtitle="Create your first purchase order"
+              title={t('procurement.no_purchase_orders_found')}
+              subtitle={t('procurement.create_first_po')}
               action={
                 <Btn size="sm" onClick={() => navigate('/app/procurement/purchase-orders/new')}>
-                  <IconPlus width="14" height="14" /> New PO
+                  <IconPlus width="14" height="14" /> {t('procurement.new_po')}
                 </Btn>
               }
             />
@@ -132,14 +138,14 @@ export default function PurchaseOrdersPage() {
             <Table>
               <thead>
                 <tr>
-                  <Th>PO Number</Th>
-                  <Th>Supplier</Th>
-                  <Th>Receipt #</Th>
-                  <Th>Status</Th>
-                  <Th right>Total</Th>
-                  <Th>Order Date</Th>
-                  <Th>Expected</Th>
-                  <Th>Receive Date</Th>
+                  <Th>{t('procurement.col_po_number')}</Th>
+                  <Th>{t('procurement.supplier')}</Th>
+                  <Th>{t('procurement.col_receipt_number')}</Th>
+                  <Th>{t('settings.status')}</Th>
+                  <Th right>{t('procurement.col_total')}</Th>
+                  <Th>{t('procurement.order_date')}</Th>
+                  <Th>{t('procurement.expected')}</Th>
+                  <Th>{t('procurement.receive_date')}</Th>
                   <Th />
                 </tr>
               </thead>
@@ -188,20 +194,20 @@ export default function PurchaseOrdersPage() {
 
         <div className="flex items-center justify-between gap-3">
           <p className="text-xs text-zinc-500">
-            {allRows.length === 0 ? '0 orders' : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, allRows.length)} of ${allRows.length}`}
+            {allRows.length === 0 ? t('procurement.zero_orders') : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, allRows.length)} ${t('procurement.of_word')} ${allRows.length}`}
           </p>
           <div className="flex items-center gap-1">
             <button
               onClick={() => setPage(p => Math.max(1, p - 1))}
               disabled={page === 1}
               className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            >‹ Prev</button>
+            >{t('common.prev')}</button>
             <span className="text-xs text-zinc-500 px-2">{page} / {totalPages}</span>
             <button
               onClick={() => setPage(p => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
               className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            >Next ›</button>
+            >{t('common.next')}</button>
           </div>
         </div>
       </div>

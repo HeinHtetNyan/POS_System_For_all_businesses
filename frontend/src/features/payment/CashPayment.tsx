@@ -2,6 +2,7 @@ import { fmt } from '@/lib/utils'
 import { getFormatterConfig } from '@/lib/formatterConfig'
 import NumPad from '@/features/payment/NumPad'
 import QuickBills from '@/features/payment/QuickBills'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 interface CashPaymentProps {
   total: number
@@ -11,6 +12,7 @@ interface CashPaymentProps {
 }
 
 export default function CashPayment({ total, amount, onAmountChange, onProcess }: CashPaymentProps) {
+  const t = useLocaleStore(s => s.t)
   const tendered = parseFloat(amount) || 0
   const change = tendered - total
   const canProcess = tendered >= total && tendered > 0
@@ -19,7 +21,7 @@ export default function CashPayment({ total, amount, onAmountChange, onProcess }
     <div className="flex flex-col gap-4">
       {/* Amount display */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-        <p className="text-xs text-zinc-600 uppercase tracking-wider mb-1">Amount Tendered</p>
+        <p className="text-xs text-zinc-600 uppercase tracking-wider mb-1">{t('payment.amount_tendered')}</p>
         <p className="font-mono text-3xl font-bold text-right text-zinc-100">
           {amount
             ? `${getFormatterConfig().currency} ${amount}`
@@ -32,11 +34,11 @@ export default function CashPayment({ total, amount, onAmountChange, onProcess }
           <div className="mt-2 text-right">
             {change >= 0 ? (
               <p className="text-green-400 font-mono text-lg font-semibold">
-                Change: {fmt(change)}
+                {t('payment.change')}: {fmt(change)}
               </p>
             ) : (
               <p className="text-red-400 text-xs font-medium">
-                Insufficient — need {fmt(Math.abs(change))} more
+                {t('payment.insufficient_need')} {fmt(Math.abs(change))} {t('payment.more')}
               </p>
             )}
           </div>
@@ -61,7 +63,7 @@ export default function CashPayment({ total, amount, onAmountChange, onProcess }
           }
         `}
       >
-        {canProcess ? `Process ${fmt(total)}` : 'Enter Amount'}
+        {canProcess ? `${t('payment.process')} ${fmt(total)}` : t('payment.enter_amount')}
       </button>
     </div>
   )

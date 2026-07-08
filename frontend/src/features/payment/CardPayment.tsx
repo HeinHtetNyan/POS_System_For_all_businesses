@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useCartStore } from '@/store/cartStore'
 import { fmt, cn } from '@/lib/utils'
 import { CARD_SUB_METHODS, BANK_TRANSFER_BANKS } from '@/lib/paymentMethod'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 interface CardPaymentProps {
   total: number
@@ -9,6 +10,7 @@ interface CardPaymentProps {
 }
 
 export default function CardPayment({ total, onProcess }: CardPaymentProps) {
+  const t = useLocaleStore(s => s.t)
   const cardSubMethod      = useCartStore(s => s.cardSubMethod)
   const setCardSubMethod   = useCartStore(s => s.setCardSubMethod)
   const bankTransferBank   = useCartStore(s => s.bankTransferBank)
@@ -36,13 +38,13 @@ export default function CardPayment({ total, onProcess }: CardPaymentProps) {
     <div className="flex flex-col gap-5">
       {/* Total */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 text-center">
-        <p className="text-xs text-zinc-600 uppercase tracking-wider mb-1">Charge Amount</p>
+        <p className="text-xs text-zinc-600 uppercase tracking-wider mb-1">{t('payment.charge_amount')}</p>
         <p className="font-mono text-4xl font-bold text-zinc-100">{fmt(total)}</p>
       </div>
 
       {/* Sub-method selector */}
       <div className="flex flex-col gap-2">
-        <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Payment Method</p>
+        <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">{t('payment.payment_method')}</p>
         <div className="grid grid-cols-3 gap-2">
           {CARD_SUB_METHODS.map(m => (
             <button
@@ -67,7 +69,7 @@ export default function CardPayment({ total, onProcess }: CardPaymentProps) {
       {/* Bank selector — only shown when Bank Transfer is selected */}
       {isBankTransfer && (
         <div className="flex flex-col gap-2 p-3 bg-zinc-900/60 border border-zinc-800 rounded-xl">
-          <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Select Bank</p>
+          <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">{t('payment.select_bank')}</p>
           <div className="grid grid-cols-2 gap-1.5">
             {BANK_TRANSFER_BANKS.map(bank => (
               <button
@@ -92,7 +94,7 @@ export default function CardPayment({ total, onProcess }: CardPaymentProps) {
                   : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-100 hover:border-zinc-500 hover:bg-zinc-700',
               )}
             >
-              Other Bank
+              {t('payment.other_bank')}
             </button>
           </div>
 
@@ -103,7 +105,7 @@ export default function CardPayment({ total, onProcess }: CardPaymentProps) {
               autoFocus
               value={customBankInput}
               onChange={e => { setCustomBankInput(e.target.value); setBankTransferBank(e.target.value) }}
-              placeholder="Type bank name…"
+              placeholder={t('payment.bank_name_placeholder')}
               className="w-full bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 text-sm px-3 py-2
                 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 transition-all placeholder-zinc-600"
             />
@@ -111,7 +113,7 @@ export default function CardPayment({ total, onProcess }: CardPaymentProps) {
 
           {bankTransferBank.trim() && (
             <p className="text-[10px] text-zinc-500 text-center">
-              Bank: <span className="text-zinc-300 font-medium">{bankTransferBank}</span>
+              {t('payment.bank_label')} <span className="text-zinc-300 font-medium">{bankTransferBank}</span>
             </p>
           )}
         </div>
@@ -129,8 +131,8 @@ export default function CardPayment({ total, onProcess }: CardPaymentProps) {
         )}
       >
         {canProcess
-          ? `Pay ${fmt(total)} via ${selected.label}${isBankTransfer && bankTransferBank ? ` (${bankTransferBank})` : ''}`
-          : 'Select a bank to continue'
+          ? `${t('payment.pay')} ${fmt(total)} ${t('payment.via')} ${selected.label}${isBankTransfer && bankTransferBank ? ` (${bankTransferBank})` : ''}`
+          : t('payment.select_bank_continue')
         }
       </button>
     </div>

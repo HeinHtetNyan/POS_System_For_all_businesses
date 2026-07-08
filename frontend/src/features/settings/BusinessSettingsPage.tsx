@@ -62,10 +62,10 @@ export default function BusinessSettingsPage() {
     mutationFn: (payload: TenantUpdateRequest) => tenantService.updateTenant(tenantId!, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tenant', tenantId] })
-      toast.success('Business settings saved')
+      toast.success(t('settings.business_settings_saved'))
       setIsEditing(false)
     },
-    onError: err => toast.error(extractApiMsg(err) ?? 'Failed to save'),
+    onError: err => toast.error(extractApiMsg(err) ?? t('settings.save_failed')),
   })
 
   function handleSave() {
@@ -218,7 +218,7 @@ export default function BusinessSettingsPage() {
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(tenant.business_code!)
-                  import('sonner').then(m => m.toast.success('Business code copied!'))
+                  import('sonner').then(m => m.toast.success(t('settings.business_code_copied')))
                 }}
                 className="text-xs text-amber-400 hover:text-amber-300 flex-shrink-0 border border-amber-500/30 rounded-lg px-2.5 py-1.5 hover:bg-amber-500/10 transition-colors"
               >

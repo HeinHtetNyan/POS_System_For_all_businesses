@@ -9,6 +9,7 @@ import { fmt, fmtDateTime } from '@/lib/utils'
 import { getPaymentMethodLabel } from '@/lib/paymentMethod'
 import { Spinner, StatCard } from '@/components/ui'
 import { analyticsService } from '@/services/analytics/analytics.service'
+import { useLocaleStore } from '@/i18n/localeStore'
 import {
   useAnalyticsFilters, AnalyticsFilters, ChartCard,
   CHART_COLORS, PIE_COLORS, CHART_AXIS_TICK,
@@ -17,7 +18,14 @@ import {
 
 type Granularity = 'daily' | 'weekly' | 'monthly'
 
+const GRANULARITY_KEYS: Record<Granularity, string> = {
+  daily:   'analytics.daily',
+  weekly:  'analytics.weekly',
+  monthly: 'analytics.monthly',
+}
+
 export default function AnalyticsDashboardPage() {
+  const t = useLocaleStore(s => s.t)
   const filters = useAnalyticsFilters()
   const [granularity, setGranularity] = useState<Granularity>('daily')
 
@@ -76,9 +84,9 @@ export default function AnalyticsDashboardPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="flex-1">
-          <h2 className="text-base font-semibold text-zinc-100">Analytics Dashboard</h2>
+          <h2 className="text-base font-semibold text-zinc-100">{t('analytics.dashboard_title')}</h2>
           {data?.generated_at && (
-            <p className="text-xs text-zinc-500 mt-0.5">Updated {fmtDateTime(data.generated_at)}</p>
+            <p className="text-xs text-zinc-500 mt-0.5">{t('analytics.updated_prefix')} {fmtDateTime(data.generated_at)}</p>
           )}
         </div>
         <AnalyticsFilters {...filters} showDateRange={false} />
@@ -89,25 +97,25 @@ export default function AnalyticsDashboardPage() {
       ) : error ? (
         <div className={`rounded-2xl px-4 py-5 border text-sm ${isFeatureDisabled ? 'bg-amber-950/30 border-amber-800 text-amber-300' : 'bg-red-950/40 border-red-900 text-red-400'}`}>
           {isFeatureDisabled
-            ? 'Analytics is not included in your current plan. Upgrade to unlock dashboards and reports.'
-            : 'Failed to load dashboard data'}
+            ? t('analytics.plan_disabled')
+            : t('analytics.load_failed')}
         </div>
       ) : !data ? null : (
         <div className="space-y-5">
           {/* Sales KPIs */}
           <section>
-            <p className="text-[10px] text-zinc-600 uppercase tracking-widest font-semibold mb-2.5 px-0.5">Sales</p>
+            <p className="text-[10px] text-zinc-600 uppercase tracking-widest font-semibold mb-2.5 px-0.5">{t('nav.sales')}</p>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <StatCard label="Sales Today"      value={fmt(data.sales_today)}      accent />
-              <StatCard label="Sales This Month" value={fmt(data.sales_this_month)} />
-              <StatCard label="Sales Yesterday"  value={fmt(data.sales_yesterday)}  />
-              <StatCard label="Sales This Week"  value={fmt(data.sales_this_week)}  />
+              <StatCard label={t('analytics.sales_today')}      value={fmt(data.sales_today)}      accent />
+              <StatCard label={t('analytics.sales_this_month')} value={fmt(data.sales_this_month)} />
+              <StatCard label={t('analytics.sales_yesterday')}  value={fmt(data.sales_yesterday)}  />
+              <StatCard label={t('analytics.sales_this_week')}  value={fmt(data.sales_this_week)}  />
             </div>
           </section>
 
           {/* Sales Trend Chart */}
           <ChartCard
-            title="Sales Trend"
+            title={t('analytics.sales_trend')}
             isLoading={trendQ.isLoading}
             isEmpty={trendData.length === 0}
             action={
@@ -122,7 +130,7 @@ export default function AnalyticsDashboardPage() {
                         : 'bg-zinc-800 border-zinc-700 text-zinc-500 hover:text-zinc-200'
                     }`}
                   >
-                    {g[0].toUpperCase() + g.slice(1)}
+                    {t(GRANULARITY_KEYS[g])}
                   </button>
                 ))}
               </div>
@@ -139,7 +147,7 @@ export default function AnalyticsDashboardPage() {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_STROKE} />
                   <XAxis dataKey="period" tick={CHART_AXIS_TICK} tickLine={false} axisLine={false} />
-                  <YAxis tick={CHART_AXIS_TICK} tickLine={false} axisLine={false} tickFormatter={v => `${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kyats`} />
+                  <YAxis tick={CHART_AXIS_TICK} tickLine={false} axisLine={false} tickFormatter={v => `${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${t('currency.mmk')}`} />
                   <Tooltip
                     contentStyle={CHART_TOOLTIP_STYLE.contentStyle}
                     labelStyle={CHART_TOOLTIP_STYLE.labelStyle}
@@ -162,7 +170,7 @@ export default function AnalyticsDashboardPage() {
           {/* Payment Methods + Sales by Category */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ChartCard
-              title="Payment Methods"
+              title={t('analytics.payment_methods')}
               isLoading={paymentMethodsQ.isLoading}
               isEmpty={pmData.length === 0}
             >
@@ -198,7 +206,7 @@ export default function AnalyticsDashboardPage() {
             </ChartCard>
 
             <ChartCard
-              title="Sales by Category"
+              title={t('analytics.sales_by_category')}
               isLoading={byCategoryQ.isLoading}
               isEmpty={categoryData.length === 0}
             >
@@ -216,7 +224,7 @@ export default function AnalyticsDashboardPage() {
                       tick={CHART_AXIS_TICK}
                       tickLine={false}
                       axisLine={false}
-                      tickFormatter={v => `${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kyats`}
+                      tickFormatter={v => `${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${t('currency.mmk')}`}
                     />
                     <Tooltip
                       contentStyle={CHART_TOOLTIP_STYLE.contentStyle}
@@ -231,24 +239,24 @@ export default function AnalyticsDashboardPage() {
 
           {/* Orders & Revenue */}
           <section>
-            <p className="text-[10px] text-zinc-600 uppercase tracking-widest font-semibold mb-2.5 px-0.5">Orders & Revenue</p>
+            <p className="text-[10px] text-zinc-600 uppercase tracking-widest font-semibold mb-2.5 px-0.5">{t('analytics.orders_revenue')}</p>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <StatCard label="Orders Today"       value={data.orders_today.toLocaleString()}      />
-              <StatCard label="Orders This Month"  value={data.orders_this_month.toLocaleString()} />
-              <StatCard label="Revenue Today"      value={fmt(data.revenue_today)} accent />
-              <StatCard label="Revenue This Month" value={fmt(data.revenue_month)}                 />
+              <StatCard label={t('analytics.orders_today')}       value={data.orders_today.toLocaleString()}      />
+              <StatCard label={t('analytics.orders_this_month')}  value={data.orders_this_month.toLocaleString()} />
+              <StatCard label={t('analytics.revenue_today')}      value={fmt(data.revenue_today)} accent />
+              <StatCard label={t('analytics.revenue_this_month')} value={fmt(data.revenue_month)}                 />
             </div>
           </section>
 
           {/* Customers & Inventory */}
           <section>
-            <p className="text-[10px] text-zinc-600 uppercase tracking-widest font-semibold mb-2.5 px-0.5">Customers & Inventory</p>
+            <p className="text-[10px] text-zinc-600 uppercase tracking-widest font-semibold mb-2.5 px-0.5">{t('analytics.customers_inventory')}</p>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <StatCard label="Total Customers" value={data.total_customers.toLocaleString()} />
-              <StatCard label="New This Month"  value={data.new_customers_month.toLocaleString()} accent />
-              <StatCard label="Inventory Value" value={fmt(data.inventory_value)} />
+              <StatCard label={t('analytics.total_customers')} value={data.total_customers.toLocaleString()} />
+              <StatCard label={t('analytics.new_this_month')}  value={data.new_customers_month.toLocaleString()} accent />
+              <StatCard label={t('analytics.inventory_value')} value={fmt(data.inventory_value)} />
               <StatCard
-                label="Low Stock Items"
+                label={t('analytics.low_stock_items')}
                 value={data.low_stock_products.toLocaleString()}
                 accent={data.low_stock_products > 0}
               />
@@ -257,10 +265,10 @@ export default function AnalyticsDashboardPage() {
 
           {/* Customer Debts */}
           <section>
-            <p className="text-[10px] text-zinc-600 uppercase tracking-widest font-semibold mb-2.5 px-0.5">Customer Debts</p>
+            <p className="text-[10px] text-zinc-600 uppercase tracking-widest font-semibold mb-2.5 px-0.5">{t('analytics.customer_debts')}</p>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <StatCard
-                label="Total Outstanding"
+                label={t('analytics.total_outstanding')}
                 value={fmt(data.total_customer_outstanding)}
                 accent={parseFloat(data.total_customer_outstanding) > 0}
               />
@@ -269,15 +277,15 @@ export default function AnalyticsDashboardPage() {
 
           {/* Refunds */}
           <section>
-            <p className="text-[10px] text-zinc-600 uppercase tracking-widest font-semibold mb-2.5 px-0.5">Refunds</p>
+            <p className="text-[10px] text-zinc-600 uppercase tracking-widest font-semibold mb-2.5 px-0.5">{t('analytics.refunds')}</p>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <StatCard
-                label="Refund Count"
+                label={t('analytics.refund_count')}
                 value={data.refund_count_month.toLocaleString()}
                 accent={data.refund_count_month > 0}
               />
               <StatCard
-                label="Refund Amount"
+                label={t('analytics.refund_amount')}
                 value={fmt(data.refund_amount_month)}
                 accent={parseFloat(data.refund_amount_month) > 0}
               />

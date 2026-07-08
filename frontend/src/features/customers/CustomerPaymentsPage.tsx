@@ -7,6 +7,7 @@ import { Btn, Modal, Spinner, Empty, Table, Th, Td, StatCard } from '@/component
 import { IconPlus, IconCash } from '@/components/icons'
 import { customersService } from '@/services/customers/customers.service'
 import { useAuthStore } from '@/store/auth.store'
+import { useLocaleStore } from '@/i18n/localeStore'
 import type { LedgerEntry } from '@/shared/types'
 
 const PAGE_SIZE = 30
@@ -15,6 +16,7 @@ export default function CustomerPaymentsPage() {
   const { id } = useParams<{ id: string }>()
   const qc = useQueryClient()
   const user = useAuthStore(s => s.user)
+  const t = useLocaleStore(s => s.t)
   // Cashiers get read-only lookup — see CustomersScreen.tsx for the same rule.
   const canManageCustomers = user?.role !== 'CASHIER'
 
@@ -44,7 +46,7 @@ export default function CustomerPaymentsPage() {
       reference_id:   reference || undefined,
     }),
     onSuccess: () => {
-      toast.success('Payment recorded')
+      toast.success(t('customers.payment_recorded'))
       setShowModal(false)
       setAmount('')
       setNote('')
@@ -54,7 +56,7 @@ export default function CustomerPaymentsPage() {
       qc.invalidateQueries({ queryKey: ['customer-statement', id] })
       qc.invalidateQueries({ queryKey: ['customers'] })
     },
-    onError: () => toast.error('Failed to record payment'),
+    onError: () => toast.error(t('customers.payment_failed')),
   })
 
   const allEntries: LedgerEntry[] = ledgerData?.items ?? []
@@ -86,10 +88,10 @@ export default function CustomerPaymentsPage() {
       {/* Summary + action */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex gap-3">
-          <StatCard label="Debt Payments" value={fmt(totalPaid)} />
+          <StatCard label={t('customers.debt_payments')} value={fmt(totalPaid)} />
           {statement?.closing_balance != null && (
             <StatCard
-              label="Remaining Debt"
+              label={t('customers.remaining_debt')}
               value={fmt(statement.closing_balance)}
               accent={parseFloat(statement.closing_balance) > 0}
             />
@@ -97,7 +99,7 @@ export default function CustomerPaymentsPage() {
         </div>
         {canManageCustomers && (
           <Btn onClick={() => setShowModal(true)}>
-            <IconPlus width="14" height="14" /> Record Payment
+            <IconPlus width="14" height="14" /> {t('customers.record_payment')}
           </Btn>
         )}
       </div>
@@ -105,8 +107,8 @@ export default function CustomerPaymentsPage() {
       {/* Debt payment history */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
         <div className="px-4 py-3 border-b border-zinc-800">
-          <h3 className="text-sm font-semibold text-zinc-200">Debt Payment History</h3>
-          <p className="text-xs text-zinc-600 mt-0.5">Payments made to clear outstanding balance</p>
+          <h3 className="text-sm font-semibold text-zinc-200">{t('customers.debt_payment_history')}</h3>
+          <p className="text-xs text-zinc-600 mt-0.5">{t('customers.debt_payment_history_sub')}</p>
         </div>
 
         {isLoading ? (
@@ -116,12 +118,12 @@ export default function CustomerPaymentsPage() {
         ) : debtPayments.length === 0 ? (
           <Empty
             icon={<IconCash width="40" height="40" />}
-            title="No debt payments yet"
-            subtitle={canManageCustomers ? "Use the button above to record a payment toward the customer's outstanding balance" : undefined}
+            title={t('customers.no_debt_payments')}
+            subtitle={canManageCustomers ? t('customers.no_debt_payments_sub') : undefined}
             action={
               canManageCustomers ? (
                 <Btn size="sm" onClick={() => setShowModal(true)}>
-                  <IconPlus width="14" height="14" /> Record Payment
+                  <IconPlus width="14" height="14" /> {t('customers.record_payment')}
                 </Btn>
               ) : undefined
             }
@@ -131,11 +133,11 @@ export default function CustomerPaymentsPage() {
           <Table>
             <thead>
               <tr>
-                <Th>Date</Th>
-                <Th>Note</Th>
-                <Th>Reference</Th>
-                <Th right>Amount Paid</Th>
-                <Th right>Balance After</Th>
+                <Th>{t('customers.date')}</Th>
+                <Th>{t('customers.note')}</Th>
+                <Th>{t('customers.reference')}</Th>
+                <Th right>{t('customers.amount_paid')}</Th>
+                <Th right>{t('customers.balance_after')}</Th>
               </tr>
             </thead>
             <tbody>
@@ -156,20 +158,20 @@ export default function CustomerPaymentsPage() {
           </Table>
           <div className="px-4 py-2.5 border-t border-zinc-800 flex items-center justify-between gap-3">
             <p className="text-xs text-zinc-500">
-              {debtPayments.length === 0 ? '0 payments' : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, debtPayments.length)} of ${debtPayments.length}`}
+              {debtPayments.length === 0 ? `0 ${t('customers.payments_word')}` : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, debtPayments.length)} ${t('customers.of')} ${debtPayments.length}`}
             </p>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
                 className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              >‹ Prev</button>
+              >{t('common.prev')}</button>
               <span className="text-xs text-zinc-500 px-2">{page} / {totalPages}</span>
               <button
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page >= totalPages}
                 className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              >Next ›</button>
+              >{t('common.next')}</button>
             </div>
           </div>
           </>
@@ -177,11 +179,11 @@ export default function CustomerPaymentsPage() {
       </div>
 
       {/* Record Payment Modal */}
-      <Modal open={showModal} onClose={closeModal} title="Record Debt Payment">
+      <Modal open={showModal} onClose={closeModal} title={t('customers.record_debt_payment')}>
         <div className="space-y-4">
-          <p className="text-xs text-zinc-500">Record a payment toward this customer's outstanding balance.</p>
+          <p className="text-xs text-zinc-500">{t('customers.record_payment_desc')}</p>
 
-          <ModalField label="Amount" required>
+          <ModalField label={t('customers.amount')} required>
             <input
               type="number"
               step="0.01"
@@ -194,34 +196,34 @@ export default function CustomerPaymentsPage() {
             />
           </ModalField>
 
-          <ModalField label="Reference">
+          <ModalField label={t('customers.reference')}>
             <input
               type="text"
               value={reference}
               onChange={e => setReference(e.target.value)}
-              placeholder="Receipt #, bank ref…"
+              placeholder={t('customers.reference_placeholder')}
               className="w-full bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 placeholder-zinc-600 text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 py-2.5 px-3"
             />
           </ModalField>
 
-          <ModalField label="Note">
+          <ModalField label={t('customers.note')}>
             <textarea
               value={note}
               onChange={e => setNote(e.target.value)}
               rows={2}
-              placeholder="Optional note…"
+              placeholder={t('customers.optional_note_placeholder')}
               className="w-full bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 placeholder-zinc-600 text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 py-2.5 px-3 resize-none"
             />
           </ModalField>
 
           <div className="flex gap-3">
-            <Btn variant="secondary" fullWidth onClick={closeModal}>Cancel</Btn>
+            <Btn variant="secondary" fullWidth onClick={closeModal}>{t('common.cancel')}</Btn>
             <Btn
               fullWidth
               disabled={!amount || parseFloat(amount) <= 0 || paymentMutation.isPending}
               onClick={() => paymentMutation.mutate()}
             >
-              {paymentMutation.isPending ? <Spinner size={16} /> : 'Record Payment'}
+              {paymentMutation.isPending ? <Spinner size={16} /> : t('customers.record_payment')}
             </Btn>
           </div>
         </div>

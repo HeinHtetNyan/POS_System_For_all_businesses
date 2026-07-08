@@ -10,13 +10,22 @@ import { Btn, Badge, Table, Th, Td, Spinner, Divider, PasswordInput } from '@/co
 import { usersService } from '@/services/users/users.service'
 import { tenantService } from '@/services/tenant/tenant.service'
 import { useAuthStore } from '@/store/auth.store'
+import { useLocaleStore } from '@/i18n/localeStore'
 import type { User, UserRole } from '@/shared/types'
 
 const STAFF_ROLES: UserRole[] = ['MANAGER', 'CASHIER', 'INVENTORY_STAFF']
-const ROLE_LABELS: Record<string, string> = {
-  MANAGER:         'Manager',
-  CASHIER:         'Cashier',
-  INVENTORY_STAFF: 'Inventory Staff',
+
+function roleLabel(t: (k: string) => string, role: string) {
+  if (role === 'MANAGER')         return t('settings.staff.role_manager')
+  if (role === 'CASHIER')         return t('settings.staff.role_cashier')
+  if (role === 'INVENTORY_STAFF') return t('settings.staff.role_inventory')
+  return role
+}
+
+function statusLabel(t: (k: string) => string, status: string) {
+  if (status === 'ACTIVE')    return t('status.active')
+  if (status === 'SUSPENDED') return t('settings.staff.status_suspended')
+  return status
 }
 
 function inputCls(err = false) {
@@ -49,25 +58,28 @@ function statusVariant(status: string) {
 
 // Create Staff Modal
 
-const createSchema = z.object({
-  first_name:        z.string().min(1, 'Required'),
-  last_name:         z.string().min(1, 'Required'),
-  email:             z.string().email('Invalid email').or(z.literal('')).optional(),
-  password:          newPasswordZodSchema,
-  confirm_password:  z.string().min(1, 'Required'),
-  phone:             z.string().min(1, 'Phone number is required'),
-  role:              z.enum(['MANAGER', 'CASHIER', 'INVENTORY_STAFF']),
-  primary_branch_id: z.string().optional(),
-}).refine(d => d.password === d.confirm_password, {
-  message: PASSWORDS_DO_NOT_MATCH_MESSAGE,
-  path: ['confirm_password'],
-})
-type CreateForm = z.infer<typeof createSchema>
+function makeCreateSchema(t: (k: string) => string) {
+  return z.object({
+    first_name:        z.string().min(1, t('settings.staff.required')),
+    last_name:         z.string().min(1, t('settings.staff.required')),
+    email:             z.string().email(t('settings.staff.invalid_email')).or(z.literal('')).optional(),
+    password:          newPasswordZodSchema,
+    confirm_password:  z.string().min(1, t('settings.staff.required')),
+    phone:             z.string().min(1, t('settings.staff.phone_required')),
+    role:              z.enum(['MANAGER', 'CASHIER', 'INVENTORY_STAFF']),
+    primary_branch_id: z.string().optional(),
+  }).refine(d => d.password === d.confirm_password, {
+    message: PASSWORDS_DO_NOT_MATCH_MESSAGE,
+    path: ['confirm_password'],
+  })
+}
+type CreateForm = z.infer<ReturnType<typeof makeCreateSchema>>
 
 function CreateStaffModal({ onClose, tenantId }: { onClose: () => void; tenantId: string }) {
+  const t = useLocaleStore(s => s.t)
   const qc = useQueryClient()
   const { register, handleSubmit, formState: { errors } } = useForm<CreateForm>({
-    resolver: zodResolver(createSchema),
+    resolver: zodResolver(makeCreateSchema(t)),
     defaultValues: { role: 'CASHIER' },
   })
 
@@ -95,64 +107,64 @@ function CreateStaffModal({ onClose, tenantId }: { onClose: () => void; tenantId
     },
     onSuccess: (created) => {
       toast.success(
-        `Account created. Staff logs in with Business Code + phone: ${created.phone ?? created.email}`,
+        `${t('settings.staff.create_success_prefix')} ${created.phone ?? created.email}`,
         { duration: 10000 },
       )
       qc.invalidateQueries({ queryKey: ['staff-users'] })
       onClose()
     },
-    onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to create account'),
+    onError: (err) => toast.error(extractApiMsg(err) ?? t('settings.staff.create_error')),
   })
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
       <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-md shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
-          <h2 className="text-base font-semibold text-zinc-100">Add Staff Account</h2>
+          <h2 className="text-base font-semibold text-zinc-100">{t('settings.staff.add_title')}</h2>
           <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-zinc-800 transition-colors">✕</button>
         </div>
         <form onSubmit={handleSubmit(d => mutation.mutate(d))} className="p-5 space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <FormField label="First Name" error={errors.first_name?.message} required>
-              <input {...register('first_name')} placeholder="John" className={inputCls(!!errors.first_name)} />
+            <FormField label={t('settings.staff.first_name')} error={errors.first_name?.message} required>
+              <input {...register('first_name')} placeholder={t('settings.staff.first_name_placeholder')} className={inputCls(!!errors.first_name)} />
             </FormField>
-            <FormField label="Last Name" error={errors.last_name?.message} required>
-              <input {...register('last_name')} placeholder="Doe" className={inputCls(!!errors.last_name)} />
+            <FormField label={t('settings.staff.last_name')} error={errors.last_name?.message} required>
+              <input {...register('last_name')} placeholder={t('settings.staff.last_name_placeholder')} className={inputCls(!!errors.last_name)} />
             </FormField>
           </div>
-          <FormField label="Email" error={errors.email?.message}>
-            <input {...register('email')} type="email" placeholder="Optional — auto-generated if blank" className={inputCls(!!errors.email)} />
+          <FormField label={t('settings.email')} error={errors.email?.message}>
+            <input {...register('email')} type="email" placeholder={t('settings.staff.email_placeholder')} className={inputCls(!!errors.email)} />
           </FormField>
-          <FormField label="Password" error={errors.password?.message} required>
-            <PasswordInput {...register('password')} placeholder="Min 8 chars, upper, lower, digit" inputClassName={inputCls(!!errors.password)} />
+          <FormField label={t('settings.staff.password')} error={errors.password?.message} required>
+            <PasswordInput {...register('password')} placeholder={t('settings.staff.password_placeholder')} inputClassName={inputCls(!!errors.password)} />
           </FormField>
-          <FormField label="Confirm Password" error={errors.confirm_password?.message} required>
-            <PasswordInput {...register('confirm_password')} placeholder="Repeat password" inputClassName={inputCls(!!errors.confirm_password)} />
+          <FormField label={t('settings.staff.confirm_password')} error={errors.confirm_password?.message} required>
+            <PasswordInput {...register('confirm_password')} placeholder={t('settings.staff.confirm_password_placeholder')} inputClassName={inputCls(!!errors.confirm_password)} />
           </FormField>
           <div className="grid grid-cols-2 gap-3">
-            <FormField label="Phone" error={errors.phone?.message} required>
-              <input {...register('phone')} type="tel" inputMode="tel" autoComplete="tel" placeholder="+1 234 567 8900" className={inputCls(!!errors.phone)} />
+            <FormField label={t('settings.phone')} error={errors.phone?.message} required>
+              <input {...register('phone')} type="tel" inputMode="tel" autoComplete="tel" placeholder={t('settings.staff.phone_placeholder')} className={inputCls(!!errors.phone)} />
             </FormField>
-            <FormField label="Role" required>
+            <FormField label={t('settings.staff.role')} required>
               <select {...register('role')} className={inputCls()}>
                 {STAFF_ROLES.map(r => (
-                  <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                  <option key={r} value={r}>{roleLabel(t, r)}</option>
                 ))}
               </select>
             </FormField>
           </div>
-          <FormField label="Assigned Branch">
+          <FormField label={t('settings.staff.assigned_branch')}>
             <select {...register('primary_branch_id')} className={inputCls()}>
-              <option value="">— No branch assigned —</option>
+              <option value="">{t('settings.staff.no_branch_option')}</option>
               {branches.map(b => (
                 <option key={b.id} value={b.id}>{b.name}</option>
               ))}
             </select>
           </FormField>
           <div className="flex gap-3 pt-1">
-            <Btn type="button" variant="secondary" onClick={onClose}>Cancel</Btn>
+            <Btn type="button" variant="secondary" onClick={onClose}>{t('common.cancel')}</Btn>
             <Btn type="submit" disabled={mutation.isPending} fullWidth>
-              {mutation.isPending ? <Spinner size={16} /> : 'Create Account'}
+              {mutation.isPending ? <Spinner size={16} /> : t('settings.staff.create_account_btn')}
             </Btn>
           </div>
         </form>
@@ -163,23 +175,27 @@ function CreateStaffModal({ onClose, tenantId }: { onClose: () => void; tenantId
 
 // Edit Staff Modal
 
-const editSchema = z.object({
-  first_name:        z.string().min(1, 'Required'),
-  last_name:         z.string().min(1, 'Required'),
-  phone:             z.string().optional(),
-  role:              z.enum(['MANAGER', 'CASHIER', 'INVENTORY_STAFF']),
-  primary_branch_id: z.string().optional(),
-})
-type EditForm = z.infer<typeof editSchema>
+function makeEditSchema(t: (k: string) => string) {
+  return z.object({
+    first_name:        z.string().min(1, t('settings.staff.required')),
+    last_name:         z.string().min(1, t('settings.staff.required')),
+    phone:             z.string().optional(),
+    role:              z.enum(['MANAGER', 'CASHIER', 'INVENTORY_STAFF']),
+    primary_branch_id: z.string().optional(),
+  })
+}
+type EditForm = z.infer<ReturnType<typeof makeEditSchema>>
 
-const resetPwSchema = z.object({
-  new_password: newPasswordZodSchema,
-  confirm_password: z.string().min(1, 'Required'),
-}).refine(d => d.new_password === d.confirm_password, {
-  message: PASSWORDS_DO_NOT_MATCH_MESSAGE,
-  path: ['confirm_password'],
-})
-type ResetPwForm = z.infer<typeof resetPwSchema>
+function makeResetPwSchema(t: (k: string) => string) {
+  return z.object({
+    new_password: newPasswordZodSchema,
+    confirm_password: z.string().min(1, t('settings.staff.required')),
+  }).refine(d => d.new_password === d.confirm_password, {
+    message: PASSWORDS_DO_NOT_MATCH_MESSAGE,
+    path: ['confirm_password'],
+  })
+}
+type ResetPwForm = z.infer<ReturnType<typeof makeResetPwSchema>>
 
 function EditStaffModal({ staff, isOwner, tenantId, onClose }: {
   staff: User
@@ -187,6 +203,7 @@ function EditStaffModal({ staff, isOwner, tenantId, onClose }: {
   tenantId: string
   onClose: () => void
 }) {
+  const t = useLocaleStore(s => s.t)
   const qc = useQueryClient()
   const [tab, setTab] = useState<'profile' | 'password'>('profile')
 
@@ -199,7 +216,7 @@ function EditStaffModal({ staff, isOwner, tenantId, onClose }: {
   const branches = (branchesData?.items ?? []).filter(b => b.status === 'ACTIVE')
 
   const editForm = useForm<EditForm>({
-    resolver: zodResolver(editSchema),
+    resolver: zodResolver(makeEditSchema(t)),
     defaultValues: {
       first_name:        staff.first_name,
       last_name:         staff.last_name,
@@ -210,7 +227,7 @@ function EditStaffModal({ staff, isOwner, tenantId, onClose }: {
   })
 
   const pwForm = useForm<ResetPwForm>({
-    resolver: zodResolver(resetPwSchema),
+    resolver: zodResolver(makeResetPwSchema(t)),
     defaultValues: { new_password: '', confirm_password: '' },
   })
 
@@ -227,21 +244,21 @@ function EditStaffModal({ staff, isOwner, tenantId, onClose }: {
       }
     },
     onSuccess: () => {
-      toast.success('Staff profile updated')
+      toast.success(t('settings.staff.update_success'))
       qc.invalidateQueries({ queryKey: ['staff-users'] })
       onClose()
     },
-    onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to update'),
+    onError: (err) => toast.error(extractApiMsg(err) ?? t('settings.staff.update_error')),
   })
 
   const resetPwMutation = useMutation({
     mutationFn: (data: ResetPwForm) => usersService.resetPassword(staff.id, data.new_password),
     onSuccess: () => {
-      toast.success(`Password reset for ${staff.first_name} ${staff.last_name}`)
+      toast.success(`${t('settings.staff.reset_password_success_prefix')} ${staff.first_name} ${staff.last_name}`)
       pwForm.reset()
       onClose()
     },
-    onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to reset password'),
+    onError: (err) => toast.error(extractApiMsg(err) ?? t('settings.staff.reset_password_error')),
   })
 
   return (
@@ -250,8 +267,8 @@ function EditStaffModal({ staff, isOwner, tenantId, onClose }: {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
           <div>
-            <h2 className="text-base font-semibold text-zinc-100">Edit Staff</h2>
-            <p className="text-xs text-zinc-500">{staff.full_name} · {ROLE_LABELS[staff.role] ?? staff.role}</p>
+            <h2 className="text-base font-semibold text-zinc-100">{t('settings.staff.edit_title')}</h2>
+            <p className="text-xs text-zinc-500">{staff.full_name} · {roleLabel(t, staff.role)}</p>
           </div>
           <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-zinc-800 transition-colors">✕</button>
         </div>
@@ -263,13 +280,13 @@ function EditStaffModal({ staff, isOwner, tenantId, onClose }: {
               onClick={() => setTab('profile')}
               className={cn('px-3 py-1.5 rounded-lg text-xs font-medium transition-colors', tab === 'profile' ? 'bg-amber-500 text-black' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800')}
             >
-              Profile
+              {t('settings.staff.profile_tab')}
             </button>
             <button
               onClick={() => setTab('password')}
               className={cn('px-3 py-1.5 rounded-lg text-xs font-medium transition-colors', tab === 'password' ? 'bg-amber-500 text-black' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800')}
             >
-              Reset Password
+              {t('settings.staff.reset_password_tab')}
             </button>
           </div>
         )}
@@ -278,29 +295,29 @@ function EditStaffModal({ staff, isOwner, tenantId, onClose }: {
         {tab === 'profile' && (
           <form onSubmit={editForm.handleSubmit(d => updateMutation.mutate(d))} className="p-5 space-y-4">
             <div className="grid grid-cols-2 gap-3">
-              <FormField label="First Name" error={editForm.formState.errors.first_name?.message} required>
+              <FormField label={t('settings.staff.first_name')} error={editForm.formState.errors.first_name?.message} required>
                 <input {...editForm.register('first_name')} className={inputCls(!!editForm.formState.errors.first_name)} />
               </FormField>
-              <FormField label="Last Name" error={editForm.formState.errors.last_name?.message} required>
+              <FormField label={t('settings.staff.last_name')} error={editForm.formState.errors.last_name?.message} required>
                 <input {...editForm.register('last_name')} className={inputCls(!!editForm.formState.errors.last_name)} />
               </FormField>
             </div>
-            <FormField label="Phone" error={editForm.formState.errors.phone?.message}>
-              <input {...editForm.register('phone')} type="tel" inputMode="tel" autoComplete="tel" placeholder="+1 234 567 8900" className={inputCls(!!editForm.formState.errors.phone)} />
+            <FormField label={t('settings.phone')} error={editForm.formState.errors.phone?.message}>
+              <input {...editForm.register('phone')} type="tel" inputMode="tel" autoComplete="tel" placeholder={t('settings.staff.phone_placeholder')} className={inputCls(!!editForm.formState.errors.phone)} />
             </FormField>
             {isOwner && (
-              <FormField label="Role" required>
+              <FormField label={t('settings.staff.role')} required>
                 <select {...editForm.register('role')} className={inputCls()}>
                   {STAFF_ROLES.map(r => (
-                    <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                    <option key={r} value={r}>{roleLabel(t, r)}</option>
                   ))}
                 </select>
               </FormField>
             )}
             {isOwner && (
-              <FormField label="Assigned Branch">
+              <FormField label={t('settings.staff.assigned_branch')}>
                 <select {...editForm.register('primary_branch_id')} className={inputCls()}>
-                  <option value="">— No branch assigned —</option>
+                  <option value="">{t('settings.staff.no_branch_option')}</option>
                   {branches.map(b => (
                     <option key={b.id} value={b.id}>{b.name}</option>
                   ))}
@@ -308,9 +325,9 @@ function EditStaffModal({ staff, isOwner, tenantId, onClose }: {
               </FormField>
             )}
             <div className="flex gap-3 pt-1">
-              <Btn type="button" variant="secondary" onClick={onClose}>Cancel</Btn>
+              <Btn type="button" variant="secondary" onClick={onClose}>{t('common.cancel')}</Btn>
               <Btn type="submit" disabled={updateMutation.isPending} fullWidth>
-                {updateMutation.isPending ? <Spinner size={16} /> : 'Save Changes'}
+                {updateMutation.isPending ? <Spinner size={16} /> : t('settings.save_changes')}
               </Btn>
             </div>
           </form>
@@ -321,29 +338,29 @@ function EditStaffModal({ staff, isOwner, tenantId, onClose }: {
           <form onSubmit={pwForm.handleSubmit(d => resetPwMutation.mutate(d))} className="p-5 space-y-4">
             <div className="bg-amber-950/50 border border-amber-800/50 rounded-xl px-4 py-3">
               <p className="text-xs text-amber-400">
-                You are resetting the password for <span className="font-semibold">{staff.full_name}</span>.
-                They will need to use this new password to log in.
+                {t('settings.staff.reset_warning_prefix')} <span className="font-semibold">{staff.full_name}</span>.
+                {' '}{t('settings.staff.reset_warning_suffix')}
               </p>
             </div>
             <Divider />
-            <FormField label="New Password" error={pwForm.formState.errors.new_password?.message} required>
+            <FormField label={t('settings.staff.new_password')} error={pwForm.formState.errors.new_password?.message} required>
               <PasswordInput
                 {...pwForm.register('new_password')}
-                placeholder="Min 8 chars, upper, lower, digit"
+                placeholder={t('settings.staff.password_placeholder')}
                 inputClassName={inputCls(!!pwForm.formState.errors.new_password)}
               />
             </FormField>
-            <FormField label="Confirm Password" error={pwForm.formState.errors.confirm_password?.message} required>
+            <FormField label={t('settings.staff.confirm_password')} error={pwForm.formState.errors.confirm_password?.message} required>
               <PasswordInput
                 {...pwForm.register('confirm_password')}
-                placeholder="Repeat new password"
+                placeholder={t('settings.staff.confirm_new_password_placeholder')}
                 inputClassName={inputCls(!!pwForm.formState.errors.confirm_password)}
               />
             </FormField>
             <div className="flex gap-3 pt-1">
-              <Btn type="button" variant="secondary" onClick={onClose}>Cancel</Btn>
+              <Btn type="button" variant="secondary" onClick={onClose}>{t('common.cancel')}</Btn>
               <Btn type="submit" variant="danger" disabled={resetPwMutation.isPending} fullWidth>
-                {resetPwMutation.isPending ? <Spinner size={16} /> : 'Reset Password'}
+                {resetPwMutation.isPending ? <Spinner size={16} /> : t('settings.staff.reset_password_tab')}
               </Btn>
             </div>
           </form>
@@ -357,6 +374,7 @@ function EditStaffModal({ staff, isOwner, tenantId, onClose }: {
 
 export default function StaffSettingsPage() {
   const user    = useAuthStore(s => s.user)
+  const t       = useLocaleStore(s => s.t)
   const qc      = useQueryClient()
   const isOwner = user?.role === 'BUSINESS_OWNER' || user?.role === 'SUPER_ADMIN'
   const tenantId = user?.tenant_id ?? ''
@@ -383,10 +401,10 @@ export default function StaffSettingsPage() {
     mutationFn: ({ userId, status }: { userId: string; status: string }) =>
       usersService.updateStatus(userId, status),
     onSuccess: () => {
-      toast.success('Status updated')
+      toast.success(t('settings.staff.status_updated'))
       qc.invalidateQueries({ queryKey: ['staff-users'] })
     },
-    onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to update'),
+    onError: (err) => toast.error(extractApiMsg(err) ?? t('settings.staff.update_error')),
   })
 
   const staff = (data?.items ?? []).filter(
@@ -398,10 +416,10 @@ export default function StaffSettingsPage() {
       <div className="h-full overflow-y-auto p-4 sm:p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-zinc-100">Staff Accounts</h3>
-            <p className="text-xs text-zinc-500 mt-0.5">Manage cashiers, managers, and inventory staff</p>
+            <h3 className="text-sm font-semibold text-zinc-100">{t('settings.staff.title')}</h3>
+            <p className="text-xs text-zinc-500 mt-0.5">{t('settings.staff.subtitle')}</p>
           </div>
-          {isOwner && <Btn size="sm" onClick={() => setShowCreate(true)}>+ Add Staff</Btn>}
+          {isOwner && <Btn size="sm" onClick={() => setShowCreate(true)}>{t('settings.staff.add_btn')}</Btn>}
         </div>
 
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
@@ -410,18 +428,18 @@ export default function StaffSettingsPage() {
           ) : staff.length === 0 ? (
             <div className="text-center py-10 space-y-2">
               <span className="text-3xl">👥</span>
-              <p className="text-zinc-400 text-sm">No staff accounts yet</p>
-              <p className="text-zinc-600 text-xs">Add cashiers and managers to let them log in</p>
+              <p className="text-zinc-400 text-sm">{t('settings.staff.empty')}</p>
+              <p className="text-zinc-600 text-xs">{t('settings.staff.empty_sub')}</p>
             </div>
           ) : (
             <Table>
               <thead>
                 <tr>
-                  <Th>Name</Th>
-                  <Th>Role</Th>
-                  <Th>Branch</Th>
-                  <Th>Status</Th>
-                  <Th>Last Login</Th>
+                  <Th>{t('settings.staff.col_name')}</Th>
+                  <Th>{t('settings.staff.role')}</Th>
+                  <Th>{t('settings.staff.col_branch')}</Th>
+                  <Th>{t('settings.status')}</Th>
+                  <Th>{t('settings.staff.col_last_login')}</Th>
                   <Th />
                 </tr>
               </thead>
@@ -435,15 +453,15 @@ export default function StaffSettingsPage() {
                       </div>
                     </Td>
                     <Td>
-                      <Badge size="xs" variant="default">{ROLE_LABELS[u.role] ?? u.role}</Badge>
+                      <Badge size="xs" variant="default">{roleLabel(t, u.role)}</Badge>
                     </Td>
                     <Td muted>
                       {u.primary_branch_id ? branchMap.get(u.primary_branch_id) ?? '—' : '—'}
                     </Td>
                     <Td>
-                      <Badge size="xs" variant={statusVariant(u.status)}>{u.status}</Badge>
+                      <Badge size="xs" variant={statusVariant(u.status)}>{statusLabel(t, u.status)}</Badge>
                     </Td>
-                    <Td muted>{u.last_login_at ? fmtDateTime(u.last_login_at) : 'Never'}</Td>
+                    <Td muted>{u.last_login_at ? fmtDateTime(u.last_login_at) : t('settings.staff.never')}</Td>
                     <Td>
                       <div className="flex items-center gap-1.5">
                         <Btn
@@ -451,7 +469,7 @@ export default function StaffSettingsPage() {
                           variant="ghost"
                           onClick={() => setEditingStaff(u)}
                         >
-                          Edit
+                          {t('common.edit')}
                         </Btn>
                         {isOwner && (
                           u.status === 'ACTIVE' ? (
@@ -461,7 +479,7 @@ export default function StaffSettingsPage() {
                               onClick={() => statusMutation.mutate({ userId: u.id, status: 'SUSPENDED' })}
                               disabled={statusMutation.isPending}
                             >
-                              Deactivate
+                              {t('settings.staff.deactivate')}
                             </Btn>
                           ) : (
                             <Btn
@@ -470,7 +488,7 @@ export default function StaffSettingsPage() {
                               onClick={() => statusMutation.mutate({ userId: u.id, status: 'ACTIVE' })}
                               disabled={statusMutation.isPending}
                             >
-                              Activate
+                              {t('settings.staff.activate')}
                             </Btn>
                           )
                         )}

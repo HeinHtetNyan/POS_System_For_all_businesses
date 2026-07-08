@@ -109,6 +109,18 @@ class PlatformPaymentMethodsUpdateRequest(BaseSchema):
     payment_methods: list[PlatformPaymentMethodItem]
 
 
+class AppDownloadLinksResponse(BaseSchema):
+    android: str = ""
+    ios: str = ""
+    windows: str = ""
+
+
+class AppDownloadLinksUpdateRequest(BaseSchema):
+    android: str = ""
+    ios: str = ""
+    windows: str = ""
+
+
 class PaymentMethodIconResponse(BaseSchema):
     icon_url: str
 

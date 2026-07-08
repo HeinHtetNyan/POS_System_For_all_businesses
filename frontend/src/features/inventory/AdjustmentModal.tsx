@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { useLocaleStore } from '@/i18n/localeStore'
 import { inventoryService } from '@/services/inventory/inventory.service'
 import { Modal, Btn, Input } from '@/components/ui'
 import type { InventoryItem } from '@/shared/types'
@@ -17,6 +18,7 @@ interface AdjustmentModalProps {
 type AdjustType = 'add' | 'remove'
 
 export default function AdjustmentModal({ item, branchId, productName, productSku, onClose, onSuccess }: AdjustmentModalProps) {
+  const t = useLocaleStore(s => s.t)
   const [type, setType] = useState<AdjustType>('add')
   const [qty, setQty]   = useState('')
   const [notes, setNotes] = useState('')
@@ -39,40 +41,40 @@ export default function AdjustmentModal({ item, branchId, productName, productSk
       notes:  notes || undefined,
     }),
     onSuccess: () => {
-      toast.success(`Stock ${type === 'add' ? 'added' : 'removed'}: ${qtyNum} unit(s)`)
+      toast.success(`${type === 'add' ? t('inventory.stock_added') : t('inventory.stock_removed')} ${qtyNum} ${t('inventory.unit_s')}`)
       onSuccess()
     },
-    onError: () => toast.error('Failed to adjust stock'),
+    onError: () => toast.error(t('inventory.adjust_failed')),
   })
 
   function handleApply() {
     if (!qtyNum || qtyNum <= 0) {
-      toast.warning('Please enter a valid quantity.')
+      toast.warning(t('inventory.invalid_quantity'))
       return
     }
     if (type === 'remove' && qtyNum > currentQty) {
-      toast.warning(`Cannot remove more than current stock (${Math.round(currentQty)}).`)
+      toast.warning(`${t('inventory.cannot_remove_more_than_stock')} (${Math.round(currentQty)}).`)
       return
     }
     mutation.mutate()
   }
 
   return (
-    <Modal open onClose={onClose} title="Stock Adjustment" size="md">
+    <Modal open onClose={onClose} title={t('inventory.stock_adjustment')} size="md">
       <div className="flex flex-col gap-4">
         {/* Item info */}
         <div className="flex items-center justify-between bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3">
           <div>
             <p className="text-sm font-semibold text-zinc-100">{productName || '—'}</p>
             {productSku && <p className="text-xs font-mono text-zinc-500 mt-0.5">{productSku}</p>}
-            <p className="text-xs text-zinc-500 mt-1">Current stock: <span className="font-bold text-zinc-300">{Math.round(currentQty)}</span></p>
+            <p className="text-xs text-zinc-500 mt-1">{t('inventory.current_stock')}: <span className="font-bold text-zinc-300">{Math.round(currentQty)}</span></p>
           </div>
           <div className={`text-xs px-2 py-0.5 rounded-full border font-medium ${
             currentQty === 0 ? 'bg-red-950 border-red-800 text-red-400' :
             currentQty <= 10 ? 'bg-amber-950 border-amber-800 text-amber-400' :
             'bg-green-950 border-green-800 text-green-400'
           }`}>
-            {currentQty === 0 ? 'Out' : currentQty <= 10 ? 'Low' : 'OK'}
+            {currentQty === 0 ? t('inventory.badge_out') : currentQty <= 10 ? t('inventory.badge_low') : t('inventory.badge_ok')}
           </div>
         </div>
 
@@ -82,19 +84,19 @@ export default function AdjustmentModal({ item, branchId, productName, productSk
             onClick={() => setType('add')}
             className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${type === 'add' ? 'bg-green-600 text-white' : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200'}`}
           >
-            + Add
+            + {t('common.add')}
           </button>
           <button
             onClick={() => setType('remove')}
             className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${type === 'remove' ? 'bg-red-600 text-white' : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200'}`}
           >
-            − Remove
+            − {t('inventory.remove')}
           </button>
         </div>
 
         {/* Quantity */}
         <Input
-          label="Quantity"
+          label={t('inventory.quantity')}
           type="number"
           min="1"
           placeholder="0"
@@ -104,16 +106,16 @@ export default function AdjustmentModal({ item, branchId, productName, productSk
 
         {/* Notes */}
         <Input
-          label="Notes (optional)"
+          label={t('inventory.notes_optional')}
           type="text"
-          placeholder="Add notes…"
+          placeholder={t('inventory.add_notes_placeholder')}
           value={notes}
           onChange={e => setNotes(e.target.value)}
         />
 
         {/* Preview */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 flex items-center justify-between">
-          <span className="text-sm text-zinc-500">New stock level</span>
+          <span className="text-sm text-zinc-500">{t('inventory.new_stock_level')}</span>
           <span className="font-mono font-bold">
             <span className="text-zinc-400">{Math.round(currentQty)}</span>
             <span className="text-zinc-600 mx-1">→</span>
@@ -123,14 +125,14 @@ export default function AdjustmentModal({ item, branchId, productName, productSk
 
         {/* Actions */}
         <div className="flex gap-2 pt-2 border-t border-zinc-800">
-          <Btn variant="secondary" fullWidth onClick={onClose} disabled={mutation.isPending}>Cancel</Btn>
+          <Btn variant="secondary" fullWidth onClick={onClose} disabled={mutation.isPending}>{t('common.cancel')}</Btn>
           <Btn
             variant={type === 'add' ? 'success' : 'danger'}
             fullWidth
             onClick={handleApply}
             disabled={mutation.isPending || !qtyNum}
           >
-            {mutation.isPending ? 'Saving…' : 'Apply Adjustment'}
+            {mutation.isPending ? t('common.saving') : t('inventory.apply_adjustment')}
           </Btn>
         </div>
       </div>

@@ -5,9 +5,11 @@ import { toast } from 'sonner'
 import { extractApiMsg } from '@/lib/utils'
 import { Btn, Spinner, Empty, Table, Th, Td } from '@/components/ui'
 import { brandsService } from '@/services/brands/brands.service'
+import { useLocaleStore } from '@/i18n/localeStore'
 import type { Brand, BrandCreateRequest } from '@/shared/types'
 
 function BrandModal({ brand, onClose }: { brand?: Brand; onClose: () => void }) {
+  const t = useLocaleStore(s => s.t)
   const qc = useQueryClient()
   const isEdit = !!brand
   const [form, setForm] = useState<BrandCreateRequest>({
@@ -27,10 +29,10 @@ function BrandModal({ brand, onClose }: { brand?: Brand; onClose: () => void }) 
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['brands'] })
-      toast.success(isEdit ? 'Brand updated' : 'Brand created')
+      toast.success(isEdit ? t('products.brands.updated') : t('products.brands.created'))
       onClose()
     },
-    onError: err => toast.error(extractApiMsg(err) ?? 'Failed'),
+    onError: err => toast.error(extractApiMsg(err) ?? t('products.brands.save_failed')),
   })
 
   const inp = 'w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-amber-500'
@@ -39,29 +41,29 @@ function BrandModal({ brand, onClose }: { brand?: Brand; onClose: () => void }) 
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-sm shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
-          <h3 className="text-base font-semibold text-zinc-100">{isEdit ? 'Edit Brand' : 'New Brand'}</h3>
-          <button onClick={onClose} aria-label="Close" className="text-zinc-500 hover:text-zinc-200 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-800">
+          <h3 className="text-base font-semibold text-zinc-100">{isEdit ? t('products.brands.edit_title') : t('products.brands.new_title')}</h3>
+          <button onClick={onClose} aria-label={t('common.close')} className="text-zinc-500 hover:text-zinc-200 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-800">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
           </button>
         </div>
         <div className="p-5 space-y-3">
           <div>
-            <label className="block text-xs text-zinc-400 mb-1">Name *</label>
+            <label className="block text-xs text-zinc-400 mb-1">{t('products.name_required')}</label>
             <input className={inp} value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} />
           </div>
           <div>
-            <label className="block text-xs text-zinc-400 mb-1">Description <span className="text-zinc-600 font-normal normal-case">(optional)</span></label>
-            <input className={inp} placeholder="Optional description" value={form.description ?? ''} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} />
+            <label className="block text-xs text-zinc-400 mb-1">{t('customers.description')} <span className="text-zinc-600 font-normal normal-case">({t('products.optional')})</span></label>
+            <input className={inp} placeholder={t('products.description_optional_placeholder')} value={form.description ?? ''} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} />
           </div>
           <div>
-            <label className="block text-xs text-zinc-400 mb-1">Website <span className="text-zinc-600 font-normal normal-case">(optional)</span></label>
+            <label className="block text-xs text-zinc-400 mb-1">{t('procurement.website')} <span className="text-zinc-600 font-normal normal-case">({t('products.optional')})</span></label>
             <input className={inp} placeholder="https://brand.com" value={form.website ?? ''} onChange={e => setForm(p => ({ ...p, website: e.target.value }))} />
           </div>
         </div>
         <div className="px-5 py-4 border-t border-zinc-800 flex gap-2 justify-end">
-          <Btn variant="secondary" size="sm" onClick={onClose}>Cancel</Btn>
+          <Btn variant="secondary" size="sm" onClick={onClose}>{t('common.cancel')}</Btn>
           <Btn size="sm" disabled={!form.name.trim() || mutation.isPending} onClick={() => mutation.mutate()}>
-            {mutation.isPending ? 'Saving…' : isEdit ? 'Save' : 'Create'}
+            {mutation.isPending ? t('common.saving') : isEdit ? t('products.save') : t('products.create')}
           </Btn>
         </div>
       </div>
@@ -70,6 +72,7 @@ function BrandModal({ brand, onClose }: { brand?: Brand; onClose: () => void }) 
 }
 
 export default function BrandsPage() {
+  const t = useLocaleStore(s => s.t)
   const qc = useQueryClient()
   const [modal, setModal] = useState<{ open: boolean; brand?: Brand }>({ open: false })
   const [page, setPage] = useState(1)
@@ -84,9 +87,9 @@ export default function BrandsPage() {
     mutationFn: (id: string) => brandsService.delete(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['brands'] })
-      toast.success('Brand deleted')
+      toast.success(t('products.brands.deleted'))
     },
-    onError: err => toast.error(extractApiMsg(err) ?? 'Failed to delete'),
+    onError: err => toast.error(extractApiMsg(err) ?? t('products.brands.delete_failed')),
   })
 
   const brands = data?.items ?? []
@@ -100,32 +103,32 @@ export default function BrandsPage() {
       <div className="flex flex-col h-full overflow-hidden">
         {/* Sub-navigation */}
         <div className="flex-shrink-0 flex items-center gap-1 px-4 sm:px-6 pt-3 sm:pt-4 border-b border-zinc-800 pb-0">
-          <Link to="/app/products" className="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-zinc-100 border-b-2 border-transparent -mb-px transition-colors">Products</Link>
-          <Link to="/app/categories" className="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-zinc-100 border-b-2 border-transparent -mb-px transition-colors">Categories</Link>
-          <span className="px-3 py-1.5 text-xs font-semibold text-amber-400 border-b-2 border-amber-500 -mb-px">Brands</span>
+          <Link to="/app/products" className="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-zinc-100 border-b-2 border-transparent -mb-px transition-colors">{t('products.tab.products')}</Link>
+          <Link to="/app/categories" className="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-zinc-100 border-b-2 border-transparent -mb-px transition-colors">{t('products.tab.categories')}</Link>
+          <span className="px-3 py-1.5 text-xs font-semibold text-amber-400 border-b-2 border-amber-500 -mb-px">{t('products.tab.brands')}</span>
         </div>
 
         <div className="flex-shrink-0 flex items-center justify-between px-4 py-3.5 border-b border-zinc-800">
           <div>
-            <h2 className="text-base font-semibold text-zinc-100">Brands</h2>
-            <p className="text-xs text-zinc-500 mt-0.5">{total} brand{total !== 1 ? 's' : ''}</p>
+            <h2 className="text-base font-semibold text-zinc-100">{t('products.tab.brands')}</h2>
+            <p className="text-xs text-zinc-500 mt-0.5">{total} {t(total !== 1 ? 'products.brands.plural' : 'products.brands.singular')}</p>
           </div>
-          <Btn size="sm" onClick={() => setModal({ open: true })}>+ New Brand</Btn>
+          <Btn size="sm" onClick={() => setModal({ open: true })}>{t('products.brands.new')}</Btn>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           {isLoading ? (
             <div className="flex justify-center py-12"><Spinner size={28} /></div>
           ) : brands.length === 0 ? (
-            <Empty title="No brands yet" subtitle="Add brands to organize your products" />
+            <Empty title={t('products.brands.empty_title')} subtitle={t('products.brands.empty_subtitle')} />
           ) : (
             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-x-auto">
               <Table>
                 <thead>
                   <tr>
-                    <Th>Name</Th>
-                    <Th>Description</Th>
-                    <Th>Website</Th>
+                    <Th>{t('customers.name')}</Th>
+                    <Th>{t('customers.description')}</Th>
+                    <Th>{t('procurement.website')}</Th>
                     <Th />
                   </tr>
                 </thead>
@@ -141,14 +144,14 @@ export default function BrandsPage() {
                       </Td>
                       <Td>
                         <div className="flex items-center gap-1 justify-end">
-                          <Btn variant="secondary" size="xs" onClick={() => setModal({ open: true, brand: b })}>Edit</Btn>
+                          <Btn variant="secondary" size="xs" onClick={() => setModal({ open: true, brand: b })}>{t('common.edit')}</Btn>
                           <Btn
                             variant="secondary"
                             size="xs"
                             disabled={deleteMutation.isPending}
-                            onClick={() => confirm(`Delete brand "${b.name}"?`) && deleteMutation.mutate(b.id)}
+                            onClick={() => confirm(`${t('products.brands.confirm_delete')} "${b.name}"?`) && deleteMutation.mutate(b.id)}
                           >
-                            Delete
+                            {t('common.delete')}
                           </Btn>
                         </div>
                       </Td>
@@ -161,9 +164,9 @@ export default function BrandsPage() {
 
           {totalPages > 1 && (
             <div className="flex justify-center gap-2 pt-4">
-              <Btn variant="secondary" size="xs" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Prev</Btn>
+              <Btn variant="secondary" size="xs" disabled={page === 1} onClick={() => setPage(p => p - 1)}>{t('common.prev')}</Btn>
               <span className="text-xs text-zinc-500 self-center">{page} / {totalPages}</span>
-              <Btn variant="secondary" size="xs" disabled={!data?.has_next} onClick={() => setPage(p => p + 1)}>Next</Btn>
+              <Btn variant="secondary" size="xs" disabled={!data?.has_next} onClick={() => setPage(p => p + 1)}>{t('common.next')}</Btn>
             </div>
           )}
         </div>

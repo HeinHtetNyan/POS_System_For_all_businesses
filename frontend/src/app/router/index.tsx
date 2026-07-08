@@ -97,6 +97,7 @@ const ResellerDetailPage          = lazy(() => import('@/features/superadmin/Res
 const AuditLogsPage               = lazy(() => import('@/features/superadmin/AuditLogsPage'))
 const PlatformNotificationsPage     = lazy(() => import('@/features/superadmin/PlatformNotificationsPage'))
 const PlatformPaymentMethodsPage    = lazy(() => import('@/features/superadmin/PlatformPaymentMethodsPage'))
+const AppDownloadLinksPage          = lazy(() => import('@/features/superadmin/AppDownloadLinksPage'))
 const ResellerFinancePage           = lazy(() => import('@/features/superadmin/ResellerFinancePage'))
 const SuperAdminProfilePage         = lazy(() => import('@/features/superadmin/SuperAdminProfilePage'))
 
@@ -407,6 +408,7 @@ export const router = createBrowserRouter([
           { path: 'devices',      element: <Navigate to="/super-admin/businesses" replace /> },
           { path: 'notifications',       element: S(PlatformNotificationsPage)  },
           { path: 'payment-methods',    element: S(PlatformPaymentMethodsPage) },
+          { path: 'app-downloads',      element: S(AppDownloadLinksPage)       },
           { path: 'audit-logs',         element: S(AuditLogsPage)              },
           { path: 'reseller-finance',   element: S(ResellerFinancePage)        },
           { path: 'profile',            element: S(SuperAdminProfilePage)      },

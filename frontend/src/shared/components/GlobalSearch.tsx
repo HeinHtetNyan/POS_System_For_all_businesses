@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth.store'
+import { useLocaleStore } from '@/i18n/localeStore'
 import { canAccess } from '@/shared/constants/rbac'
 import { productsService } from '@/services/products/products.service'
 import { customersService } from '@/services/customers/customers.service'
@@ -27,6 +28,7 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
   const navigate = useNavigate()
   const user = useAuthStore(s => s.user)
   const role = user?.role ?? 'CASHIER'
+  const t = useLocaleStore(s => s.t)
 
   useEffect(() => {
     const id = setTimeout(() => setDebouncedQuery(query.trim()), 300)
@@ -72,12 +74,12 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
   )
   if (products.length > 0) {
     groups.push({
-      label: 'Products',
+      label: t('nav.products'),
       icon: '📦',
       results: products.map(p => ({
         id: p.id,
         label: p.name,
-        sub: p.sku ? `SKU: ${p.sku}` : undefined,
+        sub: p.sku ? `${t('products.col.sku')}: ${p.sku}` : undefined,
         path: `/app/products`,
       })),
     })
@@ -90,7 +92,7 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
   )
   if (customers.length > 0) {
     groups.push({
-      label: 'Customers',
+      label: t('shared.search.group_customers'),
       icon: '👤',
       results: customers.slice(0, 5).map(c => ({
         id: c.id,
@@ -106,12 +108,12 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
   )
   if (suppliers.length > 0) {
     groups.push({
-      label: 'Suppliers',
+      label: t('procurement.suppliers_title'),
       icon: '🏭',
       results: suppliers.slice(0, 5).map(s => ({
         id: s.id,
         label: s.name,
-        sub: `Code: ${s.code}`,
+        sub: `${t('procurement.code')}: ${s.code}`,
         path: `/app/procurement/suppliers/${s.id}`,
       })),
     })
@@ -122,11 +124,11 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
   )
   if (pos.length > 0) {
     groups.push({
-      label: 'Purchase Orders',
+      label: t('procurement.purchase_orders_title'),
       icon: '🛒',
       results: pos.slice(0, 5).map(po => ({
         id: po.id,
-        label: `PO ${po.po_number}`,
+        label: `${t('shared.search.po_prefix')} ${po.po_number}`,
         sub: po.status,
         path: `/app/procurement/purchase-orders/${po.id}`,
       })),
@@ -185,11 +187,11 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
             ref={inputRef}
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="Search products, customers, suppliers, orders…"
+            placeholder={t('shared.search.placeholder')}
             className="flex-1 bg-transparent text-zinc-100 placeholder-zinc-600 text-sm focus:outline-none"
           />
           {isLoading && (
-            <span className="text-zinc-600 text-xs animate-pulse flex-shrink-0">Searching…</span>
+            <span className="text-zinc-600 text-xs animate-pulse flex-shrink-0">{t('shared.search.searching')}</span>
           )}
           <kbd className="hidden sm:inline-flex h-5 px-1.5 items-center justify-center text-[10px] font-medium text-zinc-600 bg-zinc-800 border border-zinc-700 rounded">
             ESC
@@ -200,11 +202,11 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
         <div className="max-h-[60vh] overflow-y-auto py-2">
           {!canSearch ? (
             <div className="px-4 py-8 text-center">
-              <p className="text-sm text-zinc-600">Type at least 2 characters to search</p>
+              <p className="text-sm text-zinc-600">{t('shared.search.min_chars')}</p>
             </div>
           ) : groups.length === 0 && !isLoading ? (
             <div className="px-4 py-8 text-center">
-              <p className="text-sm text-zinc-600">No results for "{trimmed}"</p>
+              <p className="text-sm text-zinc-600">{t('shared.search.no_results_for')} "{trimmed}"</p>
             </div>
           ) : (
             groups.map(group => (
@@ -240,11 +242,11 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
 
         {/* Footer hint */}
         <div className="border-t border-zinc-800 px-4 py-2 flex items-center gap-4 text-[10px] text-zinc-600">
-          <span><kbd className="bg-zinc-800 border border-zinc-700 rounded px-1 py-0.5">↑↓</kbd> navigate</span>
-          <span><kbd className="bg-zinc-800 border border-zinc-700 rounded px-1 py-0.5">↵</kbd> open</span>
-          <span><kbd className="bg-zinc-800 border border-zinc-700 rounded px-1 py-0.5">ESC</kbd> close</span>
+          <span><kbd className="bg-zinc-800 border border-zinc-700 rounded px-1 py-0.5">↑↓</kbd> {t('shared.search.hint_navigate')}</span>
+          <span><kbd className="bg-zinc-800 border border-zinc-700 rounded px-1 py-0.5">↵</kbd> {t('shared.search.hint_open')}</span>
+          <span><kbd className="bg-zinc-800 border border-zinc-700 rounded px-1 py-0.5">ESC</kbd> {t('shared.search.hint_close')}</span>
           {!canAccess(role, 'products') && (
-            <span className="ml-auto text-amber-600">Limited to your role's accessible sections</span>
+            <span className="ml-auto text-amber-600">{t('shared.search.limited_access')}</span>
           )}
         </div>
       </div>

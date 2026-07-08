@@ -5,6 +5,7 @@ import { fmt, fmtDate, fmtDateTime, cn } from '@/lib/utils'
 import { Spinner, StatCard, Table, Th, Td, Badge, Empty, Btn, Modal } from '@/components/ui'
 import { customersService } from '@/services/customers/customers.service'
 import { checkoutService } from '@/services/sales/sales.service'
+import { useLocaleStore } from '@/i18n/localeStore'
 import type { LedgerEntry, Order } from '@/shared/types'
 
 interface MergedRow {
@@ -19,7 +20,7 @@ interface MergedRow {
   type: string
 }
 
-function buildMergedRows(entries: LedgerEntry[]): MergedRow[] {
+function buildMergedRows(entries: LedgerEntry[], t: (key: string) => string): MergedRow[] {
   const saleRefs = new Set(
     entries.filter(e => e.type === 'SALE' && e.reference).map(e => e.reference as string)
   )
@@ -42,7 +43,7 @@ function buildMergedRows(entries: LedgerEntry[]): MergedRow[] {
         id: entry.id,
         date: entry.date,
         orderId: entry.reference ?? undefined,
-        description: entry.description ?? 'Sale',
+        description: entry.description ?? t('customers.sale'),
         totalAmount: parseFloat(entry.debit ?? '0'),
         paid,
         remaining: parseFloat(lastMatch?.balance ?? entry.balance ?? '0'),
@@ -56,7 +57,7 @@ function buildMergedRows(entries: LedgerEntry[]): MergedRow[] {
         id: entry.id,
         date: entry.date,
         orderId: undefined,
-        description: entry.description ?? 'Debt Payment',
+        description: entry.description ?? t('customers.debt_payment'),
         totalAmount: 0,
         paid: parseFloat(entry.credit ?? '0'),
         remaining: parseFloat(entry.balance ?? '0'),
@@ -68,7 +69,7 @@ function buildMergedRows(entries: LedgerEntry[]): MergedRow[] {
         id: entry.id,
         date: entry.date,
         orderId: entry.reference ?? undefined,
-        description: entry.description ?? 'Credit Note',
+        description: entry.description ?? t('customers.credit_note'),
         totalAmount: 0,
         paid: parseFloat(entry.credit ?? '0'),
         remaining: parseFloat(entry.balance ?? '0'),
@@ -105,27 +106,40 @@ const ROW_BADGE: Record<string, 'warning' | 'success' | 'purple' | 'info' | 'def
 }
 
 function OrderDetailModal({ orderId, onClose }: { orderId: string; onClose: () => void }) {
+  const t = useLocaleStore(s => s.t)
   const { data: order, isLoading } = useQuery<Order>({
     queryKey: ['order-detail', orderId],
     queryFn: () => checkoutService.getOrder(orderId),
     enabled: !!orderId,
   })
 
+  const ORDER_STATUS_LABEL: Record<string, string> = {
+    COMPLETED: t('status.completed'),
+    PENDING:   t('status.pending'),
+    CANCELLED: t('status.cancelled'),
+    REFUNDED:  t('status.refunded'),
+  }
+  const PAYMENT_STATUS_LABEL: Record<string, string> = {
+    PAID:    t('status.paid'),
+    PARTIAL: t('status.partial'),
+    PENDING: t('status.pending'),
+  }
+
   return (
-    <Modal open onClose={onClose} title="Order Details">
+    <Modal open onClose={onClose} title={t('customers.order_details')}>
       {isLoading && (
         <div className="flex items-center justify-center h-32">
           <Spinner size={28} />
         </div>
       )}
       {!isLoading && !order && (
-        <p className="text-sm text-zinc-500 text-center py-6">Order not found.</p>
+        <p className="text-sm text-zinc-500 text-center py-6">{t('customers.order_not_found')}</p>
       )}
       {order && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs text-zinc-500 uppercase tracking-wider">Order Number</p>
+              <p className="text-xs text-zinc-500 uppercase tracking-wider">{t('customers.order_number')}</p>
               <p className="font-mono font-semibold text-zinc-100">{order.order_number}</p>
               {order.branch_name && (
                 <p className="text-xs text-blue-400 mt-0.5 font-medium">{order.branch_name}</p>
@@ -135,10 +149,10 @@ function OrderDetailModal({ orderId, onClose }: { orderId: string; onClose: () =
               <p className="text-xs text-zinc-500">{order.created_at ? fmtDateTime(order.created_at) : '—'}</p>
               <div className="flex gap-1 justify-end mt-1">
                 <Badge variant={order.order_status === 'COMPLETED' ? 'success' : 'warning'} size="xs">
-                  {order.order_status}
+                  {ORDER_STATUS_LABEL[order.order_status] ?? order.order_status}
                 </Badge>
                 <Badge variant={order.payment_status === 'PAID' ? 'success' : order.payment_status === 'PARTIAL' ? 'warning' : 'default'} size="xs">
-                  {order.payment_status}
+                  {PAYMENT_STATUS_LABEL[order.payment_status] ?? order.payment_status}
                 </Badge>
               </div>
             </div>
@@ -147,7 +161,7 @@ function OrderDetailModal({ orderId, onClose }: { orderId: string; onClose: () =
           {(order.items ?? []).length > 0 && (
             <div className="bg-zinc-800/50 rounded-xl overflow-hidden">
               <div className="px-3 py-2 border-b border-zinc-700/50">
-                <p className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Items</p>
+                <p className="text-xs font-medium text-zinc-400 uppercase tracking-wider">{t('customers.items')}</p>
               </div>
               <div className="divide-y divide-zinc-700/30">
                 {(order.items ?? []).map(item => (
@@ -170,28 +184,28 @@ function OrderDetailModal({ orderId, onClose }: { orderId: string; onClose: () =
 
           <div className="bg-zinc-800/50 rounded-xl px-3 py-3 space-y-1.5">
             <div className="flex justify-between text-sm">
-              <span className="text-zinc-500">Subtotal</span>
+              <span className="text-zinc-500">{t('customers.subtotal')}</span>
               <span className="font-mono text-zinc-300">{fmt(order.subtotal)}</span>
             </div>
             {parseFloat(String(order.discount_amount)) > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-zinc-500">Discount</span>
+                <span className="text-zinc-500">{t('customers.discount')}</span>
                 <span className="font-mono text-green-400">−{fmt(order.discount_amount)}</span>
               </div>
             )}
             {parseFloat(String(order.tax_amount)) > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-zinc-500">Tax</span>
+                <span className="text-zinc-500">{t('customers.tax')}</span>
                 <span className="font-mono text-zinc-300">{fmt(order.tax_amount)}</span>
               </div>
             )}
             <div className="flex justify-between text-sm font-semibold border-t border-zinc-700 pt-1.5 mt-1.5">
-              <span className="text-zinc-200">Total</span>
+              <span className="text-zinc-200">{t('customers.total')}</span>
               <span className="font-mono text-amber-400">{fmt(order.total_amount)}</span>
             </div>
           </div>
 
-          <Btn variant="secondary" fullWidth onClick={onClose}>Close</Btn>
+          <Btn variant="secondary" fullWidth onClick={onClose}>{t('common.close')}</Btn>
         </div>
       )}
     </Modal>
@@ -202,6 +216,7 @@ const PAGE_SIZE = 30
 
 export default function CustomerStatementPage() {
   const { id } = useParams<{ id: string }>()
+  const t = useLocaleStore(s => s.t)
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
   const [page, setPage] = useState(1)
 
@@ -228,7 +243,7 @@ export default function CustomerStatementPage() {
   }
 
   const allEntries: LedgerEntry[] = ledgerData?.items ?? []
-  const rows = buildMergedRows(allEntries)
+  const rows = buildMergedRows(allEntries, t)
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
   const paginatedRows = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
@@ -261,10 +276,10 @@ export default function CustomerStatementPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-zinc-200">Customer Statement</h3>
+          <h3 className="text-sm font-semibold text-zinc-200">{t('customers.customer_statement')}</h3>
           {statement?.generated_at && (
             <p className="text-xs text-zinc-500 mt-0.5">
-              Generated {fmtDateTime(statement.generated_at)}
+              {t('customers.generated_prefix')} {fmtDateTime(statement.generated_at)}
             </p>
           )}
         </div>
@@ -272,11 +287,11 @@ export default function CustomerStatementPage() {
 
       {/* Summary cards — charges & payments are this month; debt is all-time */}
       <div className="grid grid-cols-3 gap-3">
-        <StatCard label="Charges (This Month)"  value={fmt(monthlyCharges)} />
-        <StatCard label="Payments (This Month)" value={fmt(monthlyPayments)} />
+        <StatCard label={t('customers.charges_this_month')}  value={fmt(monthlyCharges)} />
+        <StatCard label={t('customers.payments_this_month')} value={fmt(monthlyPayments)} />
         {statement?.closing_balance != null && (
           <StatCard
-            label="Remaining Debt"
+            label={t('customers.remaining_debt')}
             value={fmt(statement.closing_balance)}
             accent={parseFloat(statement.closing_balance) > 0}
           />
@@ -286,24 +301,24 @@ export default function CustomerStatementPage() {
       {/* Transactions */}
       {rows.length === 0 ? (
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
-          <Empty title="No transactions yet" subtitle="Transactions will appear here after orders are created" />
+          <Empty title={t('customers.no_transactions_yet')} subtitle={t('customers.no_transactions_sub')} />
         </div>
       ) : (
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
           <div className="px-4 py-3 border-b border-zinc-800">
             <h3 className="text-sm font-semibold text-zinc-200">
-              Transactions ({rows.length})
+              {t('customers.transactions')} ({rows.length})
             </h3>
           </div>
           <Table>
             <thead>
               <tr>
-                <Th>Date</Th>
-                <Th>Type</Th>
-                <Th>Description</Th>
-                <Th right>Total Amount</Th>
-                <Th right>Paid</Th>
-                <Th right>Remaining</Th>
+                <Th>{t('customers.date')}</Th>
+                <Th>{t('customers.type')}</Th>
+                <Th>{t('customers.description')}</Th>
+                <Th right>{t('customers.total_amount')}</Th>
+                <Th right>{t('customers.paid_word')}</Th>
+                <Th right>{t('customers.remaining')}</Th>
               </tr>
             </thead>
             <tbody>
@@ -321,7 +336,7 @@ export default function CustomerStatementPage() {
                   <Td muted>{row.date ? fmtDate(row.date) : '—'}</Td>
                   <Td>
                     <Badge variant={ROW_BADGE[row.type] ?? 'default'} size="xs">
-                      {row.type === 'SALE' ? 'SALE' : row.type === 'PAYMENT' ? 'DEBT PMT' : row.type}
+                      {row.type === 'SALE' ? t('customers.sale_badge') : row.type === 'PAYMENT' ? t('customers.debt_pmt_badge') : row.type}
                     </Badge>
                   </Td>
                   <Td>
@@ -356,20 +371,20 @@ export default function CustomerStatementPage() {
           </Table>
           <div className="px-4 py-2.5 border-t border-zinc-800 flex items-center justify-between gap-3">
             <p className="text-xs text-zinc-500">
-              {rows.length === 0 ? '0 transactions' : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, rows.length)} of ${rows.length}`}
+              {rows.length === 0 ? `0 ${t('customers.transactions_word')}` : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, rows.length)} ${t('customers.of')} ${rows.length}`}
             </p>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
                 className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              >‹ Prev</button>
+              >{t('common.prev')}</button>
               <span className="text-xs text-zinc-500 px-2">{page} / {totalPages}</span>
               <button
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page >= totalPages}
                 className="px-2 py-1 rounded-lg text-xs text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              >Next ›</button>
+              >{t('common.next')}</button>
             </div>
           </div>
         </div>

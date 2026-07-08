@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { format, subDays, startOfMonth } from 'date-fns'
 import { useTenantStore } from '@/store/tenant.store'
 import { Spinner } from '@/components/ui'
+import { useLocaleStore } from '@/i18n/localeStore'
 
 export function useAnalyticsFilters() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -69,9 +70,18 @@ export const DATE_PRESETS = [
   { label: 'Last 90d',   from: () => format(subDays(new Date(), 89), 'yyyy-MM-dd'),       to: today },
 ]
 
+const PRESET_LABEL_KEYS: Record<string, string> = {
+  'Today':      'analytics.preset_today',
+  '7 days':     'analytics.preset_7d',
+  '30 days':    'analytics.preset_30d',
+  'This month': 'analytics.preset_this_month',
+  'Last 90d':   'analytics.preset_last_90d',
+}
+
 export function AnalyticsFilters({
   from, to, branch, effectiveFrom, effectiveTo, setFilters, showBranch = true, showDateRange = true,
 }: ReturnType<typeof useAnalyticsFilters> & { showBranch?: boolean; showDateRange?: boolean }) {
+  const t = useLocaleStore(s => s.t)
   const { availableBranches } = useTenantStore()
 
   return (
@@ -106,7 +116,7 @@ export function AnalyticsFilters({
                       : 'bg-zinc-800 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700 border-zinc-700'
                   }`}
                 >
-                  {p.label}
+                  {t(PRESET_LABEL_KEYS[p.label] ?? p.label)}
                 </button>
               )
             })}
@@ -115,7 +125,7 @@ export function AnalyticsFilters({
                 onClick={() => setFilters({ from: '', to: '' })}
                 className="px-2.5 py-1 rounded-lg text-xs font-medium text-zinc-500 hover:text-red-400 hover:bg-red-950 border border-zinc-700 hover:border-red-900 transition-all duration-150"
               >
-                Clear
+                {t('analytics.clear_filter')}
               </button>
             )}
           </div>
@@ -127,7 +137,7 @@ export function AnalyticsFilters({
           onChange={e => setFilters({ branch: e.target.value })}
           className="bg-zinc-900 border border-zinc-700 rounded-xl text-zinc-200 text-sm px-3 py-1.5 focus:outline-none focus:border-amber-500"
         >
-          <option value="">All Branches</option>
+          <option value="">{t('analytics.all_branches')}</option>
           {availableBranches.map(b => (
             <option key={b.id} value={b.id}>{b.name}</option>
           ))}
@@ -138,7 +148,7 @@ export function AnalyticsFilters({
 }
 
 export function ChartCard({
-  title, isLoading, isEmpty, emptyMessage = 'No data for this period', children, action,
+  title, isLoading, isEmpty, emptyMessage, children, action,
 }: {
   title: string
   isLoading?: boolean
@@ -147,6 +157,7 @@ export function ChartCard({
   children: ReactNode
   action?: ReactNode
 }) {
+  const t = useLocaleStore(s => s.t)
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
       <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
@@ -159,7 +170,7 @@ export function ChartCard({
         </div>
       ) : isEmpty ? (
         <div className="flex items-center justify-center h-44 text-zinc-600 text-sm">
-          {emptyMessage}
+          {emptyMessage ?? t('analytics.no_data_period')}
         </div>
       ) : (
         children
@@ -169,20 +180,21 @@ export function ChartCard({
 }
 
 export function ExportRow() {
+  const t = useLocaleStore(s => s.t)
   return (
     <div className="flex flex-wrap items-center gap-3 py-1">
-      <span className="text-xs text-zinc-600 font-medium uppercase tracking-wider">Export</span>
+      <span className="text-xs text-zinc-600 font-medium uppercase tracking-wider">{t('analytics.export')}</span>
       {(['CSV', 'Excel', 'PDF'] as const).map(type => (
         <button
           key={type}
           disabled
-          title="Export endpoint not yet available"
+          title={t('analytics.export_endpoint_unavailable')}
           className="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-900 border border-zinc-800 text-zinc-600 cursor-not-allowed opacity-60"
         >
           {type}
         </button>
       ))}
-      <span className="text-xs text-zinc-600 italic">Export endpoints not yet available</span>
+      <span className="text-xs text-zinc-600 italic">{t('analytics.export_unavailable_note')}</span>
     </div>
   )
 }

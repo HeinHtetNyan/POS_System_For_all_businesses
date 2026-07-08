@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/store/auth.store'
+import { useLocaleStore } from '@/i18n/localeStore'
 import { tenantService } from '@/services/tenant/tenant.service'
 import { Btn, Spinner } from '@/components/ui'
 import { extractApiMsg, fmt } from '@/lib/utils'
@@ -23,6 +24,7 @@ function inputCls() {
 
 export default function ReceiptSettingsPage() {
   const user = useAuthStore(s => s.user)
+  const t = useLocaleStore(s => s.t)
   const qc = useQueryClient()
   const tenantId = user?.tenant_id
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -91,30 +93,30 @@ export default function ReceiptSettingsPage() {
         },
       }),
     onSuccess: () => {
-      toast.success('Receipt settings saved')
+      toast.success(t('settings.receipt.save_success'))
       qc.invalidateQueries({ queryKey: ['tenant-settings', tenantId] })
     },
-    onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to save'),
+    onError: (err) => toast.error(extractApiMsg(err) ?? t('settings.receipt.save_error')),
   })
 
   const uploadMutation = useMutation({
     mutationFn: (file: File) => tenantService.uploadLogo(tenantId!, file),
     onSuccess: () => {
-      toast.success('Logo uploaded')
+      toast.success(t('settings.receipt.logo_uploaded'))
       setLogoVersion(v => v + 1)
       qc.invalidateQueries({ queryKey: ['tenant-settings', tenantId] })
     },
-    onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to upload logo'),
+    onError: (err) => toast.error(extractApiMsg(err) ?? t('settings.receipt.logo_upload_error')),
   })
 
   const deleteMutation = useMutation({
     mutationFn: () => tenantService.deleteLogo(tenantId!),
     onSuccess: () => {
-      toast.success('Logo removed')
+      toast.success(t('settings.receipt.logo_removed'))
       setLogoDataUrl(null)
       qc.invalidateQueries({ queryKey: ['tenant-settings', tenantId] })
     },
-    onError: (err) => toast.error(extractApiMsg(err) ?? 'Failed to remove logo'),
+    onError: (err) => toast.error(extractApiMsg(err) ?? t('settings.receipt.logo_remove_error')),
   })
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -151,8 +153,8 @@ export default function ReceiptSettingsPage() {
         {/* Logo upload */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 space-y-3">
           <div>
-            <h3 className="text-sm font-semibold text-zinc-100">Receipt Logo</h3>
-            <p className="text-xs text-zinc-500 mt-0.5">Appears at the top of every printed receipt. JPEG or PNG, max 2 MB.</p>
+            <h3 className="text-sm font-semibold text-zinc-100">{t('settings.receipt.logo_title')}</h3>
+            <p className="text-xs text-zinc-500 mt-0.5">{t('settings.receipt.logo_desc')}</p>
           </div>
 
           <input
@@ -168,7 +170,7 @@ export default function ReceiptSettingsPage() {
               <div className="bg-white rounded-xl p-3 w-full flex justify-center">
                 <img
                   src={logoDataUrl}
-                  alt="Receipt logo"
+                  alt={t('settings.receipt.logo_alt')}
                   className="max-h-24 max-w-full object-contain"
                 />
               </div>
@@ -179,7 +181,7 @@ export default function ReceiptSettingsPage() {
                   disabled={isLogoBusy}
                   className="flex-1 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-xs font-medium transition-colors disabled:opacity-50"
                 >
-                  Replace
+                  {t('settings.receipt.replace')}
                 </button>
                 <button
                   type="button"
@@ -187,7 +189,7 @@ export default function ReceiptSettingsPage() {
                   disabled={isLogoBusy}
                   className="flex-1 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-medium transition-colors disabled:opacity-50"
                 >
-                  {deleteMutation.isPending ? <Spinner size={14} /> : 'Remove'}
+                  {deleteMutation.isPending ? <Spinner size={14} /> : t('settings.receipt.remove')}
                 </button>
               </div>
             </div>
@@ -206,8 +208,8 @@ export default function ReceiptSettingsPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                       d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
-                  <span className="text-xs font-medium">Click to upload logo</span>
-                  <span className="text-[11px]">JPEG or PNG · max 2 MB</span>
+                  <span className="text-xs font-medium">{t('settings.receipt.click_upload')}</span>
+                  <span className="text-[11px]">{t('settings.receipt.upload_hint')}</span>
                 </>
               )}
             </button>
@@ -216,35 +218,35 @@ export default function ReceiptSettingsPage() {
 
         {/* Header & footer text */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 space-y-4">
-          <h3 className="text-sm font-semibold text-zinc-100">Receipt Content</h3>
+          <h3 className="text-sm font-semibold text-zinc-100">{t('settings.receipt.content_title')}</h3>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Header Text</label>
+            <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">{t('settings.receipt.header_text')}</label>
             <input
               {...register('receipt_header')}
-              placeholder="e.g. Welcome to SawYunPos!"
+              placeholder={t('settings.receipt.header_placeholder')}
               className={inputCls()}
             />
-            <p className="text-xs text-zinc-600">Shown at the top of every printed receipt.</p>
+            <p className="text-xs text-zinc-600">{t('settings.receipt.header_desc')}</p>
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Footer Text</label>
+            <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">{t('settings.receipt.footer_text')}</label>
             <textarea
               {...register('receipt_footer')}
               rows={2}
-              placeholder="e.g. Thank you for shopping with us!"
+              placeholder={t('settings.receipt.footer_placeholder')}
               className={`${inputCls()} resize-none`}
             />
-            <p className="text-xs text-zinc-600">Shown at the bottom of every printed receipt.</p>
+            <p className="text-xs text-zinc-600">{t('settings.receipt.footer_desc')}</p>
           </div>
         </div>
 
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-zinc-100">Show Tax on Receipt</p>
-              <p className="text-xs text-zinc-500 mt-0.5">Print the tax line on customer receipts</p>
+              <p className="text-sm font-medium text-zinc-100">{t('settings.receipt.show_tax')}</p>
+              <p className="text-xs text-zinc-500 mt-0.5">{t('settings.receipt.show_tax_desc')}</p>
             </div>
             <button
               type="button"
@@ -262,30 +264,30 @@ export default function ReceiptSettingsPage() {
 
         {/* Preview */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 space-y-2">
-          <h3 className="text-sm font-semibold text-zinc-100">Preview</h3>
+          <h3 className="text-sm font-semibold text-zinc-100">{t('settings.receipt.preview_title')}</h3>
           <div className="bg-white rounded-lg p-3 font-mono text-xs text-zinc-900 space-y-1 text-center">
             {logoDataUrl && (
               <div className="flex justify-center mb-2">
-                <img src={logoDataUrl} alt="Logo" className="max-h-12 max-w-full object-contain" />
+                <img src={logoDataUrl} alt={t('settings.receipt.preview_logo_alt')} className="max-h-12 max-w-full object-contain" />
               </div>
             )}
             {watch('receipt_header') && <p className="font-bold">{watch('receipt_header')}</p>}
             <p className="text-zinc-400 text-[10px]">─────────────────</p>
-            <p>Item 1 .............. {fmt(10)}</p>
-            <p>Item 2 ............... {fmt(5)}</p>
+            <p>{t('settings.receipt.preview_item1')} .............. {fmt(10)}</p>
+            <p>{t('settings.receipt.preview_item2')} ............... {fmt(5)}</p>
             {showTax && previewTaxEnabled && previewTaxAmt > 0 && (
               <p>
-                {previewTaxName} ({previewTaxRate}%){previewTaxInclusive ? ' incl.' : ''} .. {fmt(previewTaxAmt)}
+                {previewTaxName} ({previewTaxRate}%){previewTaxInclusive ? ` ${t('settings.receipt.incl_suffix')}` : ''} .. {fmt(previewTaxAmt)}
               </p>
             )}
-            <p className="font-bold">Total ............... {fmt(previewTotal)}</p>
+            <p className="font-bold">{t('settings.receipt.preview_total')} ............... {fmt(previewTotal)}</p>
             <p className="text-zinc-400 text-[10px]">─────────────────</p>
             {watch('receipt_footer') && <p className="text-zinc-600">{watch('receipt_footer')}</p>}
           </div>
         </div>
 
         <Btn type="submit" disabled={!isDirty || isSubmitting || mutation.isPending}>
-          {mutation.isPending ? <Spinner size={16} /> : 'Save Receipt Settings'}
+          {mutation.isPending ? <Spinner size={16} /> : t('settings.receipt.save_btn')}
         </Btn>
       </form>
     </div>
