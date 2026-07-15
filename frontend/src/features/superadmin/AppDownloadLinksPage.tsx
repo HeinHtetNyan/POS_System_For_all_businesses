@@ -4,24 +4,41 @@ import { toast } from 'sonner'
 import { Btn, Spinner } from '@/components/ui'
 import { subscriptionsService } from '@/services/subscriptions/subscriptions.service'
 import { extractApiMsg } from '@/lib/utils'
-import { IconSmartphone, IconMonitor } from '@/components/icons'
+import { IconSmartphone, IconMonitor, IconYoutube, IconPhoneCall, IconTelegram, IconViber, IconMail, IconFacebook, IconTiktok } from '@/components/icons'
 import type { AppDownloadLinks } from '@/shared/types'
 
-const EMPTY: AppDownloadLinks = { android: '', ios: '', windows: '' }
+const EMPTY: AppDownloadLinks = {
+  android: '', ios: '', windows: '',
+  youtube: '', phone: '', telegram: '', viber: '', email: '', facebook: '', tiktok: '',
+}
 
-const FIELDS: { key: keyof AppDownloadLinks; icon: typeof IconSmartphone; label: string; placeholder: string; hint?: string }[] = [
+type Field = { key: keyof AppDownloadLinks; icon: typeof IconSmartphone; label: string; placeholder: string; hint?: string; kind?: 'url' | 'phone' | 'email'; group: 'download' | 'channel' }
+
+const FIELDS: Field[] = [
   {
     key: 'android', icon: IconSmartphone, label: 'Android (Google Play)',
     placeholder: 'https://play.google.com/store/apps/details?id=...',
     hint: 'If this isn\'t a Play Store link (e.g. a direct .apk or Google Drive link), the device will show an "Install unknown apps" warning that users have to approve manually.',
+    group: 'download',
   },
   {
     key: 'ios', icon: IconSmartphone, label: 'iOS (App Store)',
     placeholder: 'https://apps.apple.com/app/id...',
     hint: 'iOS only allows installs via the App Store or TestFlight. A direct file link (e.g. Google Drive) lets users download the file but they can\'t actually install it — use a TestFlight link here if the app isn\'t on the App Store yet.',
+    group: 'download',
   },
-  { key: 'windows', icon: IconMonitor, label: 'Windows', placeholder: 'https://.../SawYunPos-Setup.exe' },
+  { key: 'windows', icon: IconMonitor, label: 'Windows', placeholder: 'https://.../SawYunPos-Setup.exe', group: 'download' },
+  { key: 'youtube', icon: IconYoutube, label: 'YouTube Channel', placeholder: 'https://youtube.com/@yourchannel', group: 'channel' },
+  { key: 'telegram', icon: IconTelegram, label: 'Telegram', placeholder: 'https://t.me/yourhandle', group: 'channel' },
+  { key: 'viber', icon: IconViber, label: 'Viber', placeholder: 'https://invite.viber.com/?g=...', group: 'channel' },
+  { key: 'phone', icon: IconPhoneCall, label: 'Phone', placeholder: '+959xxxxxxxxx', kind: 'phone', group: 'channel' },
+  { key: 'email', icon: IconMail, label: 'Email', placeholder: 'sales@yourcompany.com', kind: 'email', group: 'channel' },
+  { key: 'facebook', icon: IconFacebook, label: 'Facebook', placeholder: 'https://facebook.com/yourpage', group: 'channel' },
+  { key: 'tiktok', icon: IconTiktok, label: 'TikTok', placeholder: 'https://tiktok.com/@youraccount', group: 'channel' },
 ]
+
+const DOWNLOAD_FIELDS = FIELDS.filter(f => f.group === 'download')
+const CHANNEL_FIELDS  = FIELDS.filter(f => f.group === 'channel')
 
 function isValidUrl(value: string) {
   if (!value) return true
@@ -31,6 +48,65 @@ function isValidUrl(value: string) {
   } catch {
     return false
   }
+}
+
+// Phone is a tel number, not a URL — just require it look like a phone number
+// (digits, spaces, +, -, parens) rather than validating as http(s).
+function isValidPhone(value: string) {
+  if (!value) return true
+  return /^[+()\d\s-]{5,20}$/.test(value)
+}
+
+function isValidEmail(value: string) {
+  if (!value) return true
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+}
+
+function isValidField(field: Field, value: string) {
+  if (field.kind === 'phone') return isValidPhone(value)
+  if (field.kind === 'email') return isValidEmail(value)
+  return isValidUrl(value)
+}
+
+const inp = 'w-full bg-zinc-800 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-sm text-zinc-100 focus:outline-none focus:border-amber-500 transition-colors font-mono'
+
+function FieldRow({ field, value, onChange }: { field: Field; value: string; onChange: (key: keyof AppDownloadLinks, value: string) => void }) {
+  const { key, icon: Icon, label, placeholder, hint } = field
+  const valid = isValidField(field, value)
+  return (
+    <div className="p-4 flex items-start gap-3">
+      <div className="w-9 h-9 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-400 flex-shrink-0 mt-4">
+        <Icon width="16" height="16" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between mb-1">
+          <label className="block text-xs text-zinc-400">{label}</label>
+          {!value && (
+            <span className="text-[9px] font-semibold uppercase tracking-wide text-amber-400 bg-amber-500/15 rounded-full px-1.5 py-0.5">
+              Coming Soon
+            </span>
+          )}
+        </div>
+        <input
+          type={field.kind === 'phone' ? 'tel' : field.kind === 'email' ? 'email' : 'url'}
+          value={value}
+          onChange={e => onChange(key, e.target.value)}
+          placeholder={placeholder}
+          className={`${inp} ${!valid ? 'border-red-700 focus:border-red-500' : ''}`}
+        />
+        {!valid && (
+          <p className="text-[11px] text-red-400 mt-1">
+            {field.kind === 'phone'
+              ? 'Enter a valid phone number, or leave empty.'
+              : field.kind === 'email'
+                ? 'Enter a valid email address, or leave empty.'
+                : 'Enter a valid http(s) URL, or leave empty.'}
+          </p>
+        )}
+        {valid && hint && <p className="text-[11px] text-zinc-600 mt-1 leading-relaxed">{hint}</p>}
+      </div>
+    </div>
+  )
 }
 
 export default function AppDownloadLinksPage() {
@@ -69,8 +145,7 @@ export default function AppDownloadLinksPage() {
     setDirty(true)
   }
 
-  const allValid = FIELDS.every(f => isValidUrl(links[f.key]))
-  const inp = 'w-full bg-zinc-800 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-sm text-zinc-100 focus:outline-none focus:border-amber-500 transition-colors font-mono'
+  const allValid = FIELDS.every(f => isValidField(f, links[f.key]))
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-full"><Spinner size={28} /></div>
@@ -81,9 +156,9 @@ export default function AppDownloadLinksPage() {
       {/* Header */}
       <div className="flex-shrink-0 flex items-center justify-between px-5 py-3.5 border-b border-zinc-800">
         <div>
-          <h2 className="text-base font-semibold text-zinc-100">App Download Links</h2>
+          <h2 className="text-base font-semibold text-zinc-100">All Links</h2>
           <p className="text-xs text-zinc-500 mt-0.5">
-            Shown as download buttons on the public login screen. Leave a field empty to show "Coming Soon" for that platform.
+            Download and channel links shown on the public login screen. Leave a field empty to show "Coming Soon" for that platform.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -99,38 +174,25 @@ export default function AppDownloadLinksPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-5">
-        <div className="max-w-xl space-y-4">
+        <div className="max-w-xl space-y-6">
 
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden divide-y divide-zinc-800">
-            {FIELDS.map(({ key, icon: Icon, label, placeholder, hint }) => {
-              const value = links[key]
-              const valid = isValidUrl(value)
-              return (
-                <div key={key} className="p-4 flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-400 flex-shrink-0 mt-4">
-                    <Icon width="16" height="16" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="block text-xs text-zinc-400">{label}</label>
-                      {!value && (
-                        <span className="text-[9px] font-semibold uppercase tracking-wide text-amber-400 bg-amber-500/15 rounded-full px-1.5 py-0.5">
-                          Coming Soon
-                        </span>
-                      )}
-                    </div>
-                    <input
-                      value={value}
-                      onChange={e => update(key, e.target.value)}
-                      placeholder={placeholder}
-                      className={`${inp} ${!valid ? 'border-red-700 focus:border-red-500' : ''}`}
-                    />
-                    {!valid && <p className="text-[11px] text-red-400 mt-1">Enter a valid http(s) URL, or leave empty.</p>}
-                    {valid && hint && <p className="text-[11px] text-zinc-600 mt-1 leading-relaxed">{hint}</p>}
-                  </div>
-                </div>
-              )
-            })}
+          <div className="space-y-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 px-1">Download Links</h3>
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden divide-y divide-zinc-800">
+              {DOWNLOAD_FIELDS.map(field => (
+                <FieldRow key={field.key} field={field} value={links[field.key]} onChange={update} />
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 px-1">Channel Links</h3>
+            <p className="text-[11px] text-zinc-600 px-1 -mt-1">Social / messaging links shown next to the download buttons on the login screen.</p>
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden divide-y divide-zinc-800">
+              {CHANNEL_FIELDS.map(field => (
+                <FieldRow key={field.key} field={field} value={links[field.key]} onChange={update} />
+              ))}
+            </div>
           </div>
 
           <div className="flex items-start gap-2.5 px-4 py-3 bg-blue-950/30 border border-blue-800/30 rounded-xl">

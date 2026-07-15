@@ -7,6 +7,7 @@ import type { UserRole } from '@/shared/types'
 import { Btn, Input, PasswordInput, Spinner } from '@/components/ui/index'
 import { IconAlert, IconSmartphone, IconMonitor } from '@/components/icons'
 import { getMobileDownloadLink } from '@/shared/constants/appDownloads'
+import { buildChannelLinkChips } from '@/shared/constants/channelLinks'
 import { fmtDate } from '@/lib/utils'
 import { useLocaleStore } from '@/i18n/localeStore'
 import { subscriptionsService } from '@/services/subscriptions/subscriptions.service'
@@ -232,43 +233,83 @@ export default function LoginPage() {
       )}
 
       {/* Mobile / desktop app downloads — editable in Super Admin > App Download Links */}
-      <div className="grid grid-cols-2 gap-3 mt-4">
-        {[
+      <LinkChipRow
+        links={[
           { icon: IconSmartphone, label: t('auth.download_mobile_app'),  href: getMobileDownloadLink(downloadLinks) },
           { icon: IconMonitor,    label: t('auth.download_windows_app'), href: downloadLinks?.windows ?? '' },
-        ].map(({ icon: Icon, label, href }) => {
-          const isLive = !!href
-          const className = `relative flex flex-col items-center justify-center gap-1 rounded-xl py-3 transition-colors ${
-            isLive
-              ? 'bg-zinc-900 border border-zinc-700 text-zinc-200 hover:border-amber-500/50 hover:text-amber-400'
-              : 'bg-zinc-900/60 border border-zinc-800 text-zinc-500 cursor-not-allowed'
-          }`
-          const content = (
-            <>
-              {!isLive && (
-                <span className="absolute top-1.5 right-1.5 bg-amber-500/15 text-amber-400 text-[9px] font-semibold uppercase tracking-wide rounded-full px-1.5 py-0.5">
-                  {t('auth.coming_soon')}
-                </span>
-              )}
-              <Icon width="18" height="18" />
-              <span className="text-[11px] font-medium">{label}</span>
-            </>
-          )
-          return isLive ? (
-            <a key={label} href={href} target="_blank" rel="noopener noreferrer" className={className}>
-              {content}
-            </a>
-          ) : (
-            <button key={label} type="button" disabled className={className}>
-              {content}
-            </button>
-          )
-        })}
-      </div>
+        ]}
+        comingSoonLabel={t('auth.coming_soon')}
+      />
+
+      {/* Channel links — same Super Admin > All Links page. Unlike the
+          downloads row above, these are simply omitted when unset instead of
+          showing a disabled "Coming Soon" placeholder. */}
+      <LinkChipRow
+        hideEmpty
+        links={buildChannelLinkChips(downloadLinks)}
+        comingSoonLabel={t('auth.coming_soon')}
+      />
 
       <p className="text-center text-zinc-600 text-[11px] mt-3">
-        SawYunPos v5.0 · {fmtDate(new Date())}
+        SawYunPos v1.0 · {fmtDate(new Date())}
       </p>
+    </div>
+  )
+}
+
+type LinkChipDef = { icon: typeof IconSmartphone; label: string; href: string }
+
+// Shared chip look for the app-download row and the channel-links row.
+// Downloads show a disabled "Coming Soon" placeholder when unset (there's a
+// fixed, known set of platforms worth advertising as upcoming); channel
+// links (hideEmpty) are simply omitted when unset instead — there's no
+// fixed "expected" set of social/contact links to advertise.
+function LinkChipRow({ links, comingSoonLabel, hideEmpty = false, className }: { links: LinkChipDef[]; comingSoonLabel: string; hideEmpty?: boolean; className?: string }) {
+  const visible = hideEmpty ? links.filter(l => !!l.href) : links
+  if (visible.length === 0) return null
+
+  return (
+    <div className={
+      className ??
+      (hideEmpty
+        ? 'flex flex-wrap justify-center gap-2 mt-4'
+        : 'grid grid-cols-2 gap-3 mt-4')
+    }>
+      {visible.map(({ icon: Icon, label, href }) => {
+        const isLive = !!href
+        const chipClassName = hideEmpty
+          ? 'flex items-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-300 text-xs font-medium hover:border-amber-500/50 hover:text-amber-400 transition-colors'
+          : `relative flex flex-col items-center justify-center gap-1 rounded-xl py-3 transition-colors ${
+              isLive
+                ? 'bg-zinc-900 border border-zinc-700 text-zinc-200 hover:border-amber-500/50 hover:text-amber-400'
+                : 'bg-zinc-900/60 border border-zinc-800 text-zinc-500 cursor-not-allowed'
+            }`
+        const content = hideEmpty ? (
+          <>
+            <Icon width="16" height="16" />
+            {label}
+          </>
+        ) : (
+          <>
+            {!isLive && (
+              <span className="absolute top-1.5 right-1.5 bg-amber-500/15 text-amber-400 text-[9px] font-semibold uppercase tracking-wide rounded-full px-1.5 py-0.5">
+                {comingSoonLabel}
+              </span>
+            )}
+            <Icon width="18" height="18" />
+            <span className="text-[11px] font-medium">{label}</span>
+          </>
+        )
+        return isLive ? (
+          <a key={label} href={href} target="_blank" rel="noopener noreferrer" className={chipClassName}>
+            {content}
+          </a>
+        ) : (
+          <button key={label} type="button" disabled className={chipClassName}>
+            {content}
+          </button>
+        )
+      })}
     </div>
   )
 }

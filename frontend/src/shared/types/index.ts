@@ -586,6 +586,13 @@ export interface AppDownloadLinks {
   android: string
   ios: string
   windows: string
+  youtube: string
+  phone: string
+  telegram: string
+  viber: string
+  email: string
+  facebook: string
+  tiktok: string
 }
 
 export interface Plan {

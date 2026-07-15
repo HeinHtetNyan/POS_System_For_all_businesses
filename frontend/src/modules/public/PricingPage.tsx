@@ -2,33 +2,36 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { subscriptionsService } from '@/services/subscriptions/subscriptions.service'
 import { Spinner } from '@/components/ui/index'
-import type { PublicPlan } from '@/shared/types'
-import { CONTACT_PLATFORMS, contactHref } from '@/shared/constants/contactPlatforms'
+import type { PublicPlan, AppDownloadLinks } from '@/shared/types'
+import { buildChannelLinkChips } from '@/shared/constants/channelLinks'
 
-function ContactLinksRow({ plan }: { plan: PublicPlan }) {
-  const active = CONTACT_PLATFORMS.filter(p => plan.contact_links?.[p.key])
-  if (active.length === 0) {
+// Custom/Enterprise plans show the same global Channel Links (Super Admin >
+// All Links) as the login page, rather than a per-plan value — one thing to
+// keep updated instead of two.
+function ContactLinksRow({ channelLinks }: { channelLinks: AppDownloadLinks | undefined }) {
+  const chips = buildChannelLinkChips(channelLinks)
+  if (chips.length === 0) {
     return <p className="text-xs text-zinc-600 text-center mt-6">Contact us to discuss your requirements.</p>
   }
   return (
     <div className="flex flex-wrap gap-2 justify-center mt-6">
-      {active.map(p => (
+      {chips.map(c => (
         <a
-          key={p.key}
-          href={contactHref(p.key, plan.contact_links![p.key]!)}
-          target={p.key === 'phone' || p.key === 'email' ? undefined : '_blank'}
+          key={c.label}
+          href={c.href}
+          target={c.label === 'Phone' || c.label === 'Email' ? undefined : '_blank'}
           rel="noopener noreferrer"
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-400 text-xs font-medium transition-colors ${p.color}`}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-400 text-xs font-medium transition-colors hover:bg-amber-500/20 hover:border-amber-500/50 hover:text-amber-300"
         >
-          {p.icon}
-          {p.label}
+          <c.icon width="16" height="16" />
+          {c.label}
         </a>
       ))}
     </div>
   )
 }
 
-function PricingCard({ plan, highlighted = false }: { plan: PublicPlan; highlighted?: boolean }) {
+function PricingCard({ plan, highlighted = false, channelLinks }: { plan: PublicPlan; highlighted?: boolean; channelLinks: AppDownloadLinks | undefined }) {
   const price = parseFloat(plan.price as unknown as string)
 
   const getLimit = (code: string): string => {
@@ -103,7 +106,7 @@ function PricingCard({ plan, highlighted = false }: { plan: PublicPlan; highligh
       </div>
 
       {plan.is_custom ? (
-        <ContactLinksRow plan={plan} />
+        <ContactLinksRow channelLinks={channelLinks} />
       ) : (
         <Link
           to="/register"
@@ -136,6 +139,14 @@ export default function PricingPage() {
     staleTime: 5 * 60 * 1000,
   })
   const trialDaysText = trialPlan ? `${trialPlan.trial_days}-day` : 'free'
+
+  // Custom/Enterprise plan cards below show these same Channel Links (Super
+  // Admin > All Links) instead of a per-plan value.
+  const { data: channelLinks } = useQuery({
+    queryKey: ['public', 'app-download-links'],
+    queryFn: subscriptionsService.getPublicAppDownloadLinks,
+    staleTime: 5 * 60 * 1000,
+  })
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -197,6 +208,7 @@ export default function PricingPage() {
                 key={plan.id}
                 plan={plan}
                 highlighted={plans.length >= 2 && index === Math.floor(plans.length / 2)}
+                channelLinks={channelLinks}
               />
             ))}
           </div>

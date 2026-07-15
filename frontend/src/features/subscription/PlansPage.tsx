@@ -7,9 +7,9 @@ import { cn } from '@/shared/utils'
 import { extractApiMsg } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth.store'
 import { BASE_URL } from '@/app/lib/axios'
-import type { ContactLinks, Plan, SubscriptionPaymentMethod } from '@/shared/types'
+import type { Plan, SubscriptionPaymentMethod, AppDownloadLinks } from '@/shared/types'
 import { ProofActionType } from '@/shared/types'
-import { CONTACT_PLATFORMS, contactHref } from '@/shared/constants/contactPlatforms'
+import { buildChannelLinkChips } from '@/shared/constants/channelLinks'
 import { useLocaleStore } from '@/i18n/localeStore'
 
 // The API can live on a different origin than this app (e.g. a Vercel-hosted
@@ -100,24 +100,27 @@ function HowToPaySection({ methods }: { methods: SubscriptionPaymentMethod[] | u
   )
 }
 
-function ContactFooter({ links }: { links: ContactLinks | null }) {
+// Custom/Enterprise plans show the same global Channel Links (Super Admin >
+// All Links) as the login page and public Pricing page, rather than a
+// per-plan value — one thing to keep updated instead of two.
+function ContactFooter({ channelLinks }: { channelLinks: AppDownloadLinks | undefined }) {
   const t = useLocaleStore(s => s.t)
-  const active = CONTACT_PLATFORMS.filter(p => links?.[p.key])
+  const chips = buildChannelLinkChips(channelLinks)
   return (
     <div className="space-y-2.5">
       <p className="text-xs text-zinc-500 text-center">{t('subscription.get_in_touch_desc')}</p>
-      {active.length > 0 ? (
+      {chips.length > 0 ? (
         <div className="flex flex-wrap gap-2 justify-center">
-          {active.map(p => (
+          {chips.map(c => (
             <a
-              key={p.key}
-              href={contactHref(p.key, links![p.key]!)}
-              target={p.key === 'phone' || p.key === 'email' ? undefined : '_blank'}
+              key={c.label}
+              href={c.href}
+              target={c.label === 'Phone' || c.label === 'Email' ? undefined : '_blank'}
               rel="noopener noreferrer"
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-400 text-xs font-medium transition-colors ${p.color}`}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-400 text-xs font-medium transition-colors hover:bg-amber-500/20 hover:border-amber-500/50 hover:text-amber-300"
             >
-              {p.icon}
-              {p.label}
+              <c.icon width="16" height="16" />
+              {c.label}
             </a>
           ))}
         </div>
@@ -503,6 +506,13 @@ export default function PlansPage() {
     staleTime: 300_000,
   })
 
+  // Custom/Enterprise plan cards below show these same Channel Links.
+  const { data: channelLinks } = useQuery({
+    queryKey: ['public', 'app-download-links'],
+    queryFn: subscriptionsService.getPublicAppDownloadLinks,
+    staleTime: 5 * 60 * 1000,
+  })
+
   const { data: latestProofData } = useQuery({
     queryKey: ['subscription', 'proofs', 'latest'],
     queryFn: () => subscriptionsService.listPaymentProofs({ page: 1, page_size: 1 }),
@@ -789,7 +799,7 @@ export default function PlansPage() {
                     {/* Action footer */}
                     <div className="px-5 pb-5">
                       {action === 'contact' ? (
-                        <ContactFooter links={plan.contact_links} />
+                        <ContactFooter channelLinks={channelLinks} />
                       ) : isOwner && action === 'current' ? (
                         <div className="w-full text-center py-2 text-xs font-medium text-zinc-500 border border-zinc-800 rounded-xl">
                           {t('subscription.active_plan_check')}

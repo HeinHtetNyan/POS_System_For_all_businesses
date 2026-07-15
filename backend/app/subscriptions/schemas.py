@@ -113,12 +113,26 @@ class AppDownloadLinksResponse(BaseSchema):
     android: str = ""
     ios: str = ""
     windows: str = ""
+    youtube: str = ""
+    phone: str = ""
+    telegram: str = ""
+    viber: str = ""
+    email: str = ""
+    facebook: str = ""
+    tiktok: str = ""
 
 
 class AppDownloadLinksUpdateRequest(BaseSchema):
     android: str = ""
     ios: str = ""
     windows: str = ""
+    youtube: str = ""
+    phone: str = ""
+    telegram: str = ""
+    viber: str = ""
+    email: str = ""
+    facebook: str = ""
+    tiktok: str = ""
 
 
 class PaymentMethodIconResponse(BaseSchema):

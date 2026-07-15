@@ -1639,7 +1639,11 @@ class PlatformSettingsService:
 
     async def get_app_download_links(self) -> dict:
         row = await self._get_or_create()
-        return row.app_download_links or {"android": "", "ios": "", "windows": ""}
+        return row.app_download_links or {
+            "android": "", "ios": "", "windows": "",
+            "youtube": "", "phone": "", "telegram": "", "viber": "",
+            "email": "", "facebook": "", "tiktok": "",
+        }
 
     async def set_app_download_links(self, links: dict) -> dict:
         row = await self._get_or_create()
