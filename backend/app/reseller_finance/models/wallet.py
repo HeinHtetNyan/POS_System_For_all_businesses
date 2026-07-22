@@ -76,7 +76,7 @@ class ResellerWallet(Base):
         Numeric(8, 4), nullable=False, default=Decimal("10.0000")
     )
     min_payout_amount: Mapped[Decimal] = mapped_column(
-        Numeric(20, 6), nullable=False, default=Decimal("10000.000000")
+        Numeric(20, 6), nullable=False, default=Decimal("50000.000000")
     )
 
     # relationships

@@ -60,6 +60,7 @@ logs/
 *.dump
 *.sql.gz
 postgres_data/
+backups/
 
 # SSL / TLS certificates
 *.pem

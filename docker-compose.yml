@@ -178,6 +178,36 @@ services:
         limits:
           memory: 128m
 
+  # Postgres backup — local-only for now (hourly dumps, kept 7 days / 4 weeks /
+  # 6 months). No offsite (R2) upload yet: the account's existing R2 token is
+  # scoped to specific pre-created buckets and can't create a new one, so
+  # offsite sync is deferred until a pos-specific bucket/token exists.
+  db-backup:
+    image: prodrigestivill/postgres-backup-local
+    container_name: pos_db_backup
+    restart: unless-stopped
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=${DATABASE_NAME}
+      - POSTGRES_USER=${DATABASE_USER}
+      - POSTGRES_PASSWORD=${DATABASE_PASSWORD}
+      - SCHEDULE=@hourly
+      - BACKUP_KEEP_DAYS=7
+      - BACKUP_KEEP_WEEKS=4
+      - BACKUP_KEEP_MONTHS=3
+      - HEALTHCHECK_PORT=8080
+    networks:
+      - pos_network
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+
   # Cloudflare Tunnel — the only route in from the public internet. Cloudflare
   # terminates TLS at its edge and forwards to nginx over the tunnel, so nginx
   # itself never needs to see or handle certificates.

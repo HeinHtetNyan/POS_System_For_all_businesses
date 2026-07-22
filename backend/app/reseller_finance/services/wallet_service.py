@@ -17,7 +17,7 @@ from app.services.audit_service import AuditService
 logger = get_logger(__name__)
 
 _DEFAULT_COMMISSION_RATE = Decimal("10.00")   # 10 %
-_DEFAULT_MIN_PAYOUT = Decimal("10000.00")  # 10,000 MMK
+_DEFAULT_MIN_PAYOUT = Decimal("50000.00")  # 50,000 MMK
 _DEFAULT_CURRENCY = "MMK"
 
 _ALLOWED_MANUAL_TX_TYPES: frozenset[str] = frozenset({
