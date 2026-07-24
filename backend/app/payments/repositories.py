@@ -106,12 +106,20 @@ class PaymentRepository(BaseRepository[Payment]):
         offset: int = 0,
         limit: int = 20,
         order_id: uuid.UUID | None = None,
+        branch_id: uuid.UUID | None = None,
         payment_method: str | None = None,
         payment_status: str | None = None,
     ) -> tuple[list[Payment], int]:
         filters: list[Any] = [Payment.tenant_id == tenant_id]
         if order_id:
             filters.append(Payment.order_id == order_id)
+        if branch_id:
+            # Payment has no branch_id of its own — reach it through its order.
+            filters.append(
+                Payment.order_id.in_(
+                    select(Order.id).where(Order.branch_id == branch_id)
+                )
+            )
         if payment_method:
             filters.append(Payment.payment_method == payment_method)
         if payment_status:

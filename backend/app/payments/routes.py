@@ -12,6 +12,7 @@ from app.api.deps import (
     DbSession,
     EffectiveTenantId,
     RequestId,
+    assert_branch_access,
     get_effective_tenant_id,
     get_request_id,
     require_roles,
@@ -27,6 +28,7 @@ from app.payments.schemas import (
     RefundResponse,
 )
 from app.payments.services import PaymentService
+from app.sales.models import Order
 from app.sales.services.refund_service import (
     RefundInput,
     RefundItemInput,
@@ -131,17 +133,20 @@ async def list_payments(
     current_user: User = _view_access,
     tenant_id: uuid.UUID = Depends(get_effective_tenant_id),
     order_id: uuid.UUID | None = Query(default=None),
+    branch_id: uuid.UUID | None = Query(default=None),
     payment_method: str | None = Query(default=None),
     payment_status: str | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=500),
 ) -> PaymentListResponse:
+    branch_id = scope_branch_filter(current_user, branch_id)
     svc = PaymentService(db)
     items, total = await svc.list_payments(
         tenant_id=tenant_id,
         page=page,
         page_size=page_size,
         order_id=order_id,
+        branch_id=branch_id,
         payment_method=payment_method,
         payment_status=payment_status,
     )
@@ -166,6 +171,11 @@ async def get_payment(
 ) -> PaymentResponse:
     svc = PaymentService(db)
     payment = await svc.get_payment(payment_id, tenant_id)
+    branch_id = (
+        await db.execute(_sa_select(Order.branch_id).where(Order.id == payment.order_id))
+    ).scalar_one_or_none()
+    if branch_id is not None:
+        assert_branch_access(current_user, branch_id)
     return PaymentResponse.model_validate(payment)
 
 
@@ -275,4 +285,9 @@ async def get_refund(
 ) -> RefundResponse:
     svc = RefundService(db)
     refund = await svc.get_refund(refund_id, tenant_id)
+    branch_id = (
+        await db.execute(_sa_select(Order.branch_id).where(Order.id == refund.order_id))
+    ).scalar_one_or_none()
+    if branch_id is not None:
+        assert_branch_access(current_user, branch_id)
     return RefundResponse.model_validate(refund)

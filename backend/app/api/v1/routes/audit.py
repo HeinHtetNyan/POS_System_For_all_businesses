@@ -10,6 +10,8 @@ from app.api.deps import (
     DbSession,
     require_tenant_admin,
 )
+from app.core.constants import UserRole
+from app.core.exceptions import ValidationError
 from app.models.user import User
 from app.repositories.audit_repository import AuditRepository
 from app.schemas.audit import AuditLogResponse
@@ -46,7 +48,20 @@ async def list_audit_logs(
     repo = AuditRepository(db)
     offset = (page - 1) * page_size
 
-    if not current_user.tenant_id:
+    if current_user.role == UserRole.RESELLER.value:
+        if not tenant_id:
+            raise ValidationError("tenant_id is required")
+        from app.reseller_finance.routes.reseller_routes import _assert_referred_tenant
+        await _assert_referred_tenant(db, current_user.id, tenant_id)
+        rows, total = await repo.get_platform_logs(
+            offset=offset,
+            limit=page_size,
+            action=action,
+            date_from=date_from,
+            date_to=date_to,
+            tenant_id=tenant_id,
+        )
+    elif not current_user.tenant_id:
         rows, total = await repo.get_platform_logs(
             offset=offset,
             limit=page_size,

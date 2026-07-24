@@ -110,6 +110,7 @@ class PaymentService:
         page: int = 1,
         page_size: int = 20,
         order_id: uuid.UUID | None = None,
+        branch_id: uuid.UUID | None = None,
         payment_method: str | None = None,
         payment_status: str | None = None,
     ) -> tuple[list[Payment], int]:
@@ -119,6 +120,7 @@ class PaymentService:
             offset=offset,
             limit=page_size,
             order_id=order_id,
+            branch_id=branch_id,
             payment_method=payment_method,
             payment_status=payment_status,
         )
